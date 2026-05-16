@@ -410,24 +410,40 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 function ChatWindow({ conv, currentUser, supabase, onBack }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
+  const [convId, setConvId] = useState(conv?.id||null)
   const bottomRef = useRef(null)
 
   useEffect(()=>{
-    if(!conv) return
-    supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',conv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
-    const ch = supabase.channel('chat:'+conv.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conv.id},async(payload)=>{
-      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
-      if(data) setMessages(prev=>[...prev,data])
-    }).subscribe()
-    return()=>supabase.removeChannel(ch)
-  },[conv])
+    const init = async()=>{
+      let cid = conv?.id
+      if(!cid){
+        const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
+        if(myP?.length){
+          const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',conv.other.id).in('conversation_id',myP.map(p=>p.conversation_id))
+          if(shared?.length) cid = shared[0].conversation_id
+        }
+        if(!cid){
+          const {data:newConv} = await supabase.from('conversations').insert({}).select().single()
+          await supabase.from('conversation_participants').insert([{conversation_id:newConv.id,user_id:currentUser.id},{conversation_id:newConv.id,user_id:conv.other.id}])
+          cid = newConv.id
+        }
+        setConvId(cid)
+      }
+      supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',cid).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
+      const ch = supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+cid},async(payload)=>{
+        const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
+        if(data) setMessages(prev=>[...prev,data])
+      }).subscribe()
+    }
+    init()
+  },[])
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
   const sendMsg = async()=>{
-    if(!msgText.trim()) return
+    if(!msgText.trim()||!convId) return
     const content=msgText.trim(); setMsgText('')
-    await supabase.from('messages').insert({conversation_id:conv.id,sender_id:currentUser.id,content})
+    await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
   }
 
   const timeAgo2 = (ts) => {
