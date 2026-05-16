@@ -5,11 +5,3 @@
     }
   }
 }
-EOFcat > jsconfig.json << 'EOF'
-{
-  "compilerOptions": {
-    "paths": {
-      "@/*": ["./src/*"]
-    }
-  }
-}
