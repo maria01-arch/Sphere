@@ -588,8 +588,6 @@ export default function SphereApp({ currentUser }) {
   }
 
   const openDMWithUser = async(user) => {
-    setViewingUser(null)
-    setShowMyProfile(false)
     const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
     let convId = null
     if(myP?.length){
@@ -601,6 +599,8 @@ export default function SphereApp({ currentUser }) {
       await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
       convId = conv.id
     }
+    setViewingUser(null)
+    setShowMyProfile(false)
     setChatOverlay({id:convId,other:user})
   }
 
