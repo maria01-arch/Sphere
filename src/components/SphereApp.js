@@ -441,7 +441,8 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
   const sendMsg = async()=>{
-    if(!msgText.trim()||!convId) return
+    if(!msgText.trim()) return
+    if(!convId){ alert("Setting up chat, try again in a second"); return }
     const content=msgText.trim(); setMsgText('')
     await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
   }
