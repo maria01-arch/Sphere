@@ -587,7 +587,12 @@ export default function SphereApp({ currentUser }) {
     setPosts(prev=>prev.filter(p=>p.id!==postId))
   }
 
-  const openDMWithUser = async(user) => {
+  const openDMWithUser = (user) => {
+    setViewingUser(null)
+    setShowMyProfile(false)
+    setChatOverlay({id:null,other:user,userObj:user})
+  }
+  const openDMWithUserOLD = async(user) => {
     const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
     let convId = null
     if(myP?.length){
