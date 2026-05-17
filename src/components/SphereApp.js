@@ -448,8 +448,9 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
     if(!msgText.trim()||!convId) return
     const content=msgText.trim()
     setMsgText('')
-    const {error} = await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
-    if(error) console.log('send error',error)
+    const tempMsg = {id:Date.now(),sender_id:currentUser.id,content,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tempMsg])
+    await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
   }
 
   const t2 = (ts)=>{ if(!ts) return ''; const d=Math.floor((Date.now()-new Date(ts))/1000); if(d<60) return 'now'; if(d<3600) return Math.floor(d/60)+'m'; return Math.floor(d/3600)+'h' }
