@@ -557,13 +557,22 @@ export default function SphereApp({ currentUser }) {
     const {data:parts} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
     if(!parts?.length){setConversations([]);return}
     const ids = parts.map(p=>p.conversation_id)
-    const {data:others} = await supabase.from('conversation_participants').select('conversation_id,profiles(id,display_name,username,avatar_color,avatar_url)').in('conversation_id',ids).neq('user_id',currentUser.id)
+    const {data:otherParts} = await supabase.from('conversation_participants').select('conversation_id,user_id').in('conversation_id',ids).neq('user_id',currentUser.id)
+    const otherIds = [...new Set((otherParts||[]).map(o=>o.user_id))]
+    const {data:profiles} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').in('id',otherIds)
+    const profileMap = {}
+    ;(profiles||[]).forEach(p=>{ profileMap[p.id]=p })
     const lastMsgs = {}
     await Promise.all(ids.map(async id=>{
       const {data} = await supabase.from('messages').select('content,created_at,sender_id').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
       if(data) lastMsgs[id]=data
     }))
-    setConversations(ids.map(id=>({id,other:others?.find(o=>o.conversation_id===id)?.profiles,last:lastMsgs[id]})).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)))
+    const list = ids.map(id=>{
+      const op = otherParts?.find(o=>o.conversation_id===id)
+      const other = op ? profileMap[op.user_id] : null
+      return {id,other,last:lastMsgs[id]}
+    }).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0))
+    setConversations(list)
   }
 
   useEffect(()=>{
