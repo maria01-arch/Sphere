@@ -410,7 +410,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 function ChatWindow({ conv, currentUser, supabase, onBack }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
-  const [convId, setConvId] = useState(null)
+  const [convId, setConvId] = useState(conv?.id||null)
   const bottomRef = useRef(null)
 
   useEffect(()=>{
