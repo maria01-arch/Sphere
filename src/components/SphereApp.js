@@ -625,7 +625,10 @@ export default function SphereApp({ currentUser }) {
   const openDMWithUser = async(user) => {
     setViewingUser(null)
     setShowMyProfile(false)
-    window.open("https://liquidchats.vercel.app?dm=" + user.id, "_blank")
+    const { data: { session } } = await supabase.auth.getSession()
+    const token = session?.access_token || ''
+    const refresh = session?.refresh_token || ''
+    window.open("https://liquidchats.vercel.app?dm=" + user.id + "&token=" + token + "&refresh=" + refresh, "_blank")
   }
 
   const sendMsg = async() => {
