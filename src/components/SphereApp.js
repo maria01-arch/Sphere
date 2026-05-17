@@ -328,6 +328,18 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
   const [comments, setComments] = useState(post.comments_count||0)
   const [showReply, setShowReply] = useState(false)
   const [replyText, setReplyText] = useState('')
+  const [showComments, setShowComments] = useState(false)
+  const [commentsList, setCommentsList] = useState([])
+  const [loadingComments, setLoadingComments] = useState(false)
+
+  const loadComments = async() => {
+    if(showComments){setShowComments(false);return}
+    setLoadingComments(true)
+    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
+    setCommentsList(data||[])
+    setLoadingComments(false)
+    setShowComments(true)
+  }
   const a = post.author||{}
   const color = a.avatar_color||getColor(a.id)
   const isOwn = a.id === currentUser.id
@@ -378,7 +390,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
           </div>
           <p style={{color:'#ddd',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word'}}>{post.content}</p>
           <div style={{display:'flex'}}>
-            <button onClick={()=>setShowReply(!showReply)} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showReply?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
+            <button onClick={loadComments} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showComments?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
               <span style={{fontSize:16}}>💬</span><span>{comments}</span>
             </button>
             <button onClick={toggleRepost} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:reposted?'#00C9A7':'#555',fontSize:13,padding:'6px 0'}}>
@@ -391,6 +403,28 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
               <span style={{fontSize:16}}>📤</span>
             </button>
           </div>
+          {showComments&&(
+            <div style={{marginTop:12,borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                <span style={{color:'#888',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
+                <button onClick={()=>setShowReply(!showReply)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
+              </div>
+              {loadingComments&&<p style={{color:'#444',fontSize:13,textAlign:'center'}}>Loading...</p>}
+              {commentsList.map((cm,i)=>(
+                <div key={cm.id} style={{display:'flex',gap:10,marginBottom:12,alignItems:'flex-start'}}>
+                  <Avatar url={cm.author?.avatar_url} name={cm.author?.display_name} color={cm.author?.avatar_color||'#5B9CF6'} size={32}/>
+                  <div style={{flex:1,background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'8px 12px'}}>
+                    <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
+                      <span style={{fontWeight:700,fontSize:13,color:'#fff'}}>{cm.author?.display_name}</span>
+                      <span style={{color:'#555',fontSize:11}}>{timeAgo(cm.created_at)}</span>
+                    </div>
+                    <p style={{color:'#ddd',fontSize:14,lineHeight:1.5,margin:0}}>{cm.content}</p>
+                  </div>
+                </div>
+              ))}
+              {!loadingComments&&commentsList.length===0&&<p style={{color:'#444',fontSize:13,textAlign:'center'}}>No comments yet</p>}
+            </div>
+          )}
           {showReply&&(
             <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center'}}>
               <Avatar url={currentUser.avatar_url} name={currentUser.display_name} color={currentUser.avatar_color||'#5B9CF6'} size={28}/>
