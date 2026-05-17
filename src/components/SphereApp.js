@@ -423,8 +423,10 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
           if(shared?.length) cid = shared[0].conversation_id
         }
         if(!cid){
-          const {data:newConv} = await supabase.from('conversations').insert({}).select().single()
-          await supabase.from('conversation_participants').insert([{conversation_id:newConv.id,user_id:currentUser.id},{conversation_id:newConv.id,user_id:conv.other.id}])
+          const otherId = conv?.other?.id
+      if(!otherId) return
+      const {data:newConv} = await supabase.from('conversations').insert({}).select().single()
+          await supabase.from("conversation_participants").insert([{conversation_id:newConv.id,user_id:currentUser.id},{conversation_id:newConv.id,user_id:otherId}])
           cid = newConv.id
         }
         setConvId(cid)
@@ -441,8 +443,7 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
   const sendMsg = async()=>{
-    if(!msgText.trim()) return
-    if(!convId){ alert("Setting up chat, try again in a second"); return }
+    if(!msgText.trim()||!convId) return
     const content=msgText.trim(); setMsgText('')
     await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
   }
