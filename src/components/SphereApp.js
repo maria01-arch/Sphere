@@ -434,7 +434,7 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
       setConvId(cid)
       const {data:msgs} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',cid).order('created_at',{ascending:true})
       setMessages(msgs||[])
-      supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+cid},async(payload)=>{
+      supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${cid}`},async(payload)=>{
         const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>[...prev,data])
       }).subscribe()
