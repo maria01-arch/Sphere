@@ -625,20 +625,7 @@ export default function SphereApp({ currentUser }) {
   const openDMWithUser = async(user) => {
     setViewingUser(null)
     setShowMyProfile(false)
-    const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
-    let convId = null
-    if(myP?.length){
-      const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',user.id).in('conversation_id',myP.map(p=>p.conversation_id))
-      if(shared?.length) convId = shared[0].conversation_id
-    }
-    if(!convId){
-      const {data:conv} = await supabase.from('conversations').insert({}).select().single()
-      await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
-      convId = conv.id
-    }
-    setSelectedConv({id:convId,other:user})
-    setDmView('chat')
-    setTab('messages')
+    window.open("https://liquidchat-eight.vercel.app?dm=" + user.id, "_blank")
   }
 
   const sendMsg = async() => {
