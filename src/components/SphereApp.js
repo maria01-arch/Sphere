@@ -410,29 +410,31 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 function ChatWindow({ conv, currentUser, supabase, onBack }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
-  const [convId, setConvId] = useState(conv?.id||null)
+  const [convId, setConvId] = useState(null)
   const bottomRef = useRef(null)
 
   useEffect(()=>{
     const init = async()=>{
-      let cid = conv?.id
+      let cid = conv?.id || null
+      const otherId = conv?.other?.id
+      if(!otherId) return
       if(!cid){
         const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
         if(myP?.length){
-          const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',conv.other.id).in('conversation_id',myP.map(p=>p.conversation_id))
+          const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',otherId).in('conversation_id',myP.map(p=>p.conversation_id))
           if(shared?.length) cid = shared[0].conversation_id
         }
         if(!cid){
-          const otherId = conv?.other?.id
-      if(!otherId) return
-      const {data:newConv} = await supabase.from('conversations').insert({}).select().single()
-          await supabase.from("conversation_participants").insert([{conversation_id:newConv.id,user_id:currentUser.id},{conversation_id:newConv.id,user_id:otherId}])
+          const {data:newConv} = await supabase.from('conversations').insert({}).select().single()
+          if(!newConv) return
+          await supabase.from('conversation_participants').insert([{conversation_id:newConv.id,user_id:currentUser.id},{conversation_id:newConv.id,user_id:otherId}])
           cid = newConv.id
         }
-        setConvId(cid)
       }
-      supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',cid).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
-      const ch = supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+cid},async(payload)=>{
+      setConvId(cid)
+      const {data:msgs} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',cid).order('created_at',{ascending:true})
+      setMessages(msgs||[])
+      supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+cid},async(payload)=>{
         const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>[...prev,data])
       }).subscribe()
@@ -444,52 +446,48 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
 
   const sendMsg = async()=>{
     if(!msgText.trim()||!convId) return
-    const content=msgText.trim(); setMsgText('')
-    await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
+    const content=msgText.trim()
+    setMsgText('')
+    const {error} = await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
+    if(error) console.log('send error',error)
   }
 
-  const timeAgo2 = (ts) => {
-    if(!ts) return ''
-    const d = Math.floor((Date.now()-new Date(ts))/1000)
-    if(d<60) return 'now'
-    if(d<3600) return Math.floor(d/60)+'m'
-    return Math.floor(d/3600)+'h'
-  }
+  const t2 = (ts)=>{ if(!ts) return ''; const d=Math.floor((Date.now()-new Date(ts))/1000); if(d<60) return 'now'; if(d<3600) return Math.floor(d/60)+'m'; return Math.floor(d/3600)+'h' }
 
   return (
     <div style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,flexShrink:0,background:'rgba(9,11,16,0.95)'}}>
-        <div onClick={onBack} style={{color:'#888',cursor:'pointer',fontSize:24,padding:'0 4px'}}>‹</div>
-        <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={38} online/>
+        <div onClick={onBack} style={{color:'#888',cursor:'pointer',fontSize:24,padding:'0 8px'}}>‹</div>
+        <Avatar url={conv?.other?.avatar_url} name={conv?.other?.display_name} color={conv?.other?.avatar_color||'#5B9CF6'} size={38} online/>
         <div>
-          <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{conv.other?.display_name}</div>
-          <div style={{color:'#00C9A7',fontSize:11}}>● Active now</div>
+          <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{conv?.other?.display_name}</div>
+          <div style={{color:convId?'#00C9A7':'#888',fontSize:11}}>{convId?'● Active now':'Setting up...'}</div>
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8}}>
         {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-          <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={72}/>
-          <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
+          <Avatar url={conv?.other?.avatar_url} name={conv?.other?.display_name} color={conv?.other?.avatar_color||'#5B9CF6'} size={72}/>
+          <p style={{color:'#444',fontSize:14}}>{convId?'Say hello! 👋':'Setting up chat...'}</p>
         </div>}
         {messages.map(msg=>{
           const own=msg.sender_id===currentUser.id
           return(<div key={msg.id} style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
             {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
             <div style={{maxWidth:'75%',padding:'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word'}}>
-              {msg.content}
-              <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right'}}>{timeAgo2(msg.created_at)}</div>
+              {msg.content}<div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right'}}>{t2(msg.created_at)}</div>
             </div>
           </div>)
         })}
         <div ref={bottomRef}/>
       </div>
       <div style={{padding:'10px 14px 30px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center',background:'#090B10',flexShrink:0}}>
-        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder='Message...' style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none'}}/>
-        <div onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0,cursor:'pointer'}}>→</div>
+        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder={convId?'Message...':'Setting up...'} style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none'}}/>
+        <div onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()&&convId?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',color:msgText.trim()&&convId?'#fff':'#333',fontSize:20,flexShrink:0,cursor:'pointer'}}>→</div>
       </div>
     </div>
   )
 }
+
 
 export default function SphereApp({ currentUser }) {
   const [tab, setTab] = useState('home')
