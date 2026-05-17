@@ -410,93 +410,68 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 function ChatWindow({ conv, currentUser, supabase, onBack }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
-  const [convId, setConvId] = useState(conv?.id||null)
-  const [otherUser, setOtherUser] = useState(conv?.other||null)
   const bottomRef = useRef(null)
 
   useEffect(()=>{
-    const init = async()=>{
-      let cid = conv?.id || null
-      const otherId = conv?.other?.id
-      if(!cid && !otherId) return
-      if(!cid){
-        const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
-        if(myP?.length){
-          const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',otherId).in('conversation_id',myP.map(p=>p.conversation_id))
-          if(shared?.length) cid = shared[0].conversation_id
-        }
-        if(!cid){
-          const {data:newConv} = await supabase.from('conversations').insert({}).select().single()
-          if(!newConv) return
-          await supabase.from('conversation_participants').insert([{conversation_id:newConv.id,user_id:currentUser.id},{conversation_id:newConv.id,user_id:otherId}])
-          cid = newConv.id
-        }
-      }
-      setConvId(cid)
-      if(!otherUser){
-        const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',cid).neq('user_id',currentUser.id).maybeSingle()
-        if(op){
-          const {data:prof} = await supabase.from('profiles').select('*').eq('id',op.user_id).single()
-          if(prof) setOtherUser(prof)
-        }
-      }
-      const {data:msgs} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',cid).order('created_at',{ascending:true})
-      setMessages(msgs||[])
-      supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${cid}`},async(payload)=>{
-        const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
-        if(data) setMessages(prev=>[...prev,data])
-      }).subscribe()
-    }
-    init()
-  },[conv?.id])
+    if(!conv) return
+    supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',conv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
+    const ch = supabase.channel('chat:'+conv.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conv.id},async(payload)=>{
+      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
+      if(data) setMessages(prev=>[...prev,data])
+    }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[conv])
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
   const sendMsg = async()=>{
-    if(!msgText.trim()||!convId) return
-    const content=msgText.trim()
-    setMsgText('')
-    const tempMsg = {id:Date.now(),sender_id:currentUser.id,content,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
-    setMessages(prev=>[...prev,tempMsg])
-    await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
+    if(!msgText.trim()) return
+    const content=msgText.trim(); setMsgText('')
+    await supabase.from('messages').insert({conversation_id:conv.id,sender_id:currentUser.id,content})
   }
 
-  const t2 = (ts)=>{ if(!ts) return ''; const d=Math.floor((Date.now()-new Date(ts))/1000); if(d<60) return 'now'; if(d<3600) return Math.floor(d/60)+'m'; return Math.floor(d/3600)+'h' }
+  const timeAgo2 = (ts) => {
+    if(!ts) return ''
+    const d = Math.floor((Date.now()-new Date(ts))/1000)
+    if(d<60) return 'now'
+    if(d<3600) return Math.floor(d/60)+'m'
+    return Math.floor(d/3600)+'h'
+  }
 
   return (
     <div style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,flexShrink:0,background:'rgba(9,11,16,0.95)'}}>
-        <div onClick={onBack} style={{color:'#888',cursor:'pointer',fontSize:24,padding:'0 8px'}}>‹</div>
-        <Avatar url={otherUser?.avatar_url} name={otherUser?.display_name} color={otherUser?.avatar_color||'#5B9CF6'} size={38} online/>
+        <div onClick={onBack} style={{color:'#888',cursor:'pointer',fontSize:24,padding:'0 4px'}}>‹</div>
+        <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={38} online/>
         <div>
-          <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{otherUser?.display_name||'...'}</div>
-          <div style={{color:convId?'#00C9A7':'#888',fontSize:11}}>{convId?'● Active now':'Setting up...'}</div>
+          <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{conv.other?.display_name}</div>
+          <div style={{color:'#00C9A7',fontSize:11}}>● Active now</div>
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8}}>
         {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-          <Avatar url={otherUser?.avatar_url} name={otherUser?.display_name} color={otherUser?.avatar_color||'#5B9CF6'} size={72}/>
-          <p style={{color:'#444',fontSize:14}}>{convId?'Say hello! 👋':'Setting up chat...'}</p>
+          <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={72}/>
+          <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
         </div>}
         {messages.map(msg=>{
           const own=msg.sender_id===currentUser.id
           return(<div key={msg.id} style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
             {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
             <div style={{maxWidth:'75%',padding:'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word'}}>
-              {msg.content}<div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right'}}>{t2(msg.created_at)}</div>
+              {msg.content}
+              <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right'}}>{timeAgo2(msg.created_at)}</div>
             </div>
           </div>)
         })}
         <div ref={bottomRef}/>
       </div>
       <div style={{padding:'10px 14px 30px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center',background:'#090B10',flexShrink:0}}>
-        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder={convId?'Message...':'Setting up...'} style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none'}}/>
-        <div onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()&&convId?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',color:msgText.trim()&&convId?'#fff':'#333',fontSize:20,flexShrink:0,cursor:'pointer'}}>→</div>
+        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder='Message...' style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none'}}/>
+        <div onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0,cursor:'pointer'}}>→</div>
       </div>
     </div>
   )
 }
-
 
 export default function SphereApp({ currentUser }) {
   const [tab, setTab] = useState('home')
@@ -565,17 +540,14 @@ export default function SphereApp({ currentUser }) {
     const {data:parts} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
     if(!parts?.length){setConversations([]);return}
     const ids = parts.map(p=>p.conversation_id)
-    const convData = await Promise.all(ids.map(async id=>{
-      const {data:op} = await supabase.from("conversation_participants").select("user_id").eq("conversation_id",id).neq("user_id",currentUser.id).maybeSingle()
+    const results = await Promise.all(ids.map(async id=>{
+      const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
       if(!op) return null
-      const {data:prof} = await supabase.from("profiles").select("id,display_name,username,avatar_color,avatar_url").eq("id",op.user_id).single()
-      const {data:lastMsg} = await supabase.from("messages").select("content,created_at,sender_id").eq("conversation_id",id).order("created_at",{ascending:false}).limit(1).maybeSingle()
+      const {data:prof} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').eq('id',op.user_id).single()
+      const {data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
       return {id, other:prof, last:lastMsg}
     }))
-    const list = convData.filter(Boolean).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0))
-    setConversations(list)
-    }).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0))
-    setConversations(list)
+    setConversations(results.filter(Boolean).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)))
   }
 
   useEffect(()=>{
@@ -616,10 +588,23 @@ export default function SphereApp({ currentUser }) {
     setPosts(prev=>prev.filter(p=>p.id!==postId))
   }
 
-  const openDMWithUser = (user) => {
+  const openDMWithUser = async(user) => {
     setViewingUser(null)
     setShowMyProfile(false)
-    setChatOverlay({id:null,other:user})
+    const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
+    let convId = null
+    if(myP?.length){
+      const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',user.id).in('conversation_id',myP.map(p=>p.conversation_id))
+      if(shared?.length) convId = shared[0].conversation_id
+    }
+    if(!convId){
+      const {data:conv} = await supabase.from('conversations').insert({}).select().single()
+      await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
+      convId = conv.id
+    }
+    setSelectedConv({id:convId,other:user})
+    setDmView('chat')
+    setTab('messages')
   }
 
   const sendMsg = async() => {
@@ -658,7 +643,7 @@ export default function SphereApp({ currentUser }) {
 
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
-  // viewingUser shown as overlay below
+  if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser}/>
 
   return (
     <div style={{minHeight:'100vh',background:'#090B10',maxWidth:600,margin:'0 auto',color:'#fff',fontFamily:'sans-serif'}}>
@@ -691,7 +676,7 @@ export default function SphereApp({ currentUser }) {
             {conversations.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>💬</p><p style={{color:'#555',marginTop:8,fontSize:15}}>No messages yet</p><p style={{color:'#444',fontSize:13,marginTop:4}}>Tap New to start a conversation</p></div>}
             {conversations.map(conv=>(
               <div key={conv.id}
-                onClick={()=>{ setChatOverlay({id:conv.id,other:conv.other}) }}
+                onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
                 style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none',active:{background:'rgba(255,255,255,0.04)'}}}>
                 <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online/>
                 <div style={{flex:1,minWidth:0}}>
@@ -827,8 +812,6 @@ export default function SphereApp({ currentUser }) {
           </div>
         </div>
       </div>}
-      {chatOverlay&&<ChatWindow conv={chatOverlay} currentUser={currentUser} supabase={supabase} onBack={()=>setChatOverlay(null)}/>}
-      {viewingUser&&<div style={{position:"fixed",inset:0,zIndex:400,background:"#090B10",overflowY:"auto"}}><UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser}/></div>}
     </div>
   )
 }
