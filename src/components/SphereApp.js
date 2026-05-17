@@ -604,21 +604,10 @@ export default function SphereApp({ currentUser }) {
     setPosts(prev=>prev.filter(p=>p.id!==postId))
   }
 
-  const openDMWithUser = async(user) => {
-    const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
-    let convId = null
-    if(myP?.length){
-      const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',user.id).in('conversation_id',myP.map(p=>p.conversation_id))
-      if(shared?.length) convId = shared[0].conversation_id
-    }
-    if(!convId){
-      const {data:conv} = await supabase.from('conversations').insert({}).select().single()
-      await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
-      convId = conv.id
-    }
+  const openDMWithUser = (user) => {
     setViewingUser(null)
     setShowMyProfile(false)
-    setChatOverlay({id:convId,other:user})
+    setChatOverlay({id:null,other:user})
   }
 
   const sendMsg = async() => {
