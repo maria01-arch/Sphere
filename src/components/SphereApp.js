@@ -812,7 +812,7 @@ export default function SphereApp({ currentUser }) {
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
 
-      <div style={{position:'fixed',bottom:14,left:'50%',transform:navVisible?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
+      <div style={{position:'fixed',bottom:14,left:'50%',transform:'translateX(-50%)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500}}>
         <div style={{background:'rgba(13,15,22,0.97)',backdropFilter:'blur(28px)',borderRadius:30,padding:'8px 4px',border:'1px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px rgba(0,0,0,0.7)'}}>
           {TABS.map(({id,label,icon})=>(<button key={id} onClick={()=>{setTab(id);if(id==='messages')setDmView('list')}} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}><span style={{fontSize:20}}>{icon}</span><span style={{fontSize:9.5,fontWeight:tab===id?700:500}}>{label}</span></button>))}
         </div>
