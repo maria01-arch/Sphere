@@ -411,6 +411,7 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
   const [convId, setConvId] = useState(conv?.id||null)
+  const [otherUser, setOtherUser] = useState(conv?.other||null)
   const bottomRef = useRef(null)
 
   useEffect(()=>{
@@ -432,6 +433,13 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
         }
       }
       setConvId(cid)
+      if(!otherUser){
+        const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',cid).neq('user_id',currentUser.id).maybeSingle()
+        if(op){
+          const {data:prof} = await supabase.from('profiles').select('*').eq('id',op.user_id).single()
+          if(prof) setOtherUser(prof)
+        }
+      }
       const {data:msgs} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',cid).order('created_at',{ascending:true})
       setMessages(msgs||[])
       supabase.channel('chat:'+cid).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${cid}`},async(payload)=>{
@@ -459,15 +467,15 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
     <div style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,flexShrink:0,background:'rgba(9,11,16,0.95)'}}>
         <div onClick={onBack} style={{color:'#888',cursor:'pointer',fontSize:24,padding:'0 8px'}}>‹</div>
-        <Avatar url={conv?.other?.avatar_url} name={conv?.other?.display_name} color={conv?.other?.avatar_color||'#5B9CF6'} size={38} online/>
+        <Avatar url={otherUser?.avatar_url} name={otherUser?.display_name} color={otherUser?.avatar_color||'#5B9CF6'} size={38} online/>
         <div>
-          <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{conv?.other?.display_name}</div>
+          <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{otherUser?.display_name||'...'}</div>
           <div style={{color:convId?'#00C9A7':'#888',fontSize:11}}>{convId?'● Active now':'Setting up...'}</div>
         </div>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8}}>
         {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-          <Avatar url={conv?.other?.avatar_url} name={conv?.other?.display_name} color={conv?.other?.avatar_color||'#5B9CF6'} size={72}/>
+          <Avatar url={otherUser?.avatar_url} name={otherUser?.display_name} color={otherUser?.avatar_color||'#5B9CF6'} size={72}/>
           <p style={{color:'#444',fontSize:14}}>{convId?'Say hello! 👋':'Setting up chat...'}</p>
         </div>}
         {messages.map(msg=>{
