@@ -417,7 +417,7 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
     const init = async()=>{
       let cid = conv?.id || null
       const otherId = conv?.other?.id
-      if(!otherId) return
+      if(!cid && !otherId) return
       if(!cid){
         const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
         if(myP?.length){
@@ -440,7 +440,7 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
       }).subscribe()
     }
     init()
-  },[])
+  },[conv?.id])
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
