@@ -679,7 +679,7 @@ export default function SphereApp({ currentUser }) {
             {conversations.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>💬</p><p style={{color:'#555',marginTop:8,fontSize:15}}>No messages yet</p><p style={{color:'#444',fontSize:13,marginTop:4}}>Tap New to start a conversation</p></div>}
             {conversations.map(conv=>(
               <div key={conv.id}
-                onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
+                onClick={()=>{ setChatOverlay({id:conv.id,other:conv.other}) }}
                 style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none',active:{background:'rgba(255,255,255,0.04)'}}}>
                 <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online/>
                 <div style={{flex:1,minWidth:0}}>
