@@ -698,104 +698,10 @@ export default function SphereApp({ currentUser }) {
             <div style={{fontSize:64}}>🫟</div>
             <div style={{fontFamily:'sans-serif',fontWeight:800,fontSize:22,color:'#fff'}}>LiquidChat</div>
             <p style={{color:'#555',fontSize:14,textAlign:'center',lineHeight:1.6}}>Your messages have moved to LiquidChat — a dedicated messenger by OmniSphere Labs.</p>
-            <a href='https://liquidchats.vercel.app' target='_blank' rel='noreferrer' style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'16px 32px',color:'#fff',fontWeight:700,fontSize:16,cursor:'pointer',width:'100%',maxWidth:320,textDecoration:'none',textAlign:'center',display:'block'}}>
-              Open LiquidChat 🫟
-            </a>
+            <a href='https://liquidchats.vercel.app' target='_blank' rel='noreferrer' style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',borderRadius:16,padding:'16px 32px',color:'#fff',fontWeight:700,fontSize:16,width:'100%',maxWidth:320,textDecoration:'none',textAlign:'center',display:'block'}}>Open LiquidChat 🫟</a>
             <p style={{color:'#333',fontSize:12,textAlign:'center'}}>by OmniSphere Labs</p>
           </div>
-          {false&&<>
-          {dmView==='list'&&<>
-            <div style={{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontWeight:800,fontSize:20}}>Messages</span>
-              <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
-            </div>
-            {conversations.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>💬</p><p style={{color:'#555',marginTop:8,fontSize:15}}>No messages yet</p><p style={{color:'#444',fontSize:13,marginTop:4}}>Tap New to start a conversation</p></div>}
-            {conversations.map(conv=>(
-              <div key={conv.id}
-                onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
-                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none',active:{background:'rgba(255,255,255,0.04)'}}}>
-                <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online/>
-                <div style={{flex:1,minWidth:0}}>
-                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                    <span style={{fontWeight:700,fontSize:15}}>{conv.other?.display_name}</span>
-                    {conv.last&&<span style={{color:'#444',fontSize:12}}>{timeAgo(conv.last.created_at)}</span>}
-                  </div>
-                  <p style={{color:'#555',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
-                    {conv.last ? (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content : 'Tap to chat'}
-                  </p>
-                </div>
-                <span style={{color:'#444',fontSize:20}}>›</span>
-              </div>
-            ))}
-          </>}
-
-          {dmView==='new'&&<>
-            <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12}}>
-              <button onClick={()=>setDmView('list')} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
-              <span style={{fontWeight:700,fontSize:17}}>New Message</span>
-            </div>
-            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
-              <input autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search name or username..." style={{...inp}}/>
-            </div>
-            {!searchQ&&allPeople.map(u=>(
-              <div key={u.id} onClick={()=>openDMWithUser(u)} style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer'}}>
-                <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||getColor(u.id)} size={46}/>
-                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div><div style={{color:'#555',fontSize:13}}>@{u.username}</div></div>
-                <span style={{color:'#5B9CF6',fontSize:22}}>›</span>
-              </div>
-            ))}
-            {searchQ&&!searchResults.length&&<p style={{padding:'30px',textAlign:'center',color:'#444',fontSize:14}}>No users found</p>}
-            {searchQ&&searchResults.map(u=>(
-              <div key={u.id}
-                onClick={()=>openDMWithUser(u)}
-                onTouchEnd={(e)=>{ e.preventDefault(); openDMWithUser(u) }}
-                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none'}}>
-                <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||getColor(u.id)} size={46}/>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:16}}>{u.display_name}</div>
-                  <div style={{color:'#555',fontSize:13}}>@{u.username}</div>
-                </div>
-                <span style={{color:'#5B9CF6',fontSize:22}}>›</span>
-              </div>
-            ))}
-          </>}
-
-          {dmView==='chat'&&selectedConv&&<>
-            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:58,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',zIndex:5}}>
-              <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
-              <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
-              <div>
-                <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
-                <div style={{color:'#00C9A7',fontSize:11}}>● Active now</div>
-              </div>
-            </div>
-            <div style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:90}}>
-              {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-                <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
-                <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
-              </div>}
-              {messages.map(msg=>{
-                const own = msg.sender_id===currentUser.id
-                return(<div key={msg.id} style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
-                  {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
-                  <div style={{maxWidth:'75%',padding:'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word'}}>
-                    {msg.content}
-                    <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right'}}>{timeAgo(msg.created_at)}</div>
-                  </div>
-                </div>)
-              })}
-              <div ref={bottomRef}/>
-            </div>
-            <div style={{position:'sticky',bottom:80,background:'#090B10',padding:'10px 14px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
-              <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message..." style={{...inp,flex:1,borderRadius:26,marginBottom:0,padding:'12px 18px'}}/>
-              <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
-            </div>
-          </>}
         </>}
-
-          </>}
-        </>
-        }
 
         {tab==='friends'&&<>
           <div style={{padding:'16px 16px 8px',fontWeight:800,fontSize:20}}>People 👥</div>
