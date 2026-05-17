@@ -625,7 +625,7 @@ export default function SphereApp({ currentUser }) {
   const openDMWithUser = async(user) => {
     setViewingUser(null)
     setShowMyProfile(false)
-    window.open("https://liquidchat-eight.vercel.app?dm=" + user.id, "_blank")
+    window.open("https://liquidchats.vercel.app?dm=" + user.id, "_blank")
   }
 
   const sendMsg = async() => {
