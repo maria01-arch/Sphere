@@ -694,6 +694,23 @@ export default function SphereApp({ currentUser }) {
         </>}
 
         {tab==='messages'&&<>
+          <div style={{display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',height:'80vh',gap:20,padding:24}}>
+            <div style={{fontSize:64}}>🫟</div>
+            <div style={{fontFamily:'sans-serif',fontWeight:800,fontSize:22,color:'#fff'}}>LiquidChat</div>
+            <p style={{color:'#555',fontSize:14,textAlign:'center',lineHeight:1.6}}>Your messages have moved to LiquidChat — a dedicated messenger by OmniSphere Labs.</p>
+            <button onClick={async()=>{
+              const {data:{session}} = await supabase.auth.getSession()
+              if(session){
+                localStorage.setItem('lc_token', session.access_token)
+                localStorage.setItem('lc_refresh', session.refresh_token)
+              }
+              window.open('https://liquidchats.vercel.app','_blank')
+            }} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'16px 32px',color:'#fff',fontWeight:700,fontSize:16,cursor:'pointer',width:'100%',maxWidth:320}}>
+              Open LiquidChat 🫟
+            </button>
+            <p style={{color:'#333',fontSize:12,textAlign:'center'}}>by OmniSphere Labs</p>
+          </div>
+          {false&&<>
           {dmView==='list'&&<>
             <div style={{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
@@ -782,6 +799,10 @@ export default function SphereApp({ currentUser }) {
             </div>
           </>}
         </>}
+
+          </>}
+        </>
+        }
 
         {tab==='friends'&&<>
           <div style={{padding:'16px 16px 8px',fontWeight:800,fontSize:20}}>People 👥</div>
