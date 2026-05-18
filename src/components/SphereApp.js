@@ -588,6 +588,20 @@ export default function SphereApp({ currentUser }) {
   const [showMyProfile, setShowMyProfile] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
+  const [navVisible, setNavVisible] = useState(true)
+  const lastScrollY = useRef(0)
+
+  useEffect(()=>{
+    const handleScroll = () => {
+      const y = window.scrollY
+      if(y < 50) setNavVisible(true)
+      else if(y > lastScrollY.current + 8) setNavVisible(false)
+      else if(y < lastScrollY.current - 8) setNavVisible(true)
+      lastScrollY.current = y
+    }
+    window.addEventListener('scroll', handleScroll, {passive:true})
+    return()=>window.removeEventListener('scroll', handleScroll)
+  },[])
   const [chatOverlay, setChatOverlay] = useState(null)
   const [pendingDM, setPendingDM] = useState(null)
   const bottomRef = useRef(null)
