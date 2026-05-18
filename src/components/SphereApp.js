@@ -173,7 +173,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
 
   const saveProfile = async () => {
     setSaving(true)
-    const {error} = await supabase.from('profiles').update({display_name:displayName,bio,location}).eq('id',currentUser.id)
+    const {error} = const emojiRegex = /[\u{1F300}-\u{1FFFF}\u{2600}-\u{26FF}\u{2700}-\u{27BF}]/gu;if(emojiRegex.test(displayName)){showMsg('Emojis are not allowed in display names',false);setSaving(false);return}await supabase.from('profiles').update({display_name:displayName,bio,location}).eq('id',currentUser.id)
     if (error) showMsg(error.message, false)
     else { currentUser.display_name=displayName; currentUser.bio=bio; currentUser.location=location; showMsg('Profile saved!') }
     setSaving(false)
