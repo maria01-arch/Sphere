@@ -74,7 +74,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
       </div>
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-        <h2 style={{fontWeight:800,fontSize:20,margin:0}}>{user?.display_name}</h2>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{user?.display_name}</h2>{user?.verified&&<span style={{background:"linear-gradient(135deg,#FFD700,#FFA500)",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"#000",fontWeight:900,flexShrink:0}}>✓</span>}</div>
         {user?.verified&&<span style={{background:'linear-gradient(135deg,#FFD700,#FFA500)',borderRadius:'50%',width:22,height:22,display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:13,color:'#000',fontWeight:900}}>✓</span>}
       </div>
         <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{user?.username}</p>
@@ -350,7 +350,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
       </div>
       <div style={{padding:'0 16px 20px'}}>
-        <h2 style={{fontWeight:800,fontSize:22,marginBottom:2}}>{currentUser?.display_name}</h2>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span style={{background:"linear-gradient(135deg,#FFD700,#FFA500)",borderRadius:"50%",width:22,height:22,display:"inline-flex",alignItems:"center",justifyContent:"center",fontSize:13,color:"#000",fontWeight:900,flexShrink:0}}>✓</span>}</div>
         <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
         {currentUser?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
         {currentUser?.location&&<p style={{color:'#555',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
