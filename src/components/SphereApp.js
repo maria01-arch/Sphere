@@ -61,8 +61,11 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
         <span style={{fontWeight:700,fontSize:17}}>{user?.display_name}</span>
       </div>
       <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
+      {showBigAvatar&&user?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={user.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt=""/></div>}
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
-        <Avatar url={user?.avatar_url} name={user?.display_name} color={color} size={72}/>
+        <div onClick={()=>setShowBigAvatar(true)} style={{cursor:'pointer'}}>
+          <Avatar url={user?.avatar_url} name={user?.display_name} color={color} size={72}/>
+        </div>
         <div style={{display:'flex',gap:8}}>
           {user.id !== currentUser.id && <>
             <div onClick={()=>onMessage(user)} style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none'}}>💬 Message</div>
@@ -478,7 +481,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
                   <Avatar url={cm.author?.avatar_url} name={cm.author?.display_name} color={cm.author?.avatar_color||'#5B9CF6'} size={32}/>
                   <div style={{flex:1,background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'8px 12px'}}>
                     <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
-                      <span style={{fontWeight:700,fontSize:13,color:'#fff'}}>{cm.author?.display_name}</span>
+                      <span onClick={()=>onUserClick(cm.author)} style={{fontWeight:700,fontSize:13,color:'#fff',cursor:'pointer'}}>{cm.author?.display_name}</span>
                       <span style={{color:'#555',fontSize:11}}>{timeAgo(cm.created_at)}</span>
                     </div>
                     <p style={{color:'#ddd',fontSize:14,lineHeight:1.5,margin:0}}>{cm.content}</p>
@@ -504,7 +507,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 
-function ChatWindow({ conv, currentUser, supabase, onBack }) {
+function ChatWindow({ conv, currentUser, supabase, onBack, onOpenProfile }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
   const bottomRef = useRef(null)
@@ -521,10 +524,28 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
+  const [editingMsg, setEditingMsg] = useState(null)
+  const [editText, setEditText] = useState('')
+
   const sendMsg = async()=>{
-    if(!msgText.trim()) return
+    if(!msgText.trim()||!convId) return
     const content=msgText.trim(); setMsgText('')
-    await supabase.from('messages').insert({conversation_id:conv.id,sender_id:currentUser.id,content})
+    const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
+  }
+
+  const deleteMsg = async(id)=>{
+    if(!window.confirm('Delete this message?')) return
+    await supabase.from('messages').delete().eq('id',id).eq('sender_id',currentUser.id)
+    setMessages(prev=>prev.filter(m=>m.id!==id))
+  }
+
+  const saveEdit = async()=>{
+    if(!editText.trim()||!editingMsg) return
+    await supabase.from('messages').update({content:editText.trim()}).eq('id',editingMsg).eq('sender_id',currentUser.id)
+    setMessages(prev=>prev.map(m=>m.id===editingMsg?{...m,content:editText.trim()}:m))
+    setEditingMsg(null); setEditText('')
   }
 
   const timeAgo2 = (ts) => {
@@ -566,6 +587,157 @@ function ChatWindow({ conv, currentUser, supabase, onBack }) {
         <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder='Message...' style={{flex:1,background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none'}}/>
         <div onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0,cursor:'pointer'}}>→</div>
       </div>
+    </div>
+  )
+}
+
+
+function FollowRequestsPanel({ currentUser, supabase, onUserClick }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+
+  useEffect(()=>{
+    loadRequests()
+    const ch = supabase.channel('fr:'+currentUser.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'follow_requests',filter:`receiver_id=eq.${currentUser.id}`},()=>loadRequests())
+      .subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[])
+
+  const loadRequests = async()=>{
+    const {data} = await supabase.from('follow_requests')
+      .select('*,sender:profiles(id,display_name,username,avatar_color,avatar_url,bio,verified)')
+      .eq('receiver_id',currentUser.id).eq('status','pending')
+      .order('created_at',{ascending:false})
+    setRequests(data||[])
+    setLoading(false)
+  }
+
+  const accept = async(req)=>{
+    await supabase.from('follow_requests').update({status:'accepted'}).eq('id',req.id)
+    await supabase.from('follows').insert({follower_id:req.sender_id,following_id:currentUser.id})
+    await supabase.from('notifications').insert({user_id:req.sender_id,actor_id:currentUser.id,type:'follow_accepted'})
+    setRequests(prev=>prev.filter(r=>r.id!==req.id))
+  }
+
+  const reject = async(req)=>{
+    await supabase.from('follow_requests').update({status:'rejected'}).eq('id',req.id)
+    setRequests(prev=>prev.filter(r=>r.id!==req.id))
+  }
+
+  return(
+    <div>
+      <div style={{padding:'16px 16px 8px',fontWeight:800,fontSize:20,color:'#fff'}}>Follow Requests 👥</div>
+      <p style={{color:'#555',fontSize:14,padding:'0 16px 12px'}}>People who want to follow you</p>
+      {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
+      {!loading&&requests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>👥</p><p style={{color:'#555',marginTop:8}}>No pending requests</p></div>}
+      {requests.map(req=>(
+        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+          <div onClick={()=>onUserClick(req.sender)} style={{cursor:'pointer'}}>
+            <Avatar url={req.sender?.avatar_url} name={req.sender?.display_name} color={req.sender?.avatar_color||'#5B9CF6'} size={48}/>
+          </div>
+          <div onClick={()=>onUserClick(req.sender)} style={{flex:1,minWidth:0,cursor:'pointer'}}>
+            <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{req.sender?.display_name}</div>
+            <div style={{color:'#555',fontSize:13}}>@{req.sender?.username}</div>
+            {req.sender?.bio&&<div style={{color:'#666',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{req.sender.bio}</div>}
+          </div>
+          <div style={{display:'flex',gap:8,flexShrink:0}}>
+            <div onClick={()=>accept(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',borderRadius:20,padding:'8px 14px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</div>
+            <div onClick={()=>reject(req)} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:'8px 14px',color:'#aaa',fontWeight:600,fontSize:13,cursor:'pointer'}}>Reject</div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+
+function NotificationsPanel({ currentUser, supabase, onUserClick }) {
+  const [notifs, setNotifs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const typeInfo = {
+    like:{emoji:'❤️',text:'liked your post'},
+    comment:{emoji:'💬',text:'commented on your post'},
+    follow:{emoji:'👤',text:'started following you'},
+    repost:{emoji:'🔁',text:'reposted your sphere'},
+    welcome:{emoji:'🌐',text:'Welcome to Sphere!'},
+    follow_request:{emoji:'👤',text:'sent you a follow request'},
+    follow_accepted:{emoji:'✅',text:'accepted your follow request'},
+  }
+  useEffect(()=>{
+    supabase.from('notifications').select('*,actor:profiles(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data})=>{setNotifs(data||[]);setLoading(false)})
+    supabase.from('notifications').update({read:true}).eq('user_id',currentUser.id).eq('read',false).then(()=>{})
+    const ch = supabase.channel('notifs:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
+      const {data} = await supabase.from('notifications').select('*,actor:profiles(id,display_name,username,avatar_color,avatar_url)').eq('id',payload.new.id).single()
+      if(data) setNotifs(prev=>[data,...prev])
+    }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[])
+  return(
+    <div>
+      <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'#fff'}}>Notifications 🔔</div>
+      {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
+      {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>🔔</p><p style={{color:'#555',marginTop:8}}>No notifications yet</p></div>}
+      {notifs.map((n,i)=>{
+        const info = typeInfo[n.type]||{emoji:'🔔',text:''}
+        const actor = n.actor
+        return(<div key={n.id||i} onClick={()=>actor&&onUserClick(actor)} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',cursor:actor?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
+          <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
+            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span>{info.emoji}</span>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <span style={{fontWeight:700,fontSize:14,color:'#fff'}}>{actor?.display_name||'Sphere'} </span>
+            <span style={{color:'#888',fontSize:14}}>{n.message||info.text}</span>
+          </div>
+          <span style={{color:'#444',fontSize:12,flexShrink:0}}>{timeAgo(n.created_at)}</span>
+        </div>)
+      })}
+    </div>
+  )
+}
+
+function FollowRequestsPanel({ currentUser, supabase, onUserClick }) {
+  const [requests, setRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  useEffect(()=>{
+    loadRequests()
+    const ch = supabase.channel('fr:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'follow_requests',filter:`receiver_id=eq.${currentUser.id}`},()=>loadRequests()).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[])
+  const loadRequests = async()=>{
+    const {data} = await supabase.from('follow_requests').select('*,sender:profiles(id,display_name,username,avatar_color,avatar_url,bio,verified)').eq('receiver_id',currentUser.id).eq('status','pending').order('created_at',{ascending:false})
+    setRequests(data||[]); setLoading(false)
+  }
+  const accept = async(req)=>{
+    await supabase.from('follow_requests').update({status:'accepted'}).eq('id',req.id)
+    await supabase.from('follows').insert({follower_id:req.sender_id,following_id:currentUser.id})
+    await supabase.from('notifications').insert({user_id:req.sender_id,actor_id:currentUser.id,type:'follow_accepted'})
+    setRequests(prev=>prev.filter(r=>r.id!==req.id))
+  }
+  const reject = async(req)=>{
+    await supabase.from('follow_requests').update({status:'rejected'}).eq('id',req.id)
+    setRequests(prev=>prev.filter(r=>r.id!==req.id))
+  }
+  return(
+    <div>
+      <div style={{padding:'16px 16px 8px',fontWeight:800,fontSize:20,color:'#fff'}}>Follow Requests 👥</div>
+      <p style={{color:'#555',fontSize:14,padding:'0 16px 12px'}}>People who want to follow you</p>
+      {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
+      {!loading&&requests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>👥</p><p style={{color:'#555',marginTop:8}}>No pending requests</p></div>}
+      {requests.map(req=>(
+        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+          <div onClick={()=>onUserClick(req.sender)} style={{cursor:'pointer'}}><Avatar url={req.sender?.avatar_url} name={req.sender?.display_name} color={req.sender?.avatar_color||'#5B9CF6'} size={48}/></div>
+          <div onClick={()=>onUserClick(req.sender)} style={{flex:1,minWidth:0,cursor:'pointer'}}>
+            <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{req.sender?.display_name}</div>
+            <div style={{color:'#555',fontSize:13}}>@{req.sender?.username}</div>
+            {req.sender?.bio&&<div style={{color:'#666',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{req.sender.bio}</div>}
+          </div>
+          <div style={{display:'flex',gap:8,flexShrink:0}}>
+            <div onClick={()=>accept(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',borderRadius:20,padding:'8px 14px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</div>
+            <div onClick={()=>reject(req)} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:'8px 14px',color:'#aaa',fontWeight:600,fontSize:13,cursor:'pointer'}}>Reject</div>
+          </div>
+        </div>
+      ))}
     </div>
   )
 }
@@ -748,7 +920,7 @@ export default function SphereApp({ currentUser }) {
 
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const color = currentUser?.avatar_color||'#5B9CF6'
-  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'friends',label:'Friends',icon:'👥'},{id:'trending',label:'Trending',icon:'📈'},{id:'notifications',label:'Alerts',icon:'🔔'}]
+  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'friends',label:'Friends',icon:'👥'},{id:'requests',label:'Requests',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
   const NOTIFS=[{emoji:'❤️',user:'Amara Osei',text:'liked your post',time:'2m'},{emoji:'👤',user:'Yuki Tanaka',text:'started following you',time:'15m'},{emoji:'💬',user:'Carlos Vega',text:'replied to your post',time:'1h'},{emoji:'🔁',user:'Priya Nair',text:'reposted your sphere',time:'2h'},{emoji:'❤️',user:'Lena',text:'liked your reply',time:'3h'},{emoji:'👤',user:'James Okafor',text:'started following you',time:'5h'}]
 
