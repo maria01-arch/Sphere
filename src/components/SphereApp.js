@@ -712,6 +712,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [msgText, setMsgText] = useState('')
   const [showSettings, setShowSettings] = useState(false)
   const [showMembers, setShowMembers] = useState(false)
+  const [showRequests, setShowRequests] = useState(false)
+  const [joinRequests, setJoinRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const bottomRef = useRef(null)
   const myRole = members.find(m=>m.user_id===currentUser.id)?.role||'member'
@@ -722,12 +724,14 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
 
   const loadAll = async () => {
-    const [{data:msgs},{data:mems}] = await Promise.all([
+    const [{data:msgs},{data:mems},{data:reqs}] = await Promise.all([
       supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
-      supabase.from('group_members').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id)
+      supabase.from('group_members').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id),
+      supabase.from('group_join_requests').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id).eq('status','pending')
     ])
     setMessages(msgs||[])
     setMembers(mems||[])
+    setJoinRequests(reqs||[])
     setLoading(false)
 
     const ch = supabase.channel('gc:'+group.id)
@@ -761,6 +765,23 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     setMembers(prev=>prev.filter(m=>m.user_id!==member.user_id))
   }
 
+  const acceptRequest = async (req) => {
+    await supabase.from('group_join_requests').update({status:'accepted'}).eq('id',req.id)
+    await supabase.from('group_members').insert({group_id:group.id,user_id:req.user_id})
+    setJoinRequests(prev=>prev.filter(r=>r.id!==req.id))
+    setMembers(prev=>[...prev,{user_id:req.user_id,role:'member',profile:req.profile}])
+  }
+
+  const rejectRequest = async (req) => {
+    await supabase.from('group_join_requests').update({status:'rejected'}).eq('id',req.id)
+    setJoinRequests(prev=>prev.filter(r=>r.id!==req.id))
+  }
+
+  const copyInviteLink = () => {
+    const link = window.location.origin+'/join/'+group.tag
+    navigator.clipboard.writeText(link).then(()=>alert('Invite link copied!\n'+link))
+  }
+
   const leaveGroup = async () => {
     if(isCreator){ alert('You cannot leave a group you created. Delete it instead.'); return }
     await supabase.from('group_members').delete().eq('group_id',group.id).eq('user_id',currentUser.id)
@@ -772,6 +793,29 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     await supabase.from('groups').delete().eq('id',group.id)
     onBack()
   }
+
+  if(showRequests) return (
+    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>Join Requests ({joinRequests.length})</span>
+      </div>
+      {joinRequests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📭</p><p style={{color:'#555',marginTop:8}}>No pending requests</p></div>}
+      {joinRequests.map(req=>(
+        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+          <Avatar url={req.profile?.avatar_url} name={req.profile?.display_name} color={req.profile?.avatar_color||'#5B9CF6'} size={46}/>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:15}}>{req.profile?.display_name}</div>
+            <div style={{color:'#555',fontSize:13}}>@{req.profile?.username} · {timeAgo(req.created_at)}</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>acceptRequest(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:10,padding:'8px 12px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</button>
+            <button onClick={()=>rejectRequest(req)} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:10,padding:'8px 12px',color:'#FF4757',fontWeight:700,fontSize:13,cursor:'pointer'}}>Reject</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
 
   if(showMembers) return (
     <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
@@ -827,6 +871,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={leaveGroup} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
           🚪 Leave Group
         </button>
+        <button onClick={copyInviteLink} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',color:'#00C9A7',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+          <span>🔗 Copy Invite Link</span><span style={{color:'#555',fontSize:13}}>@{group.tag}</span>
+        </button>
+        {(isAdmin||isCreator)&&joinRequests.length>0&&<button onClick={()=>{setShowSettings(false);setShowRequests(true)}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',color:'#F7B731',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+          <span>📬 Join Requests</span><span style={{background:'#FF4757',borderRadius:10,padding:'2px 8px',fontSize:12,color:'#fff'}}>{joinRequests.length}</span>
+        </button>}
+        <div style={{width:'100%',background:'rgba(255,255,255,0.04)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+          <span style={{color:'#fff',fontWeight:600,fontSize:15}}>🔒 Join Mode</span>
+          <span style={{color:'#555',fontSize:13}}>{group.join_mode==='open'?'🌐 Anyone':'🔒 Request only'}</span>
+        </div>
         {isCreator&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
           🗑️ Delete Group
         </button>}
@@ -890,6 +944,10 @@ function PulseTab({ currentUser, supabase, onUserClick }) {
   const [showCreatePulse, setShowCreatePulse] = useState(false)
   const [groupName, setGroupName] = useState('')
   const [groupDesc, setGroupDesc] = useState('')
+  const [groupTag, setGroupTag] = useState('')
+  const [joinMode, setJoinMode] = useState('open')
+  const [groupSearch, setGroupSearch] = useState('')
+  const [searchedGroups, setSearchedGroups] = useState([])
   const [pulseText, setPulseText] = useState('')
   const [pulseBg, setPulseBg] = useState('#5B9CF6')
   const [saving, setSaving] = useState(false)
@@ -908,14 +966,37 @@ function PulseTab({ currentUser, supabase, onUserClick }) {
     setMyPulse(mp)
   }
 
+  const searchGroups = async (q) => {
+    setGroupSearch(q)
+    if(!q.trim()){setSearchedGroups([]);return}
+    const {data} = await supabase.from('groups').select('*,group_members(user_id)').ilike('tag',q.trim().toLowerCase()+'%').limit(10)
+    setSearchedGroups(data||[])
+  }
+
+  const joinGroupByTag = async (group) => {
+    const isMember = group.group_members?.some(m=>m.user_id===currentUser.id)
+    if(isMember){setViewingGroup(group);return}
+    if(group.join_mode==='open'){
+      await supabase.from('group_members').insert({group_id:group.id,user_id:currentUser.id})
+      setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
+    } else {
+      const {error} = await supabase.from('group_join_requests').insert({group_id:group.id,user_id:currentUser.id})
+      if(!error) alert('Join request sent! Waiting for admin approval.')
+      else alert('Request already sent or you are already a member.')
+    }
+    loadAll()
+  }
+
   const createGroup = async () => {
     if(!groupName.trim()) return
     setSaving(true)
-    const {data} = await supabase.from('groups').insert({name:groupName.trim(),description:groupDesc.trim(),creator_id:currentUser.id,cover_color:pulseBg}).select().single()
+    const tag = groupTag.trim().toLowerCase().replace(/[^a-z0-9_]/g,'')
+    if(!tag){setSaving(false);alert('Please enter a valid group tag');return}
+    const {data} = await supabase.from('groups').insert({name:groupName.trim(),description:groupDesc.trim(),creator_id:currentUser.id,cover_color:pulseBg,tag,join_mode:joinMode}).select().single()
     if(data) {
       await supabase.from('group_members').insert({group_id:data.id,user_id:currentUser.id})
       setGroups(g=>[{...data,group_members:[{user_id:currentUser.id}]},...g])
-      setGroupName(''); setGroupDesc(''); setShowCreateGroup(false)
+      setGroupName(''); setGroupDesc(''); setGroupTag(''); setJoinMode('open'); setShowCreateGroup(false)
     }
     setSaving(false)
   }
@@ -990,7 +1071,18 @@ function PulseTab({ currentUser, supabase, onUserClick }) {
           {COLORS.map(c=><div key={c} onClick={()=>setPulseBg(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:pulseBg===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
         </div>
         <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
-        <textarea value={groupDesc} onChange={e=>setGroupDesc(e.target.value)} placeholder="Description (optional)" rows={3} style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box'}}/>
+        <div style={{position:'relative',marginBottom:12}}>
+          <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'#555',fontSize:15}}>@</span>
+          <input value={groupTag} onChange={e=>setGroupTag(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} placeholder="group_tag (unique)" style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px 12px 28px',color:'#fff',fontSize:15,outline:'none',boxSizing:'border-box'}}/>
+        </div>
+        <textarea value={groupDesc} onChange={e=>setGroupDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
+        <div style={{marginBottom:8}}>
+          <p style={{color:'#888',fontSize:13,marginBottom:8}}>Who can join?</p>
+          <div style={{display:'flex',gap:8}}>
+            <button onClick={()=>setJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='open'?'#5B9CF6':'rgba(255,255,255,0.1)'),background:joinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:joinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer'}}>🌐 Anyone</button>
+            <button onClick={()=>setJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='request'?'#845EF7':'rgba(255,255,255,0.1)'),background:joinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:joinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer'}}>🔒 Request</button>
+          </div>
+        </div>
       </div>
     </div>
   )
@@ -1000,6 +1092,25 @@ function PulseTab({ currentUser, supabase, onUserClick }) {
       <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <span style={{fontWeight:800,fontSize:18}}>Pulse ⚡</span>
         <button onClick={()=>setShowCreateGroup(true)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'6px 14px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ Group</button>
+      </div>
+      <div style={{padding:'0 16px 12px'}}>
+        <input value={groupSearch} onChange={e=>searchGroups(e.target.value)} placeholder="🔍 Search group by @tag..." style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:24,padding:'10px 16px',color:'#fff',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+        {searchedGroups.length>0&&<div style={{marginTop:8,borderRadius:12,overflow:'hidden',border:'1px solid rgba(255,255,255,0.08)'}}>
+          {searchedGroups.map(g=>{
+            const isMember = g.group_members?.some(m=>m.user_id===currentUser.id)
+            return(
+              <div key={g.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.05)',background:'rgba(255,255,255,0.03)'}}>
+                <div style={{width:42,height:42,borderRadius:12,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'#fff',flexShrink:0}}>{g.name[0]}</div>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{g.name}</div>
+                  <div style={{color:'#555',fontSize:12}}>@{g.tag} · {g.group_members?.length||0} members · {g.join_mode==='open'?'🌐 Open':'🔒 Request'}</div>
+                </div>
+                <button onClick={()=>joinGroupByTag(g)} style={{background:isMember?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 14px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>{isMember?'Open':'Join'}</button>
+              </div>
+            )
+          })}
+        </div>}
+        {groupSearch&&searchedGroups.length===0&&<p style={{color:'#444',fontSize:13,padding:'8px 4px'}}>No groups found for "@{groupSearch}"</p>}
       </div>
 
       {groups.length>0&&<>
