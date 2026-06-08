@@ -31,6 +31,7 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
 function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
   const [posts, setPosts] = useState([])
   const [isFollowing, setIsFollowing] = useState(false)
+  const [showBigAvatar, setShowBigAvatar] = useState(false)
   const [followerCount, setFollowerCount] = useState(user?.followers_count||0)
   const [loading, setLoading] = useState(true)
   const color = user?.avatar_color || getColor(user?.id)
@@ -415,6 +416,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
     if (next) {
       const {error} = await supabase.from('likes').insert({post_id:post.id,user_id:currentUser.id})
       if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
+      else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
     } else {
       await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
     }
@@ -426,6 +428,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
     if (next) {
       const {error} = await supabase.from('reposts').insert({post_id:post.id,user_id:currentUser.id})
       if (error) { setReposted(!next); setReposts(r=>next?r-1:r+1) }
+      else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'repost',post_id:post.id})
     } else {
       await supabase.from('reposts').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
     }
@@ -875,7 +878,7 @@ export default function SphereApp({ currentUser }) {
 
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const color = currentUser?.avatar_color||'#5B9CF6'
-  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'search',label:'Search',icon:'🔍'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
+  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
