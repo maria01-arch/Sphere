@@ -664,6 +664,7 @@ function FollowRequestsPanel({ currentUser, supabase, onUserClick }) {
 function NotificationsPanel({ currentUser, supabase, onUserClick }) {
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
+  const [debugMsg, setDebugMsg] = useState('')
   const typeInfo = {
     like:{emoji:'❤️',text:'liked your post'},
     comment:{emoji:'💬',text:'commented on your post'},
@@ -686,6 +687,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
     <div>
       <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'#fff'}}>Notifications 🔔</div>
       {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
+      <p style={{color:'#ff0',fontSize:11,padding:'4px 16px'}}>{debugMsg}</p>
       {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>🔔</p><p style={{color:'#555',marginTop:8}}>No notifications yet</p></div>}
       {notifs.map((n,i)=>{
         const info = typeInfo[n.type]||{emoji:'🔔',text:''}
