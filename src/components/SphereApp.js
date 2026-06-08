@@ -720,6 +720,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [editJoinMode, setEditJoinMode] = useState(group.join_mode||'open')
   const [editSaving, setEditSaving] = useState(false)
   const [groupAvatar, setGroupAvatar] = useState(group.avatar_url||null)
+  const [groupData, setGroupData] = useState(group)
   const avatarRef = useRef(null)
   const bottomRef = useRef(null)
   const myRole = members.find(m=>m.user_id===currentUser.id)?.role||'member'
@@ -727,7 +728,18 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const isCreator = group.creator_id===currentUser.id
 
   useEffect(()=>{ loadAll() },[])
+  useEffect(()=>{
+    if(autoOpenGroup){setViewingGroup(autoOpenGroup);onAutoOpenDone&&onAutoOpenDone()}
+  },[autoOpenGroup])
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  useEffect(()=>{
+    const ch = supabase.channel('gc:'+group.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('id',payload.new.id).single()
+        if(data) setMessages(prev=>[...prev,data])
+      }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[])
 
   const loadAll = async () => {
     const [{data:msgs},{data:mems},{data:reqs}] = await Promise.all([
@@ -739,19 +751,14 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     setMembers(mems||[])
     setJoinRequests(reqs||[])
     setLoading(false)
-
-    const ch = supabase.channel('gc:'+group.id)
-      .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('id',payload.new.id).single()
-        if(data) setMessages(prev=>[...prev,data])
-      }).subscribe()
-    return()=>supabase.removeChannel(ch)
   }
 
   const sendMsg = async () => {
     if(!msgText.trim()) return
     const text = msgText.trim()
     setMsgText('')
+    const tempMsg = {id:'temp_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:text,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    setMessages(prev=>[...prev,tempMsg])
     await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text})
   }
 
@@ -973,7 +980,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 }
 
-function PulseTab({ currentUser, supabase, onUserClick }) {
+function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone }) {
   const [groups, setGroups] = useState([])
   const [pulses, setPulses] = useState([])
   const [myPulse, setMyPulse] = useState(null)
@@ -1187,6 +1194,7 @@ function PulseTab({ currentUser, supabase, onUserClick }) {
 }
 export default function SphereApp({ currentUser }) {
   const [tab, setTab] = useState('home')
+  const [autoOpenGroup, setAutoOpenGroup] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1200,6 +1208,16 @@ export default function SphereApp({ currentUser }) {
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [followed, setFollowed] = useState({})
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search)
+    const gid = params.get('opengroup')
+    if(gid){
+      supabase.from('groups').select('*,group_members(user_id)').eq('id',gid).single().then(({data})=>{
+        if(data){setTab('pulse');setAutoOpenGroup(data)}
+      })
+      window.history.replaceState({},'',window.location.pathname)
+    }
+  },[])
   const [people, setPeople] = useState([])
   const [notifs, setNotifs] = useState([])
   const [viewingUser, setViewingUser] = useState(null)
@@ -1503,7 +1521,7 @@ export default function SphereApp({ currentUser }) {
           {!people.length&&<p style={{padding:'40px',textAlign:'center',color:'#444'}}>No other users yet</p>}
         </>}
 
-        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
+        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
