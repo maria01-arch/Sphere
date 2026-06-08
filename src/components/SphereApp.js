@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+const supabase = createClient()
 
 const COLORS = ['#FF6B35','#00C9A7','#845EF7','#F7B731','#FF4757','#5B9CF6','#A29BFE','#FD79A8']
 const getColor = (id) => COLORS[(id?.charCodeAt(0)||0) % COLORS.length]
@@ -742,7 +743,6 @@ export default function SphereApp({ currentUser }) {
   const [chatOverlay, setChatOverlay] = useState(null)
   const [pendingDM, setPendingDM] = useState(null)
   const bottomRef = useRef(null)
-  const supabase = createClient()
 
   const loadPosts = useCallback(async (feedType='foryou') => {
     setLoading(true)
