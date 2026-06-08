@@ -437,7 +437,12 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
   const submitReply = async () => {
     if (!replyText.trim()) return
     const {error} = await supabase.from('comments').insert({post_id:post.id,user_id:currentUser.id,content:replyText.trim()})
-    if (!error) { setComments(c=>c+1); setReplyText(''); setShowReply(false) }
+    if (!error) {
+      setComments(c=>c+1)
+      setReplyText('')
+      setShowReply(false)
+      if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
+    }
   }
 
   return (
