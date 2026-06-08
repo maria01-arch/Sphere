@@ -675,10 +675,10 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
     follow_accepted:{emoji:'✅',text:'accepted your follow request'},
   }
   useEffect(()=>{
-    supabase.from('notifications').select('*,actor:profiles(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data,error})=>{setDebugMsg('n:'+(data?data.length:'null')+' e:'+(error?error.message:'ok')+' u:'+currentUser.id.slice(0,6));setNotifs(data||[]);setLoading(false)})
+    supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data,error})=>{setDebugMsg('n:'+(data?data.length:'null')+' e:'+(error?error.message:'ok')+' u:'+currentUser.id.slice(0,6));setNotifs(data||[]);setLoading(false)})
     supabase.from('notifications').update({read:true}).eq('user_id',currentUser.id).eq('read',false).then(()=>{})
     const ch = supabase.channel('notifs:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
-      const {data} = await supabase.from('notifications').select('*,actor:profiles(id,display_name,username,avatar_color,avatar_url)').eq('id',payload.new.id).single()
+      const {data} = await supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('id',payload.new.id).single()
       if(data) setNotifs(prev=>[data,...prev])
     }).subscribe()
     return()=>supabase.removeChannel(ch)
