@@ -758,6 +758,7 @@ export default function SphereApp({ currentUser }) {
   const [searchResults, setSearchResults] = useState([])
   const [followed, setFollowed] = useState({})
   const [people, setPeople] = useState([])
+  const [notifs, setNotifs] = useState([])
   const [viewingUser, setViewingUser] = useState(null)
   const [showMyProfile, setShowMyProfile] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
@@ -922,7 +923,6 @@ export default function SphereApp({ currentUser }) {
   const color = currentUser?.avatar_color||'#5B9CF6'
   const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'friends',label:'Friends',icon:'👥'},{id:'requests',label:'Requests',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
-  const NOTIFS=[{emoji:'❤️',user:'Amara Osei',text:'liked your post',time:'2m'},{emoji:'👤',user:'Yuki Tanaka',text:'started following you',time:'15m'},{emoji:'💬',user:'Carlos Vega',text:'replied to your post',time:'1h'},{emoji:'🔁',user:'Priya Nair',text:'reposted your sphere',time:'2h'},{emoji:'❤️',user:'Lena',text:'liked your reply',time:'3h'},{emoji:'👤',user:'James Okafor',text:'started following you',time:'5h'}]
 
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
@@ -1066,10 +1066,7 @@ export default function SphereApp({ currentUser }) {
           {TRENDING.map((item,i)=>(<div key={i} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',cursor:'pointer'}}><div style={{color:'#555',fontSize:12,marginBottom:2}}>{item.cat} · Trending</div><div style={{fontWeight:700,fontSize:17,marginBottom:2}}>{item.tag}</div><div style={{color:'#555',fontSize:13}}>{item.posts} posts</div></div>))}
         </>}
 
-        {tab==='notifications'&&<>
-          <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20}}>Notifications 🔔</div>
-          {NOTIFS.map((n,i)=>(<div key={i} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}><div style={{width:44,height:44,borderRadius:'50%',background:'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0}}>{n.emoji}</div><div style={{flex:1}}><span style={{fontWeight:700,fontSize:14}}>{n.user} </span><span style={{color:'#888',fontSize:14}}>{n.text}</span></div><span style={{color:'#444',fontSize:12,flexShrink:0}}>{n.time}</span></div>))}
-        </>}
+        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
       </div>
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
