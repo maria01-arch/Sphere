@@ -875,7 +875,7 @@ export default function SphereApp({ currentUser }) {
 
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const color = currentUser?.avatar_color||'#5B9CF6'
-  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'friends',label:'Friends',icon:'👥'},{id:'requests',label:'Requests',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
+  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'search',label:'Search',icon:'🔍'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
@@ -1015,10 +1015,8 @@ export default function SphereApp({ currentUser }) {
           {!people.length&&<p style={{padding:'40px',textAlign:'center',color:'#444'}}>No other users yet</p>}
         </>}
 
-        {tab==='trending'&&<>
-          <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20}}>Trending 🌐</div>
-          {TRENDING.map((item,i)=>(<div key={i} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',cursor:'pointer'}}><div style={{color:'#555',fontSize:12,marginBottom:2}}>{item.cat} · Trending</div><div style={{fontWeight:700,fontSize:17,marginBottom:2}}>{item.tag}</div><div style={{color:'#555',fontSize:13}}>{item.posts} posts</div></div>))}
-        </>}
+        {tab==='pulse'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>⚡</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Pulse stories coming soon</p></div>}
+        {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
       </div>
