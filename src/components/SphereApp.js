@@ -696,52 +696,6 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
   )
 }
 
-function FollowRequestsPanel({ currentUser, supabase, onUserClick }) {
-  const [requests, setRequests] = useState([])
-  const [loading, setLoading] = useState(true)
-  useEffect(()=>{
-    loadRequests()
-    const ch = supabase.channel('fr:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'follow_requests',filter:`receiver_id=eq.${currentUser.id}`},()=>loadRequests()).subscribe()
-    return()=>supabase.removeChannel(ch)
-  },[])
-  const loadRequests = async()=>{
-    const {data} = await supabase.from('follow_requests').select('*,sender:profiles(id,display_name,username,avatar_color,avatar_url,bio,verified)').eq('receiver_id',currentUser.id).eq('status','pending').order('created_at',{ascending:false})
-    setRequests(data||[]); setLoading(false)
-  }
-  const accept = async(req)=>{
-    await supabase.from('follow_requests').update({status:'accepted'}).eq('id',req.id)
-    await supabase.from('follows').insert({follower_id:req.sender_id,following_id:currentUser.id})
-    await supabase.from('notifications').insert({user_id:req.sender_id,actor_id:currentUser.id,type:'follow_accepted'})
-    setRequests(prev=>prev.filter(r=>r.id!==req.id))
-  }
-  const reject = async(req)=>{
-    await supabase.from('follow_requests').update({status:'rejected'}).eq('id',req.id)
-    setRequests(prev=>prev.filter(r=>r.id!==req.id))
-  }
-  return(
-    <div>
-      <div style={{padding:'16px 16px 8px',fontWeight:800,fontSize:20,color:'#fff'}}>Follow Requests 👥</div>
-      <p style={{color:'#555',fontSize:14,padding:'0 16px 12px'}}>People who want to follow you</p>
-      {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
-      {!loading&&requests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>👥</p><p style={{color:'#555',marginTop:8}}>No pending requests</p></div>}
-      {requests.map(req=>(
-        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
-          <div onClick={()=>onUserClick(req.sender)} style={{cursor:'pointer'}}><Avatar url={req.sender?.avatar_url} name={req.sender?.display_name} color={req.sender?.avatar_color||'#5B9CF6'} size={48}/></div>
-          <div onClick={()=>onUserClick(req.sender)} style={{flex:1,minWidth:0,cursor:'pointer'}}>
-            <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{req.sender?.display_name}</div>
-            <div style={{color:'#555',fontSize:13}}>@{req.sender?.username}</div>
-            {req.sender?.bio&&<div style={{color:'#666',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{req.sender.bio}</div>}
-          </div>
-          <div style={{display:'flex',gap:8,flexShrink:0}}>
-            <div onClick={()=>accept(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',borderRadius:20,padding:'8px 14px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</div>
-            <div onClick={()=>reject(req)} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:'8px 14px',color:'#aaa',fontWeight:600,fontSize:13,cursor:'pointer'}}>Reject</div>
-          </div>
-        </div>
-      ))}
-    </div>
-  )
-}
-
 export default function SphereApp({ currentUser }) {
   const [tab, setTab] = useState('home')
   const [feedTab, setFeedTab] = useState('foryou')
