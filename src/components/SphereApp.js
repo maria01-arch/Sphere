@@ -570,11 +570,6 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [showRequests, setShowRequests] = useState(false)
   const [joinRequests, setJoinRequests] = useState([])
   const [loading, setLoading] = useState(true)
-  const [selectedMsg, setSelectedMsg] = useState(null)
-  const [editingMsg, setEditingMsg] = useState(null)
-  const [editText, setEditText] = useState('')
-  const [replyTo, setReplyTo] = useState(null)
-  const longPressTimer = useRef(null)
   const [editName, setEditName] = useState(group.name)
   const [sendingImg, setSendingImg] = useState(false)
   const imgRef = useRef(null)
@@ -615,11 +610,10 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const sendMsg = async () => {
     if(!msgText.trim()) return
     const text = msgText.trim()
-    const reply = replyTo
-    setMsgText(''); setReplyTo(null)
-    const tempMsg = {id:'temp_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    setMsgText('')
+    const tempMsg = {id:'temp_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:text,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
     setMessages(prev=>[...prev,tempMsg])
-    await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply})
+    await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text})
   }
 
   const sendImage = async (file) => {
@@ -669,30 +663,6 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const copyInviteLink = () => {
     const link = window.location.origin+'/join/'+group.tag
     navigator.clipboard.writeText(link).then(()=>alert('Invite link copied!\n'+link))
-  }
-
-  const handleLongPress = (msg) => {
-    longPressTimer.current = setTimeout(()=>setSelectedMsg(msg), 500)
-  }
-  const handlePressEnd = () => clearTimeout(longPressTimer.current)
-
-  const deleteGCMsg = async(msg) => {
-    setSelectedMsg(null)
-    await supabase.from('group_messages').delete().eq('id',msg.id).eq('sender_id',currentUser.id)
-    setMessages(prev=>prev.filter(m=>m.id!==msg.id))
-  }
-
-  const startEditGCMsg = (msg) => {
-    setSelectedMsg(null)
-    setEditingMsg(msg.id)
-    setEditText(msg.content)
-  }
-
-  const saveEditGCMsg = async() => {
-    if(!editText.trim()) return
-    await supabase.from('group_messages').update({content:editText.trim()}).eq('id',editingMsg).eq('sender_id',currentUser.id)
-    setMessages(prev=>prev.map(m=>m.id===editingMsg?{...m,content:editText.trim()}:m))
-    setEditingMsg(null); setEditText('')
   }
 
   const uploadGroupAvatar = async (file) => {
@@ -865,25 +835,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           return(
             <div key={msg.id} style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
               {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
-              <div style={{maxWidth:'75%'}}
-                onTouchStart={()=>handleLongPress(msg)}
-                onTouchEnd={handlePressEnd}
-                onMouseDown={()=>handleLongPress(msg)}
-                onMouseUp={handlePressEnd}>
+              <div style={{maxWidth:'75%'}}>
                 {!own&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
-                {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
-                {editingMsg===msg.id?(
-                  <div style={{display:'flex',gap:6}}>
-                    <input value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveEditGCMsg()} style={{flex:1,background:'rgba(255,255,255,0.1)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'#fff',fontSize:14,outline:'none'}}/>
-                    <button onClick={saveEditGCMsg} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✓</button>
-                    <button onClick={()=>setEditingMsg(null)} style={{background:'rgba(255,255,255,0.1)',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✕</button>
-                  </div>
-                ):(
-                  <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                    {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block'}} alt="img"/>:msg.content}
-                    <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
-                  </div>
-                )}
+                <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
+                  {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block'}} alt="img"/>:msg.content}
+                  <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
+                </div>
               </div>
             </div>
           )
@@ -893,12 +850,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
       <div style={{position:'sticky',bottom:0,background:'#090B10',padding:'10px 14px 24px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
         <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
-        {replyTo&&<div style={{position:'absolute',bottom:'100%',left:0,right:0,background:'rgba(15,17,23,0.98)',padding:'8px 14px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-          <span style={{color:'#888',fontSize:12}}>↩ Replying to: <span style={{color:'#5B9CF6'}}>{replyTo}</span></span>
-          <button onClick={()=>setReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer'}}>✕</button>
-        </div>}
-        <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:38,height:38,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:16,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
-        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder={replyTo?'Reply...':'Message group...'} style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+        <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
+        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
         <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
       </div>
     </div>
@@ -1138,16 +1091,16 @@ export default function SphereApp({ currentUser }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
   const [dmView, setDmView] = useState('list')
-  const dmImgRef = useRef(null)
-  const [sendingDMImg, setSendingDMImg] = useState(false)
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [followed, setFollowed] = useState({})
   const [selectedDMMsg, setSelectedDMMsg] = useState(null)
   const [editingDMMsg, setEditingDMMsg] = useState(null)
   const [editDMText, setEditDMText] = useState('')
   const [dmReplyTo, setDmReplyTo] = useState(null)
   const dmLongPressTimer = useRef(null)
-  const [searchQ, setSearchQ] = useState('')
-  const [searchResults, setSearchResults] = useState([])
-  const [followed, setFollowed] = useState({})
+  const dmImgRef = useRef(null)
+  const [sendingDMImg, setSendingDMImg] = useState(false)
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search)
     const gid = params.get('opengroup')
@@ -1311,7 +1264,15 @@ export default function SphereApp({ currentUser }) {
     setTab('messages')
   }
 
-
+  const sendMsg = async() => {
+    if(!msgText.trim()||!selectedConv?.id) return
+    const content=msgText.trim(); const reply=dmReplyTo
+    setMsgText(''); setDmReplyTo(null)
+    const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
+    loadConvos()
+  }
 
   const toggleFollow = async(user) => {
     const isF = !!followed[user.id]
@@ -1332,11 +1293,7 @@ export default function SphereApp({ currentUser }) {
     setViewingUser(user)
   }
 
-  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
-
-  const handleDMLongPress = (msg) => {
-    dmLongPressTimer.current = setTimeout(()=>setSelectedDMMsg(msg), 500)
-  }
+  const handleDMLongPress = (msg) => { dmLongPressTimer.current = setTimeout(()=>setSelectedDMMsg(msg),500) }
   const handleDMPressEnd = () => clearTimeout(dmLongPressTimer.current)
 
   const deleteDMMsg = async(msg) => {
@@ -1355,17 +1312,19 @@ export default function SphereApp({ currentUser }) {
   const sendDMImage = async(file)=>{
     if(!file||!selectedConv?.id) return
     setSendingDMImg(true)
-    const ext = file.name.split('.').pop()
-    const path = 'chats/dm_'+selectedConv.id+'_'+Date.now()+'.'+ext
-    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
+    const ext=file.name.split('.').pop()
+    const path='chats/dm_'+selectedConv.id+'_'+Date.now()+'.'+ext
+    const {error}=await supabase.storage.from('avatars').upload(path,file,{upsert:false})
     if(error){alert('Upload failed: '+error.message);setSendingDMImg(false);return}
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
-    const url = urlData.publicUrl
+    const {data:urlData}=supabase.storage.from('avatars').getPublicUrl(path)
+    const url=urlData.publicUrl
     const tmp={id:'tmp_img'+Date.now(),sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url})
     setSendingDMImg(false)
   }
+
+  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
 
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const color = currentUser?.avatar_color||'#5B9CF6'
@@ -1469,16 +1428,12 @@ export default function SphereApp({ currentUser }) {
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
                 <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
               </div>}
-              {selectedDMMsg&&<div onClick={()=>setSelectedDMMsg(null)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+              {selectedDMMsg&&<div onClick={()=>setSelectedDMMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
                 <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
                   <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 16px'}}/>
-                  <div style={{padding:'0 8px',display:'flex',justifyContent:'center',gap:8,marginBottom:16}}>
+                  <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
                     {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>(
-                      <button key={e} onClick={async()=>{
-                        await supabase.from('messages').update({content:selectedDMMsg.content+' '+e}).eq('id',selectedDMMsg.id)
-                        setMessages(prev=>prev.map(m=>m.id===selectedDMMsg.id?{...m,content:m.content+' '+e}:m))
-                        setSelectedDMMsg(null)
-                      }} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
+                      <button key={e} onClick={async()=>{await supabase.from('messages').update({content:selectedDMMsg.content+' '+e}).eq('id',selectedDMMsg.id);setMessages(prev=>prev.map(m=>m.id===selectedDMMsg.id?{...m,content:m.content+' '+e}:m));setSelectedDMMsg(null)}} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
                     ))}
                   </div>
                   <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
@@ -1490,11 +1445,10 @@ export default function SphereApp({ currentUser }) {
               </div>}
               {messages.map(msg=>{
                 const own = msg.sender_id===currentUser.id
-                return(<div key={msg.id} style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}
-                  onTouchStart={()=>handleDMLongPress(msg)}
-                  onTouchEnd={handleDMPressEnd}
-                  onMouseDown={()=>handleDMLongPress(msg)}
-                  onMouseUp={handleDMPressEnd}>
+                return(<div key={msg.id}
+                  onTouchStart={()=>handleDMLongPress(msg)} onTouchEnd={handleDMPressEnd}
+                  onMouseDown={()=>handleDMLongPress(msg)} onMouseUp={handleDMPressEnd}
+                  style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
                   {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
                   <div style={{maxWidth:'75%'}}>
                     {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
@@ -1518,7 +1472,7 @@ export default function SphereApp({ currentUser }) {
             <div style={{position:'sticky',bottom:0,background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)'}}>
               {dmReplyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
                 <span style={{color:'#888',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{dmReplyTo}</span></span>
-                <button onClick={()=>setDmReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer'}}>✕</button>
+                <button onClick={()=>setDmReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:18}}>✕</button>
               </div>}
               <div style={{padding:'10px 14px 24px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
