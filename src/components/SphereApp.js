@@ -1007,6 +1007,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   useEffect(()=>{
     if(autoOpenGroup){setViewingGroup(autoOpenGroup);if(onAutoOpenDone)onAutoOpenDone()}
   },[autoOpenGroup])
+  useEffect(()=>{
+    onHideNav&&onHideNav(!!(viewingGroup||viewingPulse||showCreatePulse||showCreateGroup))
+  },[viewingGroup,viewingPulse,showCreatePulse,showCreateGroup])
 
   const loadAll = async () => {
     const [{data:g},{data:p},{data:mp}] = await Promise.all([
@@ -1070,7 +1073,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
   }
 
-  if(viewingPulse) { onHideNav&&onHideNav(true) } if(viewingPulse) return (
+  if(viewingPulse) return (
     <div style={{position:'fixed',inset:0,zIndex:300,background:viewingPulse.bg_color||'#090B10',display:'flex',flexDirection:'column'}}>
       <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'rgba(255,255,255,0.2)',borderRadius:2}}>
         <div style={{height:'100%',background:'#fff',borderRadius:2,animation:'progress 5s linear forwards'}}/>
@@ -1093,7 +1096,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     </div>
   )
 
-  if(viewingGroup) { onHideNav&&onHideNav(true); return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);onHideNav&&onHideNav(false)}} onUserClick={onUserClick}/> }
+  if(viewingGroup) return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);onHideNav&&onHideNav(false)}} onUserClick={onUserClick}/>
 
   if(showCreatePulse) return (
     <div style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
@@ -1237,7 +1240,7 @@ export default function SphereApp({ currentUser }) {
   const [hideNav, setHideNav] = useState(false)
   const stateRef = useRef({})
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView}
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav}
   },[viewingUser,showMyProfile,showSettings,tab,dmView])
 
   useEffect(()=>{
