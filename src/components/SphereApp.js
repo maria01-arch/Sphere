@@ -941,7 +941,9 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
-          <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff'}}>{group.name[0]}</div>
+          <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',overflow:'hidden'}}>
+            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:group.name[0]}
+          </div>
           <div>
             <div style={{fontWeight:700,fontSize:16}}>{group.name}</div>
             <div style={{color:'#555',fontSize:12}}>{members.length} members</div>
@@ -1169,7 +1171,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         <div style={{display:'flex',gap:12,padding:'0 16px 16px',overflowX:'auto',scrollbarWidth:'none'}}>
           {groups.map(g=>(
             <div key={g.id} onClick={()=>joinGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
-              <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:g.group_members?.some(m=>m.user_id===currentUser.id)?'2px solid #5B9CF6':'2px solid transparent'}}>{g.name[0]}</div>
+              <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:g.group_members?.some(m=>m.user_id===currentUser.id)?'2px solid #5B9CF6':'2px solid transparent',overflow:'hidden'}}>
+              {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:g.name[0]}
+            </div>
               <span style={{color:'#ccc',fontSize:11,maxWidth:60,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
             </div>
           ))}
@@ -1231,13 +1235,21 @@ export default function SphereApp({ currentUser }) {
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
+  const stateRef = useRef({})
+  useEffect(()=>{
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView])
+
   useEffect(()=>{
     window.history.pushState(null,'',window.location.href)
     const handlePop = () => {
       window.history.pushState(null,'',window.location.href)
-      if(viewingUser){setViewingUser(null);return}
-      if(showMyProfile){setShowMyProfile(false);return}
-      if(showSettings){setShowSettings(false);return}
+      const s = stateRef.current
+      if(s.viewingUser){setViewingUser(null);return}
+      if(s.showMyProfile){setShowMyProfile(false);return}
+      if(s.showSettings){setShowSettings(false);return}
+      if(s.dmView==='chat'){setDmView('list');setSelectedConv(null);return}
+      if(s.tab!=='home'){setTab('home');return}
     }
     window.addEventListener('popstate',handlePop)
     return()=>window.removeEventListener('popstate',handlePop)
