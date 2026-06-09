@@ -543,6 +543,7 @@ function ChatWindow({ conv, currentUser, supabase, onBack, onOpenProfile }) {
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
+    loadConvos()
   }
 
   const deleteMsg = async(id)=>{
@@ -716,6 +717,11 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [showRequests, setShowRequests] = useState(false)
   const [joinRequests, setJoinRequests] = useState([])
   const [loading, setLoading] = useState(true)
+  const [selectedMsg, setSelectedMsg] = useState(null)
+  const [editingMsg, setEditingMsg] = useState(null)
+  const [editText, setEditText] = useState('')
+  const [replyTo, setReplyTo] = useState(null)
+  const longPressTimer = useRef(null)
   const [editName, setEditName] = useState(group.name)
   const [sendingImg, setSendingImg] = useState(false)
   const imgRef = useRef(null)
@@ -1452,12 +1458,7 @@ export default function SphereApp({ currentUser }) {
     setTab('messages')
   }
 
-  const sendMsg = async() => {
-    if(!msgText.trim()||!selectedConv) return
-    const content = msgText.trim(); setMsgText('')
-    await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content})
-    loadConvos()
-  }
+
 
   const toggleFollow = async(user) => {
     const isF = !!followed[user.id]
