@@ -520,9 +520,6 @@ function ChatWindow({ conv, currentUser, supabase, onBack, onOpenProfile }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
   const bottomRef = useRef(null)
-  const dmImgRef = useRef(null)
-  const [sendingImg, setSendingImg] = useState(false)
-
   useEffect(()=>{
     if(!conv) return
     supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',conv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
@@ -544,21 +541,6 @@ function ChatWindow({ conv, currentUser, supabase, onBack, onOpenProfile }) {
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:conv.id,sender_id:currentUser.id,content})
-  }
-
-  const sendDMImage = async(file)=>{
-    if(!file||!conv?.id) return
-    setSendingImg(true)
-    const ext = file.name.split('.').pop()
-    const path = 'chats/dm_'+conv.id+'_'+Date.now()+'.'+ext
-    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
-    if(error){alert('Upload failed: '+error.message);setSendingImg(false);return}
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
-    const url = urlData.publicUrl
-    const tmp={id:'tmp_img'+Date.now(),sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
-    setMessages(prev=>[...prev,tmp])
-    await supabase.from('messages').insert({conversation_id:conv.id,sender_id:currentUser.id,content:'📷',image_url:url})
-    setSendingImg(false)
   }
 
   const deleteMsg = async(id)=>{
@@ -1253,6 +1235,8 @@ export default function SphereApp({ currentUser }) {
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
   const [dmView, setDmView] = useState('list')
+  const dmImgRef = useRef(null)
+  const [sendingDMImg, setSendingDMImg] = useState(false)
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState([])
   const [followed, setFollowed] = useState({})
@@ -1447,6 +1431,21 @@ export default function SphereApp({ currentUser }) {
 
   const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
 
+  const sendDMImage = async(file)=>{
+    if(!file||!selectedConv?.id) return
+    setSendingDMImg(true)
+    const ext = file.name.split('.').pop()
+    const path = 'chats/dm_'+selectedConv.id+'_'+Date.now()+'.'+ext
+    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
+    if(error){alert('Upload failed: '+error.message);setSendingDMImg(false);return}
+    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    const url = urlData.publicUrl
+    const tmp={id:'tmp_img'+Date.now(),sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url})
+    setSendingDMImg(false)
+  }
+
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const color = currentUser?.avatar_color||'#5B9CF6'
   const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
@@ -1563,7 +1562,7 @@ export default function SphereApp({ currentUser }) {
             </div>
             <div style={{position:'sticky',bottom:0,background:'#090B10',padding:'10px 14px 24px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
-              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
+              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
               <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message..." style={{...inp,flex:1,borderRadius:26,marginBottom:0,padding:'12px 18px'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
             </div>
