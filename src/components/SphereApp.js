@@ -728,9 +728,6 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const isCreator = group.creator_id===currentUser.id
 
   useEffect(()=>{ loadAll() },[])
-  useEffect(()=>{
-    if(autoOpenGroup){setViewingGroup(autoOpenGroup);onAutoOpenDone&&onAutoOpenDone()}
-  },[autoOpenGroup])
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
   useEffect(()=>{
     const ch = supabase.channel('gc:'+group.id)
@@ -1000,6 +997,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   const COLORS = ['#5B9CF6','#845EF7','#FF6B35','#00C9A7','#FF4757','#F7B731','#FD79A8','#A29BFE']
 
   useEffect(()=>{ loadAll() },[])
+  useEffect(()=>{
+    if(autoOpenGroup){setViewingGroup(autoOpenGroup);if(onAutoOpenDone)onAutoOpenDone()}
+  },[autoOpenGroup])
 
   const loadAll = async () => {
     const [{data:g},{data:p},{data:mp}] = await Promise.all([
