@@ -539,11 +539,11 @@ function ChatWindow({ conv, currentUser, supabase, onBack, onOpenProfile }) {
   const [editText, setEditText] = useState('')
 
   const sendMsg = async()=>{
-    if(!msgText.trim()||!convId) return
+    if(!msgText.trim()||!conv?.id) return
     const content=msgText.trim(); setMsgText('')
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
-    await supabase.from('messages').insert({conversation_id:convId,sender_id:currentUser.id,content})
+    await supabase.from('messages').insert({conversation_id:conv.id,sender_id:currentUser.id,content})
   }
 
   const sendDMImage = async(file)=>{
