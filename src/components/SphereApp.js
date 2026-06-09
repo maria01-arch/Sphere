@@ -801,8 +801,10 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     if(error){alert('Upload failed: '+error.message);return}
     const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
     const url = urlData.publicUrl
-    await supabase.from('groups').update({avatar_url:url}).eq('id',group.id)
+    const {error:dbErr} = await supabase.from('groups').update({avatar_url:url}).eq('id',group.id)
+    if(dbErr){alert('DB update failed: '+dbErr.message);return}
     setGroupAvatar(url)
+    alert('Group photo updated!')
   }
 
   const saveGroupSettings = async () => {
