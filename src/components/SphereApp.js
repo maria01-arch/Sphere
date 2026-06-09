@@ -794,17 +794,19 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
 
   const uploadGroupAvatar = async (file) => {
-    if(!file||!isCreator) return
+    if(!file) return
     const ext = file.name.split('.').pop()
     const path = 'groups/'+group.id+'.'+ext
     const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:true})
     if(error){alert('Upload failed: '+error.message);return}
     const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
-    const url = urlData.publicUrl
-    const {error:dbErr} = await supabase.from('groups').update({avatar_url:url}).eq('id',group.id)
-    if(dbErr){alert('DB update failed: '+dbErr.message);return}
+    const url = urlData.publicUrl+'?t='+Date.now()
+    const {data:updated,error:dbErr} = await supabase.from('groups').update({avatar_url:urlData.publicUrl}).eq('id',group.id).select().single()
+    if(dbErr){alert('DB error: '+dbErr.message+' groupid:'+group.id);return}
+    if(!updated){alert('No rows updated - group id mismatch?');return}
+    group.avatar_url = urlData.publicUrl
     setGroupAvatar(url)
-    alert('Group photo updated!')
+    alert('Done! url:'+url.slice(0,40))
   }
 
   const saveGroupSettings = async () => {
@@ -980,7 +982,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 }
 
-function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone }) {
+function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav }) {
   const [groups, setGroups] = useState([])
   const [pulses, setPulses] = useState([])
   const [myPulse, setMyPulse] = useState(null)
@@ -1066,14 +1068,14 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
   }
 
-  if(viewingPulse) return (
+  if(viewingPulse) { onHideNav&&onHideNav(true) } if(viewingPulse) return (
     <div style={{position:'fixed',inset:0,zIndex:300,background:viewingPulse.bg_color||'#090B10',display:'flex',flexDirection:'column'}}>
       <div style={{position:'absolute',top:0,left:0,right:0,height:3,background:'rgba(255,255,255,0.2)',borderRadius:2}}>
         <div style={{height:'100%',background:'#fff',borderRadius:2,animation:'progress 5s linear forwards'}}/>
       </div>
       <style>{'@keyframes progress{from{width:0}to{width:100%}}'}</style>
       <div style={{padding:'20px 16px 8px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setViewingPulse(null)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>{setViewingPulse(null);onHideNav&&onHideNav(false)}} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
         <Avatar url={viewingPulse.author?.avatar_url} name={viewingPulse.author?.display_name} color={viewingPulse.author?.avatar_color||'#5B9CF6'} size={38}/>
         <div>
           <div style={{color:'#fff',fontWeight:700,fontSize:15}}>{viewingPulse.author?.display_name}</div>
@@ -1089,7 +1091,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     </div>
   )
 
-  if(viewingGroup) return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingGroup(null)} onUserClick={onUserClick}/>
+  if(viewingGroup) { onHideNav&&onHideNav(true); return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);onHideNav&&onHideNav(false)}} onUserClick={onUserClick}/> }
 
   if(showCreatePulse) return (
     <div style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
@@ -1228,6 +1230,18 @@ export default function SphereApp({ currentUser }) {
   const [showSettings, setShowSettings] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const [navVisible, setNavVisible] = useState(true)
+  const [hideNav, setHideNav] = useState(false)
+  useEffect(()=>{
+    window.history.pushState(null,'',window.location.href)
+    const handlePop = () => {
+      window.history.pushState(null,'',window.location.href)
+      if(viewingUser){setViewingUser(null);return}
+      if(showMyProfile){setShowMyProfile(false);return}
+      if(showSettings){setShowSettings(false);return}
+    }
+    window.addEventListener('popstate',handlePop)
+    return()=>window.removeEventListener('popstate',handlePop)
+  },[])
   const lastScrollY = useRef(0)
 
   useEffect(()=>{
@@ -1524,7 +1538,7 @@ export default function SphereApp({ currentUser }) {
           {!people.length&&<p style={{padding:'40px',textAlign:'center',color:'#444'}}>No other users yet</p>}
         </>}
 
-        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)}/>}
+        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
@@ -1532,7 +1546,7 @@ export default function SphereApp({ currentUser }) {
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
 
-      <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat'))?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
+      <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
         <div style={{background:'rgba(13,15,22,0.97)',backdropFilter:'blur(28px)',borderRadius:30,padding:'8px 4px',border:'1px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px rgba(0,0,0,0.7)'}}>
           {TABS.map(({id,label,icon})=>(<button key={id} onClick={()=>{setTab(id);if(id==='messages')setDmView('list')}} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}><span style={{fontSize:20}}>{icon}</span><span style={{fontSize:9.5,fontWeight:tab===id?700:500}}>{label}</span></button>))}
         </div>
