@@ -1108,10 +1108,12 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
 
       <p style={{padding:'0 16px 8px',color:'#555',fontSize:13,fontWeight:600}}>PULSES</p>
       <div style={{display:'flex',gap:12,padding:'0 16px 20px',overflowX:'auto',scrollbarWidth:'none'}}>
-        <div onClick={()=>myPulse?setViewingPulse({...myPulse,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}):setShowCreatePulse(true)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
-          <div style={{width:64,height:64,borderRadius:'50%',background:myPulse?myPulse.bg_color:'rgba(255,255,255,0.07)',border:myPulse?'3px solid #5B9CF6':'2px dashed #444',display:'flex',alignItems:'center',justifyContent:'center',fontSize:myPulse?20:28,color:myPulse?'#fff':'#555'}}>
-            {myPulse?'⚡':'＋'}
-          </div>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
+          <div onClick={()=>setShowCreatePulse(true)} style={{width:64,height:64,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'2px dashed #5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#5B9CF6',cursor:'pointer'}}>＋</div>
+          <span style={{color:'#ccc',fontSize:11}}>Add Pulse</span>
+        </div>
+        {myPulse&&<div onClick={()=>setViewingPulse({...myPulse,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}})} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
+          <div style={{width:64,height:64,borderRadius:'50%',background:myPulse.bg_color||'#5B9CF6',border:'3px solid #00C9A7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,color:'#fff'}}>⚡</div>
           <span style={{color:'#ccc',fontSize:11}}>My Pulse</span>
         </div>
         {pulses.map(p=>(
@@ -1168,10 +1170,27 @@ export default function SphereApp({ currentUser }) {
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
+  const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
   useEffect(()=>{
     stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav}
   },[viewingUser,showMyProfile,showSettings,tab,dmView])
+
+  useEffect(()=>{
+    const presenceChannel = supabase.channel('online_users')
+      .on('presence',{event:'sync'},()=>{
+        const state = presenceChannel.presenceState()
+        const online = {}
+        Object.values(state).flat().forEach(p=>{ online[p.user_id]=true })
+        setOnlineUsers(online)
+      })
+      .subscribe(async(status)=>{
+        if(status==='SUBSCRIBED'){
+          await presenceChannel.track({user_id:currentUser.id,online_at:new Date().toISOString()})
+        }
+      })
+    return()=>supabase.removeChannel(presenceChannel)
+  },[])
 
   useEffect(()=>{
     window.history.pushState(null,'',window.location.href)
@@ -1417,7 +1436,7 @@ export default function SphereApp({ currentUser }) {
               <div key={conv.id}
                 onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
                 style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none',active:{background:'rgba(255,255,255,0.04)'}}}>
-                <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online/>
+                <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                     <span style={{fontWeight:700,fontSize:15}}>{conv.other?.display_name}</span>
@@ -1469,7 +1488,7 @@ export default function SphereApp({ currentUser }) {
               <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
               <div>
                 <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
-                <div style={{color:'#555',fontSize:11}}>DM</div>
+                <div style={{color:onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555',fontSize:11}}>{onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline'}</div>
               </div>
             </div>
             <div style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:20}}>
