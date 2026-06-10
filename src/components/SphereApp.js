@@ -596,7 +596,14 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('temp_')),data])
-      }).subscribe()
+      })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
+        setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,...payload.new}:m))
+      })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
+        setMessages(prev=>prev.filter(m=>m.id!==payload.old.id))
+      })
+      .subscribe()
     return()=>supabase.removeChannel(ch)
   },[])
 
@@ -931,7 +938,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     const [{data:g},{data:p},{data:mp}] = await Promise.all([
       supabase.from('groups').select('*,group_members(user_id)').order('created_at',{ascending:false}),
       supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}),
-      supabase.from('pulses').select('*').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).maybeSingle()
+      supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}).limit(1).maybeSingle()
     ])
     setGroups(g||[])
     setPulses((p||[]).filter(x=>x.user_id!==currentUser.id))
@@ -1462,7 +1469,7 @@ export default function SphereApp({ currentUser }) {
               <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
               <div>
                 <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
-                <div style={{color:'#00C9A7',fontSize:11}}>● Active now</div>
+                <div style={{color:'#555',fontSize:11}}>DM</div>
               </div>
             </div>
             <div style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:20}}>
