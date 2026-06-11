@@ -417,7 +417,10 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
     if (next) {
       const {error} = await supabase.from('likes').insert({post_id:post.id,user_id:currentUser.id})
       if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
-      else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
+      else if (post.user_id !== currentUser.id) {
+        await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
+        sendPush(post.user_id, '❤️ New Like', (currentUser.display_name||'Someone')+' liked your post')
+      }
     } else {
       await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
     }
@@ -442,7 +445,10 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
       setComments(c=>c+1)
       setReplyText('')
       setShowReply(false)
-      if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
+      if (post.user_id !== currentUser.id) {
+        await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
+        sendPush(post.user_id, '💬 New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+      }
     }
   }
 
@@ -1292,9 +1298,17 @@ function OmniCoreAI({ currentUser, onClose }) {
   const generateImage = async() => {
     if(!imgPrompt.trim()) return
     setGeneratingImg(true)
-    const url = 'https://image.pollinations.ai/prompt/'+encodeURIComponent(imgPrompt+', high quality, detailed')+'?width=512&height=512&nologo=true'
-    setGenImg(url)
-    setGeneratingImg(false)
+    setGenImg(null)
+    try {
+      const url = 'https://image.pollinations.ai/prompt/'+encodeURIComponent(imgPrompt+', high quality, detailed, 4k')+'?width=768&height=768&nologo=true&seed='+Math.floor(Math.random()*99999)
+      const img = new Image()
+      img.onload = () => { setGenImg(url); setGeneratingImg(false) }
+      img.onerror = () => {
+        const fallback = 'https://image.pollinations.ai/prompt/'+encodeURIComponent(imgPrompt)+'?width=512&height=512&nologo=true&seed='+Math.floor(Math.random()*99999)
+        setGenImg(fallback); setGeneratingImg(false)
+      }
+      img.src = url
+    } catch(e) { setGeneratingImg(false); alert('Image generation failed, try again') }
   }
 
   const send = async() => {
@@ -1429,11 +1443,17 @@ export default function SphereApp({ currentUser }) {
   },[])
 
   useEffect(()=>{
-    if('serviceWorker' in navigator && 'PushManager' in window) {
-      navigator.serviceWorker.register('/sw.js').then(reg=>{
-        console.log('SW registered')
-      }).catch(e=>console.log('SW error',e))
-    }
+    if(!('serviceWorker' in navigator)||!('PushManager' in window)) return
+    navigator.serviceWorker.register('/sw.js').then(async reg=>{
+      const permission = await Notification.requestPermission()
+      if(permission !== 'granted') return
+      const existing = await reg.pushManager.getSubscription()
+      const sub = existing || await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: 'BPiikDJR1kYnVVizNObctiIofznuYwl0P6tGmViKwqy11Lzq5JJmMQ-tAwc12yx6tHWYrRrVOmNCUhguqjyP5Cs'
+      })
+      await supabase.from('push_subscriptions').upsert({user_id:currentUser.id,subscription:JSON.parse(JSON.stringify(sub))})
+    }).catch(e=>console.log('SW error',e))
   },[])
 
   useEffect(()=>{
@@ -1590,6 +1610,7 @@ export default function SphereApp({ currentUser }) {
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
+    sendPush(selectedConv.other?.id, '💬 '+( currentUser.display_name||'Someone'), content.slice(0,60))
     loadConvos()
   }
 
@@ -1641,6 +1662,14 @@ export default function SphereApp({ currentUser }) {
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url})
     setSendingDMImg(false)
+  }
+
+  const sendPush = async(userId, title, body) => {
+    try {
+      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
+      if(!data?.subscription) return
+      await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+    } catch(e) { console.log('Push send error',e) }
   }
 
   const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
