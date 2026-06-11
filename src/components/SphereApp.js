@@ -1281,9 +1281,21 @@ function OmniCoreAI({ currentUser, onClose }) {
   const [messages, setMessages] = useState([{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I am OmniCore AI by OmniSphereLabs. How can I help you today?'}])
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
+  const [genImg, setGenImg] = useState('')
+  const [imgPrompt, setImgPrompt] = useState('')
+  const [generatingImg, setGeneratingImg] = useState(false)
+  const [showImgGen, setShowImgGen] = useState(false)
   const bottomRef = useRef(null)
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+
+  const generateImage = async() => {
+    if(!imgPrompt.trim()) return
+    setGeneratingImg(true)
+    const url = 'https://image.pollinations.ai/prompt/'+encodeURIComponent(imgPrompt+', high quality, detailed')+'?width=512&height=512&nologo=true'
+    setGenImg(url)
+    setGeneratingImg(false)
+  }
 
   const send = async() => {
     if(!input.trim()||loading) return
@@ -1328,7 +1340,20 @@ function OmniCoreAI({ currentUser, onClose }) {
         <div ref={bottomRef}/>
       </div>
 
+      {showImgGen&&<div style={{position:'fixed',inset:0,zIndex:10,background:'rgba(0,0,0,0.85)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:12}}>
+        <div style={{width:'100%',maxWidth:400,background:'#1a1d26',borderRadius:20,padding:20,display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontWeight:700,fontSize:17,color:'#fff'}}>🎨 Image Generator</span>
+            <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'#888',fontSize:22,cursor:'pointer'}}>✕</button>
+          </div>
+          <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none'}}/>
+          <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'12px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
+          {genImg&&<img src={genImg} style={{width:'100%',borderRadius:12,marginTop:4}} alt="generated"/>}
+          {genImg&&<button onClick={()=>window.open(genImg,'_blank')} style={{background:'rgba(255,255,255,0.07)',border:'none',borderRadius:12,padding:'10px',color:'#fff',fontSize:13,cursor:'pointer'}}>💾 Open / Save Image</button>}
+        </div>
+      </div>}
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
+        <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',fontSize:18,flexShrink:0}}>🎨</button>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask OmniCore anything..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
         <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
       </div>
@@ -1343,6 +1368,9 @@ export default function SphereApp({ currentUser }) {
   const [loading, setLoading] = useState(true)
   const [showCompose, setShowCompose] = useState(false)
   const [composeText, setComposeText] = useState('')
+  const [composeImage, setComposeImage] = useState(null)
+  const [composeImageUrl, setComposeImageUrl] = useState(null)
+  const composeImgRef = useRef(null)
   const [conversations, setConversations] = useState([])
   const [selectedConv, setSelectedConv] = useState(null)
   const [messages, setMessages] = useState([])
@@ -1398,6 +1426,14 @@ export default function SphereApp({ currentUser }) {
         }
       })
     return()=>supabase.removeChannel(presenceChannel)
+  },[])
+
+  useEffect(()=>{
+    if('serviceWorker' in navigator && 'PushManager' in window) {
+      navigator.serviceWorker.register('/sw.js').then(reg=>{
+        console.log('SW registered')
+      }).catch(e=>console.log('SW error',e))
+    }
   },[])
 
   useEffect(()=>{
@@ -1510,8 +1546,15 @@ export default function SphereApp({ currentUser }) {
   },[searchQ,allPeople])
 
   const sendPost = async() => {
-    if(!composeText.trim()) return
-    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim()}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
+    if(!composeText.trim()&&!composeImage) return
+    let imageUrl = null
+    if(composeImage) {
+      const ext = composeImage.name.split('.').pop()
+      const path = 'posts/'+currentUser.id+'_'+Date.now()+'.'+ext
+      const {error} = await supabase.storage.from('avatars').upload(path,composeImage,{upsert:false})
+      if(!error) { const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path); imageUrl = urlData.publicUrl }
+    }
+    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
     if(data) setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
     setComposeText(''); setShowCompose(false)
   }
@@ -1618,11 +1661,10 @@ export default function SphereApp({ currentUser }) {
         <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
-        <span style={{fontWeight:800,fontSize:20,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>🌐 sphere</span>
+        <span onClick={()=>window.location.reload()} style={{fontWeight:800,fontSize:20,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',cursor:'pointer'}}>🌐 sphere</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           <button onClick={()=>setShowOmniCore(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>🤖 AI</button>
-          <button onClick={()=>window.location.reload()} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:20}}>🔄</button>
-          <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
+<button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
         </div>
       </div>
 
@@ -1825,10 +1867,18 @@ export default function SphereApp({ currentUser }) {
           <div style={{display:'flex',gap:12}}>
             <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={42}/>
             <div style={{flex:1}}>
-              <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={4} style={{width:'100%',background:'transparent',border:'none',color:'#fff',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
+              <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'#fff',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
+              {composeImageUrl&&<div style={{position:'relative',marginBottom:8}}>
+                <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview"/>
+                <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'#fff',cursor:'pointer',fontSize:14}}>✕</button>
+              </div>}
+              <input ref={composeImgRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){setComposeImage(f);setComposeImageUrl(URL.createObjectURL(f))}}} style={{display:'none'}}/>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:12,borderTop:'1px solid rgba(255,255,255,0.07)'}}>
-                <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
-                <button onClick={sendPost} disabled={!composeText.trim()} style={{background:composeText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.07)',border:'none',borderRadius:24,padding:'10px 26px',color:composeText.trim()?'#fff':'#444',fontWeight:700,fontSize:14,cursor:composeText.trim()?'pointer':'not-allowed'}}>Sphere it</button>
+                <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                  <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',fontSize:22}}>🖼️</button>
+                  <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
+                </div>
+                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.07)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Sphere it</button>
               </div>
             </div>
           </div>
