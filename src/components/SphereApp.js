@@ -1664,9 +1664,21 @@ export default function SphereApp({ currentUser }) {
   const sendPush = async(userId, title, body) => {
     try {
       const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
-      if(!data?.subscription) return
-      await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+      if(!data?.subscription) { console.log('No push sub for user',userId); return }
+      const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+      const result = await res.json()
+      console.log('Push result:',result)
     } catch(e) { console.log('Push send error',e) }
+  }
+
+  const testPush = async() => {
+    try {
+      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',currentUser.id).maybeSingle()
+      if(!data?.subscription) { alert('No subscription found - try refreshing and allowing notifications'); return }
+      const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title:'🌐 Test from Sphere',body:'Push notifications are working!',url:'/'})})
+      const result = await res.json()
+      alert('Push result: '+JSON.stringify(result))
+    } catch(e) { alert('Error: '+e.message) }
   }
 
   const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
@@ -1689,6 +1701,7 @@ export default function SphereApp({ currentUser }) {
         </button>
         <span onClick={()=>window.location.reload()} style={{fontWeight:800,fontSize:20,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',cursor:'pointer'}}>🌐 sphere</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
+          <button onClick={testPush} style={{background:'rgba(0,201,167,0.15)',border:'1px solid rgba(0,201,167,0.3)',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#00C9A7',fontSize:12,fontWeight:700}}>🔔 Test</button>
           <button onClick={()=>setShowOmniCore(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>🤖 AI</button>
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
         </div>
