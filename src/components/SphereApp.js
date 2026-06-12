@@ -1729,7 +1729,17 @@ export default function SphereApp({ currentUser }) {
         </button>
         <span onClick={()=>window.location.reload()} style={{fontWeight:800,fontSize:20,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',cursor:'pointer'}}>🌐 sphere</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <button onClick={testPush} style={{background:'rgba(0,201,167,0.15)',border:'1px solid rgba(0,201,167,0.3)',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#00C9A7',fontSize:12,fontWeight:700}}>🔔 Test</button>
+          <button onClick={async()=>{
+    if(typeof Notification === 'undefined'){alert('Notification API not available in this browser');return}
+    alert('Permission: '+Notification.permission)
+    if(Notification.permission==='granted'){
+      new Notification('🌐 Sphere Test',{body:'Notifications are working!',icon:'/icon-192.png'})
+    } else {
+      const p = await Notification.requestPermission()
+      alert('New permission: '+p)
+      if(p==='granted') new Notification('🌐 Sphere',{body:'Notifications enabled!',icon:'/icon-192.png'})
+    }
+  }} style={{background:'rgba(0,201,167,0.15)',border:'1px solid rgba(0,201,167,0.3)',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#00C9A7',fontSize:12,fontWeight:700}}>🔔 Test</button>
           <button onClick={()=>setShowOmniCore(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>🤖 AI</button>
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
         </div>
