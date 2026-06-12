@@ -1621,10 +1621,12 @@ export default function SphereApp({ currentUser }) {
     if(!composeText.trim()&&!composeImage) return
     let imageUrl = null
     if(composeImage) {
-      const ext = composeImage.name.split('.').pop()
+      const ext = composeImage.name.split('.').pop().toLowerCase()
       const path = 'posts/'+currentUser.id+'_'+Date.now()+'.'+ext
-      const {error} = await supabase.storage.from('avatars').upload(path,composeImage,{upsert:false})
-      if(!error) { const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path); imageUrl = urlData.publicUrl }
+      const {data:upData, error} = await supabase.storage.from('avatars').upload(path, composeImage, {upsert:true, contentType:composeImage.type})
+      if(error) { alert('Image upload failed: '+error.message); return }
+      const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+      imageUrl = urlData.publicUrl
     }
     const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
     if(data) setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
