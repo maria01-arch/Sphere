@@ -1443,6 +1443,10 @@ export default function SphereApp({ currentUser }) {
     const setupPush = async() => {
       try {
         if(!('Notification' in window)) { console.log('No Notification API'); return }
+        // Request permission immediately for WebView apps
+        if(Notification.permission === 'default') {
+          await Notification.requestPermission()
+        }
         if(!('serviceWorker' in navigator)) { console.log('No SW'); return }
         if(!('PushManager' in window)) { console.log('No PushManager'); return }
         const reg = await navigator.serviceWorker.register('/sw.js')
@@ -1556,7 +1560,10 @@ export default function SphereApp({ currentUser }) {
     supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
-      if(data) setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('tmp')),data])
+      if(data) {
+        setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('tmp')),data])
+        if(data.sender_id !== currentUser.id) showLocalNotif('💬 New Message', (data.sender?.display_name||'Someone')+': '+data.content?.slice(0,60))
+      }
     }).subscribe()
     return()=>supabase.removeChannel(ch)
   },[selectedConv])
@@ -1676,13 +1683,19 @@ export default function SphereApp({ currentUser }) {
     setSendingDMImg(false)
   }
 
+  const showLocalNotif = (title, body) => {
+    if(typeof Notification === 'undefined') return
+    if(Notification.permission === 'granted') {
+      new Notification(title, {body, icon:'/icon-192.png'})
+    }
+  }
+
   const sendPush = async(userId, title, body) => {
     try {
       const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
-      if(!data?.subscription) { console.log('No push sub for user',userId); return }
-      const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
-      const result = await res.json()
-      console.log('Push result:',result)
+      if(data?.subscription) {
+        fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+      }
     } catch(e) { console.log('Push send error',e) }
   }
 
