@@ -1440,17 +1440,28 @@ export default function SphereApp({ currentUser }) {
   },[])
 
   useEffect(()=>{
-    if(!('serviceWorker' in navigator)||!('PushManager' in window)) return
-    navigator.serviceWorker.register('/sw.js').then(async reg=>{
-      const permission = await Notification.requestPermission()
-      if(permission !== 'granted') return
-      const existing = await reg.pushManager.getSubscription()
-      const sub = existing || await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: 'BPiikDJR1kYnVVizNObctiIofznuYwl0P6tGmViKwqy11Lzq5JJmMQ-tAwc12yx6tHWYrRrVOmNCUhguqjyP5Cs'
-      })
-      await supabase.from('push_subscriptions').upsert({user_id:currentUser.id,subscription:JSON.parse(JSON.stringify(sub))})
-    }).catch(e=>console.log('SW error',e))
+    const setupPush = async() => {
+      if(!('serviceWorker' in navigator)||!('PushManager' in window)) return
+      try {
+        const reg = await navigator.serviceWorker.register('/sw.js')
+        await navigator.serviceWorker.ready
+        const permission = await Notification.requestPermission()
+        if(permission !== 'granted') return
+        let sub = await reg.pushManager.getSubscription()
+        if(!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: 'BPiikDJR1kYnVVizNObctiIofznuYwl0P6tGmViKwqy11Lzq5JJmMQ-tAwc12yx6tHWYrRrVOmNCUhguqjyP5Cs'
+          })
+        }
+        await supabase.from('push_subscriptions').upsert({
+          user_id:currentUser.id,
+          subscription:JSON.parse(JSON.stringify(sub))
+        },{onConflict:'user_id'})
+        console.log('Push subscription saved')
+      } catch(e) { console.log('Push setup error',e.message) }
+    }
+    setupPush()
   },[])
 
   useEffect(()=>{
@@ -1707,6 +1718,19 @@ export default function SphereApp({ currentUser }) {
         </div>
       </div>
 
+      {typeof Notification !== 'undefined' && Notification.permission === 'default' && (
+        <div onClick={async()=>{
+          const p = await Notification.requestPermission()
+          if(p==='granted') window.location.reload()
+        }} style={{margin:'8px 16px',background:'linear-gradient(135deg,rgba(91,156,246,0.15),rgba(132,94,247,0.15))',border:'1px solid rgba(91,156,246,0.3)',borderRadius:12,padding:'10px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
+          <span style={{fontSize:20}}>🔔</span>
+          <div style={{flex:1}}>
+            <div style={{color:'#fff',fontWeight:700,fontSize:13}}>Enable Notifications</div>
+            <div style={{color:'#888',fontSize:11}}>Get notified about likes, messages and more</div>
+          </div>
+          <span style={{color:'#5B9CF6',fontSize:13,fontWeight:700}}>Allow</span>
+        </div>
+      )}
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>
           <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)',position:'sticky',top:58,zIndex:5,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)'}}>
