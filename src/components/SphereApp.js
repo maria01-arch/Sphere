@@ -522,7 +522,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 
-function NotificationsPanel({ currentUser, supabase, onUserClick }) {
+function NotificationsPanel({ currentUser, supabase, onUserClick, showLocalNotif }) {
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
   const typeInfo = {
@@ -539,7 +539,13 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
     supabase.from('notifications').update({read:true}).eq('user_id',currentUser.id).eq('read',false).then(()=>{})
     const ch = supabase.channel('notifs:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
       const {data} = await supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('id',payload.new.id).single()
-      if(data) setNotifs(prev=>[data,...prev])
+      if(data) {
+        setNotifs(prev=>[data,...prev])
+        if(showLocalNotif) {
+          const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your sphere'}
+          showLocalNotif('🌐 Sphere', (data.actor?.display_name||'Someone')+' '+(info[data.type]||'sent you a notification'))
+        }
+      }
     }).subscribe()
     return()=>supabase.removeChannel(ch)
   },[])
@@ -1684,10 +1690,14 @@ export default function SphereApp({ currentUser }) {
   }
 
   const showLocalNotif = (title, body) => {
-    if(typeof Notification === 'undefined') return
-    if(Notification.permission === 'granted') {
-      new Notification(title, {body, icon:'/icon-192.png'})
-    }
+    try {
+      if(typeof Notification === 'undefined') return
+      if(Notification.permission !== 'granted') return
+      setTimeout(()=>{
+        try { new Notification(title, {body, icon:'/icon-192.png', tag:Date.now().toString()}) }
+        catch(e){ console.log('Notif error:',e.message) }
+      }, 100)
+    } catch(e){ console.log('showLocalNotif error:',e) }
   }
 
   const sendPush = async(userId, title, body) => {
@@ -1733,11 +1743,18 @@ export default function SphereApp({ currentUser }) {
     if(typeof Notification === 'undefined'){alert('Notification API not available in this browser');return}
     alert('Permission: '+Notification.permission)
     if(Notification.permission==='granted'){
-      new Notification('🌐 Sphere Test',{body:'Notifications are working!',icon:'/icon-192.png'})
+      try {
+        const n = new Notification('🌐 Sphere Test',{body:'Notifications are working!',icon:'/icon-192.png',tag:'test'})
+        alert('Notification fired! Check your notification bar')
+        n.onerror = (e) => alert('Notif error: '+e)
+      } catch(e){ alert('Error: '+e.message) }
     } else {
       const p = await Notification.requestPermission()
       alert('New permission: '+p)
-      if(p==='granted') new Notification('🌐 Sphere',{body:'Notifications enabled!',icon:'/icon-192.png'})
+      if(p==='granted'){
+        try { new Notification('🌐 Sphere',{body:'Notifications enabled!',icon:'/icon-192.png'}) }
+        catch(e){ alert('Error: '+e.message) }
+      }
     }
   }} style={{background:'rgba(0,201,167,0.15)',border:'1px solid rgba(0,201,167,0.3)',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#00C9A7',fontSize:12,fontWeight:700}}>🔔 Test</button>
           <button onClick={()=>setShowOmniCore(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>🤖 AI</button>
@@ -1944,7 +1961,7 @@ export default function SphereApp({ currentUser }) {
         {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
-        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
+        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} showLocalNotif={showLocalNotif}/>}
       </div>
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
