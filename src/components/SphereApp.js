@@ -539,13 +539,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
     supabase.from('notifications').update({read:true}).eq('user_id',currentUser.id).eq('read',false).then(()=>{})
     const ch = supabase.channel('notifs:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
       const {data} = await supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('id',payload.new.id).single()
-      if(data) {
-        setNotifs(prev=>[data,...prev])
-        if(showLocalNotif) {
-          const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your sphere'}
-          showLocalNotif('🌐 Sphere', (data.actor?.display_name||'Someone')+' '+(info[data.type]||'sent you a notification'))
-        }
-      }
+      if(data) setNotifs(prev=>[data,...prev])
     }).subscribe()
     return()=>supabase.removeChannel(ch)
   },[])
