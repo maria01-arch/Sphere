@@ -522,7 +522,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 
-function NotificationsPanel({ currentUser, supabase, onUserClick, showLocalNotif }) {
+function NotificationsPanel({ currentUser, supabase, onUserClick }) {
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
   const typeInfo = {
@@ -1630,7 +1630,7 @@ export default function SphereApp({ currentUser }) {
     }
     const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
     if(data) setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
-    setComposeText(''); setShowCompose(false)
+    setComposeText(''); setComposeImage(null); setComposeImageUrl(null); setShowCompose(false)
   }
 
   const deletePost = async(postId) => {
@@ -1664,7 +1664,6 @@ export default function SphereApp({ currentUser }) {
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
-    sendPush(selectedConv.other?.id, '💬 '+( currentUser.display_name||'Someone'), content.slice(0,60))
     loadConvos()
   }
 
@@ -1738,20 +1737,6 @@ export default function SphereApp({ currentUser }) {
     } catch(e) { console.log('Push send error',e) }
   }
 
-  const testPush = async() => {
-    try {
-      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',currentUser.id).maybeSingle()
-      if(!data?.subscription) { alert('No subscription found - try refreshing and allowing notifications'); return }
-      const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title:'🌐 Test from Sphere',body:'Push notifications are working!',url:'/'})})
-      const result = await res.json()
-      alert('Push result: '+JSON.stringify(result))
-    } catch(e) { alert('Error: '+e.message) }
-  }
-
-  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
-
-  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
-  const color = currentUser?.avatar_color||'#5B9CF6'
   const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
@@ -1768,24 +1753,7 @@ export default function SphereApp({ currentUser }) {
         </button>
         <span onClick={()=>window.location.reload()} style={{fontWeight:800,fontSize:20,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',cursor:'pointer'}}>🌐 sphere</span>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
-          <button onClick={async()=>{
-    if(typeof Notification === 'undefined'){alert('Notification API not available in this browser');return}
-    alert('Permission: '+Notification.permission)
-    if(Notification.permission==='granted'){
-      try {
-        const n = new Notification('🌐 Sphere Test',{body:'Notifications are working!',icon:'/icon-192.png',tag:'test'})
-        alert('Notification fired! Check your notification bar')
-        n.onerror = (e) => alert('Notif error: '+e)
-      } catch(e){ alert('Error: '+e.message) }
-    } else {
-      const p = await Notification.requestPermission()
-      alert('New permission: '+p)
-      if(p==='granted'){
-        try { new Notification('🌐 Sphere',{body:'Notifications enabled!',icon:'/icon-192.png'}) }
-        catch(e){ alert('Error: '+e.message) }
-      }
-    }
-  }} style={{background:'rgba(0,201,167,0.15)',border:'1px solid rgba(0,201,167,0.3)',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#00C9A7',fontSize:12,fontWeight:700}}>🔔 Test</button>
+          
           <button onClick={()=>setShowOmniCore(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>🤖 AI</button>
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
         </div>
@@ -1990,7 +1958,7 @@ export default function SphereApp({ currentUser }) {
         {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
-        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} showLocalNotif={showLocalNotif}/>}
+        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
       </div>
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
