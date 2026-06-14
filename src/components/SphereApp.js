@@ -1430,6 +1430,7 @@ function SphereAppInner({ currentUser }) {
   const [showMyProfile, setShowMyProfile] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
+  const color = currentUser?.avatar_color||'#5B9CF6'
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
   const [showOmniCore, setShowOmniCore] = useState(false)
