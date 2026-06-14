@@ -3,6 +3,22 @@ import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 const supabase = createClient()
 
+class ErrorBoundary extends (require('react').Component) {
+  constructor(props) { super(props); this.state = {error:null} }
+  static getDerivedStateFromError(e) { return {error:e} }
+  render() {
+    if(this.state.error) return (
+      <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',padding:20,fontFamily:'sans-serif'}}>
+        <h2 style={{color:'#FF4757'}}>App Error</h2>
+        <p style={{color:'#aaa',fontSize:14,wordBreak:'break-word'}}>{this.state.error?.message}</p>
+        <pre style={{color:'#666',fontSize:11,overflow:'auto'}}>{this.state.error?.stack?.slice(0,500)}</pre>
+        <button onClick={()=>window.location.reload()} style={{marginTop:16,background:'#5B9CF6',border:'none',borderRadius:12,padding:'12px 24px',color:'#fff',cursor:'pointer'}}>Reload</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
+
 const COLORS = ['#FF6B35','#00C9A7','#845EF7','#F7B731','#FF4757','#5B9CF6','#A29BFE','#FD79A8']
 const getColor = (id) => COLORS[(id?.charCodeAt(0)||0) % COLORS.length]
 
@@ -1371,7 +1387,7 @@ function OmniCoreAI({ currentUser, onClose }) {
     </div>
   )
 }
-export default function SphereApp({ currentUser }) {
+function SphereAppInner({ currentUser }) {
   const [tab, setTab] = useState('home')
   const [autoOpenGroup, setAutoOpenGroup] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
@@ -1988,4 +2004,8 @@ export default function SphereApp({ currentUser }) {
       </div>}
     </div>
   )
+}
+
+export default function SphereApp({ currentUser }) {
+  return <ErrorBoundary><SphereAppInner currentUser={currentUser}/></ErrorBoundary>
 }
