@@ -347,6 +347,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
   const [loading, setLoading] = useState(true)
   const color = currentUser?.avatar_color||'#5B9CF6'
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
+  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
 
   useEffect(() => {
     supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',currentUser.id).order('created_at',{ascending:false})
