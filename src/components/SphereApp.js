@@ -47,6 +47,7 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
 // ── USER PROFILE ───────────────────────────────────────────────────────────
 function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
   const [posts, setPosts] = useState([])
+  const [ads, setAds] = useState([])
   const [isFollowing, setIsFollowing] = useState(false)
   const [showBigAvatar, setShowBigAvatar] = useState(false)
   const [followerCount, setFollowerCount] = useState(user?.followers_count||0)
@@ -349,6 +350,10 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
 
+  useEffect(()=>{
+    supabase.from('ads').select('*').eq('active',true).order('created_at',{ascending:false}).then(({data})=>setAds(data||[]))
+  },[])
+
   useEffect(() => {
     supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',currentUser.id).order('created_at',{ascending:false})
       .then(({data})=>{
@@ -405,6 +410,25 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
 }
 
 // ── POST CARD ──────────────────────────────────────────────────────────────
+function AdCard({ ad }) {
+  return (
+    <div onClick={()=>ad.link_url&&window.open(ad.link_url,'_blank')} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',cursor:ad.link_url?'pointer':'default'}}>
+      <div style={{display:'flex',gap:12}}>
+        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:2}}>
+            <span style={{color:'#fff',fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
+            <span style={{background:'rgba(247,183,49,0.15)',border:'1px solid rgba(247,183,49,0.3)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
+          </div>
+          {ad.content&&<p style={{color:'#ddd',fontSize:15,lineHeight:1.6,marginBottom:10}}>{ad.content}</p>}
+          {ad.image_url&&<img src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover'}} alt="ad"/>}
+          {ad.link_url&&<div style={{marginTop:10,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'8px 14px',display:'inline-block',color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More →</div>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
@@ -934,6 +958,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
 function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   const [reels, setReels] = useState([])
+  const [reelAds, setReelAds] = useState([])
   const [currentIdx, setCurrentIdx] = useState(0)
   const [uploading, setUploading] = useState(false)
   const [showUpload, setShowUpload] = useState(false)
@@ -947,6 +972,9 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   const touchStart = useRef(null)
 
   useEffect(()=>{ loadReels() },[])
+  useEffect(()=>{
+    supabase.from('ads').select('*').eq('active',true).eq('type','reel').then(({data})=>setReelAds(data||[]))
+  },[])
   useEffect(()=>{ if(videoRef.current){ videoRef.current.currentTime=0; playing?videoRef.current.play().catch(()=>{}):videoRef.current.pause() } },[currentIdx,playing])
 
   const loadReels = async() => {
@@ -994,6 +1022,8 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
     touchStart.current = null
   }
 
+  const isAdSlot = reelAds.length>0 && (currentIdx+1)%5===0
+  const currentAd = isAdSlot ? reelAds[Math.floor(currentIdx/5)%reelAds.length] : null
   const reel = reels[currentIdx]
 
   if(showUpload) return (
@@ -1025,7 +1055,26 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
         <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
       </div>}
 
-      {reel&&<>
+      {isAdSlot&&currentAd&&<>
+        <video src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover'}} loop playsInline autoPlay muted={false}/>
+        <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
+          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+            <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
+            <div>
+              <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{currentAd.advertiser_name}</span>
+                <span style={{background:'rgba(247,183,49,0.2)',border:'1px solid rgba(247,183,49,0.4)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
+              </div>
+            </div>
+          </div>
+          {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
+          {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
+        </div>
+        <div style={{position:'absolute',bottom:40,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6}}>
+          {reels.map((_,i)=><div key={i} style={{width:i===currentIdx?20:6,height:6,borderRadius:3,background:i===currentIdx?'#fff':'rgba(255,255,255,0.4)',transition:'width 0.2s'}}/>)}
+        </div>
+      </>}
+      {!isAdSlot&&reel&&<>
         <video ref={videoRef} src={reel.video_url} style={{width:'100%',height:'100%',objectFit:'cover'}} loop playsInline onClick={()=>setPlaying(p=>!p)} autoPlay muted={false}/>
         {!playing&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}><div style={{width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>▶️</div></div>}
 
@@ -1801,7 +1850,12 @@ function SphereAppInner({ currentUser }) {
           </div>
           {loading&&<div style={{padding:'50px',textAlign:'center',color:'#444'}}>Loading...</div>}
           {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'#666',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Tap + to post!'}</p></div>}
-          {posts.map(post=><PostCard key={post.id} post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>)}
+          {posts.map((post,i)=>(
+            <div key={post.id}>
+              <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>
+              {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
+            </div>
+          ))}
         </>}
 
         {tab==='messages'&&<>
