@@ -47,7 +47,6 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
 // ── USER PROFILE ───────────────────────────────────────────────────────────
 function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
   const [posts, setPosts] = useState([])
-  const [ads, setAds] = useState([])
   const [isFollowing, setIsFollowing] = useState(false)
   const [showBigAvatar, setShowBigAvatar] = useState(false)
   const [followerCount, setFollowerCount] = useState(user?.followers_count||0)
@@ -347,12 +346,6 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
   const color = currentUser?.avatar_color||'#5B9CF6'
-  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
-  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
-
-  useEffect(()=>{
-    supabase.from('ads').select('*').eq('active',true).order('created_at',{ascending:false}).then(({data})=>setAds(data||[]))
-  },[])
 
   useEffect(() => {
     supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',currentUser.id).order('created_at',{ascending:false})
@@ -1440,6 +1433,7 @@ function OmniCoreAI({ currentUser, onClose }) {
   )
 }
 function SphereAppInner({ currentUser }) {
+  const [ads, setAds] = useState([])
   const [tab, setTab] = useState('home')
   const [autoOpenGroup, setAutoOpenGroup] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
@@ -1485,6 +1479,10 @@ function SphereAppInner({ currentUser }) {
   const color = currentUser?.avatar_color||'#5B9CF6'
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
+
+  useEffect(()=>{
+    supabase.from('ads').select('*').eq('active',true).eq('type','post').order('created_at',{ascending:false}).then(({data})=>setAds(data||[]))
+  },[])
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
   const [showOmniCore, setShowOmniCore] = useState(false)
