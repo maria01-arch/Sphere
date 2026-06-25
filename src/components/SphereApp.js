@@ -404,8 +404,13 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
 
 // ── POST CARD ──────────────────────────────────────────────────────────────
 function AdCard({ ad }) {
+  const openLink = () => {
+    if(!ad.link_url) return
+    const url = ad.link_url.startsWith('http')?ad.link_url:'https://'+ad.link_url
+    window.open(url,'_blank')
+  }
   return (
-    <div onClick={()=>ad.link_url&&window.open(ad.link_url,'_blank')} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',cursor:ad.link_url?'pointer':'default'}}>
+    <div onClick={openLink} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',cursor:ad.link_url?'pointer':'default'}}>
       <div style={{display:'flex',gap:12}}>
         <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
         <div style={{flex:1,minWidth:0}}>
@@ -1061,7 +1066,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
             </div>
           </div>
           {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
-          {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
+          {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
         </div>
         <div style={{position:'absolute',bottom:40,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6}}>
           {reels.map((_,i)=><div key={i} style={{width:i===currentIdx?20:6,height:6,borderRadius:3,background:i===currentIdx?'#fff':'rgba(255,255,255,0.4)',transition:'width 0.2s'}}/>)}
