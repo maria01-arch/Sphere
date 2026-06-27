@@ -900,7 +900,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
             <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 16px'}}/>
             <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
               {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>(
-                <button key={e} onClick={async()=>{await supabase.from('group_messages').update({content:selectedMsg.content+' '+e}).eq('id',selectedMsg.id);setMessages(prev=>prev.map(m=>m.id===selectedMsg.id?{...m,content:m.content+' '+e}:m));setSelectedMsg(null)}} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
+                <button key={e} onClick={async()=>{
+                  const newReactions = [...(selectedMsg.reactions||[]),{emoji:e,user_id:currentUser.id}]
+                  await supabase.from('group_messages').update({reactions:newReactions}).eq('id',selectedMsg.id)
+                  setMessages(prev=>prev.map(m=>m.id===selectedMsg.id?{...m,reactions:newReactions}:m))
+                  setSelectedMsg(null)
+                }} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
               ))}
             </div>
             <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
@@ -933,6 +938,9 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                     <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                   </div>
                 )}
+                {msg.reactions?.length>0&&<div style={{display:'flex',gap:2,marginTop:2,justifyContent:own?'flex-end':'flex-start'}}>
+                  {msg.reactions.map((r,i)=><span key={i} style={{background:'rgba(255,255,255,0.1)',borderRadius:10,padding:'2px 6px',fontSize:12}}>{r.emoji}</span>)}
+                </div>}
               </div>
             </div>
           )
@@ -2085,6 +2093,9 @@ function SphereAppInner({ currentUser }) {
                         <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                       </div>
                     )}
+                    {msg.reactions?.length>0&&<div style={{display:'flex',gap:2,marginTop:2,justifyContent:own?'flex-end':'flex-start'}}>
+                      {msg.reactions.map((r,i)=><span key={i} style={{background:'rgba(255,255,255,0.1)',borderRadius:10,padding:'2px 6px',fontSize:12}}>{r.emoji}</span>)}
+                    </div>}
                   </div>
                 </div>)
               })}
