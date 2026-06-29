@@ -973,23 +973,46 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   const [liked, setLiked] = useState({})
   const [likes, setLikes] = useState({})
   const [playing, setPlaying] = useState(true)
+  const [buffering, setBuffering] = useState(false)
+  const [animDir, setAnimDir] = useState(null) // 'up' | 'down' | null
+  const [animating, setAnimating] = useState(false)
+  const [showComments, setShowComments] = useState(false)
+  const [comments, setComments] = useState([])
+  const [commentText, setCommentText] = useState('')
+  const [commentCounts, setCommentCounts] = useState({})
   const videoRef = useRef(null)
   const fileRef = useRef(null)
   const touchStart = useRef(null)
+  const containerRef = useRef(null)
 
   useEffect(()=>{ loadReels() },[])
+  useEffect(()=>{ supabase.from('ads').select('*').eq('active',true).eq('type','reel').then(({data})=>setReelAds(data||[])) },[])
   useEffect(()=>{
-    supabase.from('ads').select('*').eq('active',true).eq('type','reel').then(({data})=>setReelAds(data||[]))
-  },[])
-  useEffect(()=>{ if(videoRef.current){ videoRef.current.currentTime=0; playing?videoRef.current.play().catch(()=>{}):videoRef.current.pause() } },[currentIdx,playing])
+    if(videoRef.current){
+      videoRef.current.currentTime=0
+      playing?videoRef.current.play().catch(()=>{}):videoRef.current.pause()
+    }
+  },[currentIdx,playing])
 
   const loadReels = async() => {
-    const {data} = await supabase.from('reels').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
+    const {data} = await supabase.from('reels').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color,verified,is_authentic),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
     if(!data) return
     setReels(data)
     const likedMap={}, likesMap={}
     data.forEach(r=>{ likedMap[r.id]=r.reel_likes?.some(l=>l.user_id===currentUser.id); likesMap[r.id]=r.reel_likes?.length||0 })
     setLiked(likedMap); setLikes(likesMap)
+    // preload first two videos
+    data.slice(0,2).forEach(r=>{ const v=document.createElement('video'); v.src=r.video_url; v.preload='auto' })
+  }
+
+  const goToReel = (nextIdx, dir) => {
+    if(animating) return
+    setAnimDir(dir)
+    setAnimating(true)
+    setTimeout(()=>{ setCurrentIdx(nextIdx); setAnimDir(null); setAnimating(false); setBuffering(false)
+      // preload next video
+      if(reels[nextIdx+1]) { const v=document.createElement('video'); v.src=reels[nextIdx+1].video_url; v.preload='auto' }
+    }, 320)
   }
 
   const toggleLike = async(reel) => {
@@ -998,6 +1021,19 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
     setLikes(p=>({...p,[reel.id]:(p[reel.id]||0)+(isLiked?-1:1)}))
     if(isLiked) await supabase.from('reel_likes').delete().eq('reel_id',reel.id).eq('user_id',currentUser.id)
     else await supabase.from('reel_likes').insert({reel_id:reel.id,user_id:currentUser.id})
+  }
+
+  const openComments = async(reel) => {
+    setShowComments(true)
+    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
+    setComments(data||[])
+  }
+
+  const postComment = async(reel) => {
+    if(!commentText.trim()) return
+    const {data:c} = await supabase.from('comments').insert({reel_id:reel.id,user_id:currentUser.id,content:commentText.trim()}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
+    if(c){ setComments(p=>[...p,c]); setCommentCounts(p=>({...p,[reel.id]:(p[reel.id]||0)+1})) }
+    setCommentText('')
   }
 
   const uploadReel = async() => {
@@ -1020,13 +1056,20 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
     if(currentIdx>=newReels.length) setCurrentIdx(Math.max(0,newReels.length-1))
   }
 
-  const handleTouchStart = (e) => { touchStart.current = e.touches[0].clientY }
+  const handleTouchStart = (e) => { if(showComments) return; touchStart.current = e.touches[0].clientY }
   const handleTouchEnd = (e) => {
-    if(!touchStart.current) return
+    if(showComments||!touchStart.current) return
     const diff = touchStart.current - e.changedTouches[0].clientY
-    if(Math.abs(diff)>50){ if(diff>0&&currentIdx<reels.length-1) setCurrentIdx(i=>i+1); else if(diff<0&&currentIdx>0) setCurrentIdx(i=>i-1) }
+    if(Math.abs(diff)>60){
+      if(diff>0 && currentIdx<reels.length-1) goToReel(currentIdx+1,'up')
+      else if(diff<0 && currentIdx>0) goToReel(currentIdx-1,'down')
+    }
     touchStart.current = null
   }
+
+  const slideStyle = animDir==='up' ? {transform:'translateY(-100%)',transition:'transform 0.32s cubic-bezier(0.4,0,0.2,1)'}
+    : animDir==='down' ? {transform:'translateY(100%)',transition:'transform 0.32s cubic-bezier(0.4,0,0.2,1)'}
+    : {transform:'translateY(0)',transition:'transform 0.32s cubic-bezier(0.4,0,0.2,1)'}
 
   const isAdSlot = reelAds.length>0 && (currentIdx+1)%5===0
   const currentAd = isAdSlot ? reelAds[Math.floor(currentIdx/5)%reelAds.length] : null
@@ -1050,10 +1093,12 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   )
 
   return (
-    <div style={{position:'fixed',inset:0,zIndex:400,background:'#000'}}
+    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',overflow:'hidden'}}
       onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
-      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:10,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:20,cursor:'pointer'}}>✕</button>
-      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:10,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
+
+      {/* top controls */}
+      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:20,cursor:'pointer'}}>✕</button>
+      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
 
       {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'#fff'}}>
         <p style={{fontSize:48}}>🎬</p>
@@ -1061,54 +1106,110 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
         <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
       </div>}
 
-      {isAdSlot&&currentAd&&<>
-        <video src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover'}} loop playsInline autoPlay muted={false}/>
-        <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-            <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
-            <div>
+      {/* animated reel container */}
+      {reels.length>0&&<div style={{...slideStyle,position:'absolute',inset:0}}>
+        {isAdSlot&&currentAd?<>
+          <video src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={false}/>
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
+          <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
                 <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{currentAd.advertiser_name}</span>
                 <span style={{background:'rgba(247,183,49,0.2)',border:'1px solid rgba(247,183,49,0.4)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
               </div>
             </div>
+            {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
+            {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
           </div>
-          {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
-          {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
-        </div>
-        <div style={{position:'absolute',bottom:40,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6}}>
-          {reels.map((_,i)=><div key={i} style={{width:i===currentIdx?20:6,height:6,borderRadius:3,background:i===currentIdx?'#fff':'rgba(255,255,255,0.4)',transition:'width 0.2s'}}/>)}
-        </div>
-      </>}
-      {!isAdSlot&&reel&&<>
-        <video ref={videoRef} src={reel.video_url} style={{width:'100%',height:'100%',objectFit:'cover'}} loop playsInline onClick={()=>setPlaying(p=>!p)} autoPlay muted={false}/>
-        {!playing&&<div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}><div style={{width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>▶️</div></div>}
-
-        <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
-          <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,cursor:'pointer'}} onClick={()=>onUserClick(reel.author)}>
-            <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={36}/>
-            <div>
-              <div style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</div>
-              <div style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>@{reel.author?.username}</div>
-            </div>
-          </div>
-          {reel.caption&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{reel.caption}</p>}
-        </div>
-
-        <div style={{position:'absolute',bottom:120,right:12,display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
-          <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:4,cursor:'pointer'}} onClick={()=>toggleLike(reel)}>
-            <span style={{fontSize:30}}>{liked[reel.id]?'❤️':'🤍'}</span>
-            <span style={{color:'#fff',fontSize:13,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
-          </div>
-          {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
-            <span style={{fontSize:28}}>🗑️</span>
+        </>:reel?<>
+          {/* dark background while buffering — no gray flash */}
+          <div style={{position:'absolute',inset:0,background:'#000',zIndex:0}}/>
+          {buffering&&<div style={{position:'absolute',inset:0,zIndex:2,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            <div style={{width:48,height:48,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.15)',borderTopColor:'#fff',animation:'spin 0.8s linear infinite'}}/>
           </div>}
-        </div>
+          <video ref={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',zIndex:1,background:'#000'}}
+            loop playsInline autoPlay muted={false}
+            onWaiting={()=>setBuffering(true)}
+            onPlaying={()=>setBuffering(false)}
+            onCanPlay={()=>setBuffering(false)}
+            onClick={()=>setPlaying(p=>!p)}/>
+          {/* gradient overlay */}
+          <div style={{position:'absolute',inset:0,zIndex:2,background:'linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 45%)',pointerEvents:'none'}}/>
+          {!playing&&<div style={{position:'absolute',inset:0,zIndex:3,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            <div style={{width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>▶️</div>
+          </div>}
 
-        <div style={{position:'absolute',bottom:40,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6}}>
-          {reels.map((_,i)=><div key={i} style={{width:i===currentIdx?20:6,height:6,borderRadius:3,background:i===currentIdx?'#fff':'rgba(255,255,255,0.4)',transition:'width 0.2s'}}/>)}
-        </div>
-      </>}
+          {/* author + caption */}
+          <div style={{position:'absolute',bottom:showComments?'52%':110,left:16,right:80,color:'#fff',zIndex:4,transition:'bottom 0.3s'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,cursor:'pointer'}} onClick={()=>onUserClick(reel.author)}>
+              <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={38}/>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
+                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:7,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>SV</span></span>}
+                  {reel.author?.is_authentic&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'#1877F2',flexShrink:0}}><svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'><polyline points='2,6 5,9 10,3' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+                </div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>@{reel.author?.username}</div>
+              </div>
+            </div>
+            {reel.caption&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{reel.caption}</p>}
+          </div>
+
+          {/* action buttons */}
+          <div style={{position:'absolute',bottom:130,right:12,display:'flex',flexDirection:'column',alignItems:'center',gap:22,zIndex:4}}>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>toggleLike(reel)}>
+              <span style={{fontSize:30}}>{liked[reel.id]?'❤️':'🤍'}</span>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>openComments(reel)}>
+              <span style={{fontSize:28}}>💬</span>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
+            </div>
+            {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
+              <span style={{fontSize:26}}>🗑️</span>
+            </div>}
+          </div>
+
+          {/* progress dots */}
+          <div style={{position:'absolute',bottom:72,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6,zIndex:4}}>
+            {reels.map((_,i)=><div key={i} style={{width:i===currentIdx?20:6,height:6,borderRadius:3,background:i===currentIdx?'#fff':'rgba(255,255,255,0.4)',transition:'width 0.2s'}}/>)}
+          </div>
+
+          {/* swipe hints */}
+          {currentIdx<reels.length-1&&<div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',color:'rgba(255,255,255,0.4)',fontSize:12,zIndex:4,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
+            <span style={{fontSize:16}}>↑</span>
+            <span>swipe for next</span>
+          </div>}
+
+          {/* comments panel */}
+          {showComments&&<div style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
+            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
+              <span style={{fontWeight:700,fontSize:15,color:'#fff'}}>Comments</span>
+              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'#888',fontSize:22,cursor:'pointer'}}>✕</button>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
+              {comments.length===0&&<p style={{color:'#555',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
+              {comments.map(c=>(
+                <div key={c.id} style={{display:'flex',gap:10}}>
+                  <Avatar url={c.author?.avatar_url} name={c.author?.display_name} color={c.author?.avatar_color||'#5B9CF6'} size={32}/>
+                  <div style={{flex:1}}>
+                    <span style={{fontWeight:700,fontSize:13,color:'#fff'}}>{c.author?.display_name} </span>
+                    <span style={{fontSize:13,color:'rgba(255,255,255,0.85)'}}>{c.content}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'10px 14px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center',paddingBottom:'env(safe-area-inset-bottom,10px)'}}>
+              <Avatar url={currentUser?.avatar_url} name={currentUser?.display_name} color={currentUser?.avatar_color||'#5B9CF6'} size={32}/>
+              <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&postComment(reel)} placeholder="Add a comment..." style={{flex:1,background:'rgba(255,255,255,0.08)',border:'none',borderRadius:20,padding:'10px 14px',color:'#fff',fontSize:14,outline:'none'}}/>
+              <button onClick={()=>postComment(reel)} disabled={!commentText.trim()} style={{background:commentText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Post</button>
+            </div>
+          </div>}
+        </>:null}
+      </div>}
+
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
   )
 }
