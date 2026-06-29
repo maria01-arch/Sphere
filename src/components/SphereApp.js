@@ -1008,6 +1008,16 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
     const likedMap={}, likesMap={}
     data.forEach(r=>{ likedMap[r.id]=r.reel_likes?.some(l=>l.user_id===currentUser.id); likesMap[r.id]=r.reel_likes?.length||0 })
     setLiked(likedMap); setLikes(likesMap)
+    // load real comment counts for all reels
+    const ids = data.map(r=>r.id)
+    if(ids.length>0){
+      const {data:cc} = await supabase.from('comments').select('reel_id').in('reel_id',ids)
+      if(cc){
+        const countMap={}
+        cc.forEach(c=>{ countMap[c.reel_id]=(countMap[c.reel_id]||0)+1 })
+        setCommentCounts(countMap)
+      }
+    }
     // preload first two videos
     data.slice(0,2).forEach(r=>{ const v=document.createElement('video'); v.src=r.video_url; v.preload='auto' })
   }
@@ -1200,11 +1210,15 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
             <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
               {comments.length===0&&<p style={{color:'#555',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
               {comments.map(c=>(
-                <div key={c.id} style={{display:'flex',gap:10}}>
-                  <Avatar url={c.author?.avatar_url} name={c.author?.display_name} color={c.author?.avatar_color||'#5B9CF6'} size={32}/>
-                  <div style={{flex:1}}>
-                    <span style={{fontWeight:700,fontSize:13,color:'#fff'}}>{c.author?.display_name} </span>
-                    <span style={{fontSize:13,color:'rgba(255,255,255,0.85)'}}>{c.content}</span>
+                <div key={c.id} style={{display:'flex',gap:10,alignItems:'flex-end'}}>
+                  <div style={{cursor:'pointer',flexShrink:0}} onClick={()=>{ setShowComments(false); onUserClick(c.author) }}>
+                    <Avatar url={c.author?.avatar_url} name={c.author?.display_name} color={c.author?.avatar_color||'#5B9CF6'} size={32}/>
+                  </div>
+                  <div style={{flex:1,maxWidth:'80%'}}>
+                    <div style={{fontSize:11,color:'#555',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
+                    <div style={{background:'rgba(255,255,255,0.09)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
+                      <span style={{fontSize:14,color:'rgba(255,255,255,0.92)',lineHeight:1.4}}>{c.content}</span>
+                    </div>
                   </div>
                 </div>
               ))}
