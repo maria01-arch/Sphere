@@ -50,11 +50,21 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
   const [isFollowing, setIsFollowing] = useState(false)
   const [showBigAvatar, setShowBigAvatar] = useState(false)
   const [followerCount, setFollowerCount] = useState(user?.followers_count||0)
+  const [followingCount, setFollowingCount] = useState(user?.following_count||0)
+  const [profile, setProfile] = useState(user)
   const [loading, setLoading] = useState(true)
-  const color = user?.avatar_color || getColor(user?.id)
+  const color = profile?.avatar_color || getColor(profile?.id)
 
   useEffect(() => {
     if (!user) return
+    // fetch full fresh profile so badges and counts are always accurate
+    supabase.from('profiles').select('*').eq('id',user.id).single()
+      .then(({data})=>{ if(data) setProfile(data) })
+    // fetch real follower/following counts
+    Promise.all([
+      supabase.from('follows').select('id',{count:'exact',head:true}).eq('following_id',user.id),
+      supabase.from('follows').select('id',{count:'exact',head:true}).eq('follower_id',user.id)
+    ]).then(([{count:frs},{count:fng}])=>{ setFollowerCount(frs||0); setFollowingCount(fng||0) })
     supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',user.id).order('created_at',{ascending:false})
       .then(({data}) => { setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,user_liked:p.likes?.some(l=>l.user_id===currentUser.id)}))); setLoading(false) })
     supabase.from('follows').select('id').eq('follower_id',currentUser.id).eq('following_id',user.id).maybeSingle()
@@ -76,17 +86,17 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
     <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
-        <span style={{fontWeight:700,fontSize:17}}>{user?.display_name}</span>
+        <span style={{fontWeight:700,fontSize:17}}>{profile?.display_name}</span>
       </div>
       <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
-      {showBigAvatar&&user?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={user.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt=""/></div>}
+      {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt=""/></div>}
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
         <div onClick={()=>setShowBigAvatar(true)} style={{cursor:'pointer'}}>
-          <Avatar url={user?.avatar_url} name={user?.display_name} color={color} size={72}/>
+          <Avatar url={profile?.avatar_url} name={profile?.display_name} color={color} size={72}/>
         </div>
         <div style={{display:'flex',gap:8}}>
-          {user.id !== currentUser.id && <>
-            <div onClick={()=>onMessage(user)} style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none'}}>💬 Message</div>
+          {profile?.id !== currentUser.id && <>
+            <div onClick={()=>onMessage(profile)} style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none'}}>💬 Message</div>
             <button onClick={toggleFollow} style={{background:isFollowing?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:isFollowing?'1px solid rgba(255,255,255,0.15)':'none',borderRadius:20,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:13}}>
               {isFollowing?'Following':'Follow'}
             </button>
@@ -95,14 +105,13 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
       </div>
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{user?.display_name}</h2>{user?.verified&&<span title='Sphere Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>SV</span></span>}{user?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
-
-      </div>
-        <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{user?.username}</p>
-        {user?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{user.bio}</p>}
-        {user?.location&&<p style={{color:'#555',fontSize:13,marginBottom:8}}>📍 {user.location}</p>}
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Sphere Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>SV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        </div>
+        <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
+        {profile?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
+        {profile?.location&&<p style={{color:'#555',fontSize:13,marginBottom:8}}>📍 {profile.location}</p>}
         <div style={{display:'flex',gap:20}}>
-          <span style={{fontSize:14}}><strong>{user?.following_count||0}</strong> <span style={{color:'#555'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followingCount}</strong> <span style={{color:'#555'}}>Following</span></span>
           <span style={{fontSize:14}}><strong>{followerCount}</strong> <span style={{color:'#555'}}>Followers</span></span>
         </div>
       </div>
