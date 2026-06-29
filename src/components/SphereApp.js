@@ -1402,10 +1402,13 @@ function OmniCoreAI({ currentUser, onClose }) {
     <div style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
         <button onClick={onClose} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
-        <div style={{width:38,height:38,borderRadius:12,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🤖</div>
+        <div style={{width:38,height:38,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🤖</div>
         <div>
-          <div style={{fontWeight:800,fontSize:16,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>OmniCore AI</div>
-          <div style={{color:'#00C9A7',fontSize:11}}>● by OmniSphereLabs</div>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{fontWeight:800,fontSize:16,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>OmniCore AI</div>
+            <span style={{fontSize:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+          </div>
+          <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
         </div>
       </div>
 
@@ -1613,7 +1616,8 @@ function SphereAppInner({ currentUser }) {
   },[])
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
-  const [showOmniCore, setShowOmniCore] = useState(false)
+  const OMNICORE_ID = 'omnicore-ai'
+  const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'OmniCore AI',username:'omnicore',avatar_color:'#5B9CF6',avatar_url:null,is_ai:true}
   const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
   useEffect(()=>{
@@ -1931,7 +1935,7 @@ function SphereAppInner({ currentUser }) {
   const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
-  if(showOmniCore) return <OmniCoreAI currentUser={currentUser} onClose={()=>setShowOmniCore(false)}/>
+  
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
@@ -1947,7 +1951,6 @@ function SphereAppInner({ currentUser }) {
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           
           {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>📢 Ads</button>}
-          <button onClick={()=>setShowOmniCore(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>🤖 AI</button>
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
         </div>
       </div>
@@ -1992,7 +1995,19 @@ function SphereAppInner({ currentUser }) {
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
               <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
             </div>
-            {conversations.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>💬</p><p style={{color:'#555',marginTop:8,fontSize:15}}>No messages yet</p><p style={{color:'#444',fontSize:13,marginTop:4}}>Tap New to start a conversation</p></div>}
+            {/* OmniCore AI — always pinned first */}
+            <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
+              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',background:'rgba(91,156,246,0.04)'}}>
+              <div style={{width:50,height:50,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>🤖</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                  <span style={{fontWeight:700,fontSize:15}}>OmniCore AI</span>
+                  <span style={{fontSize:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+                </div>
+                <p style={{color:'#555',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
+              </div>
+              <span style={{color:'#444',fontSize:20}}>›</span>
+            </div>
             {conversations.map(conv=>(
               <div key={conv.id}
                 onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
@@ -2043,7 +2058,8 @@ function SphereAppInner({ currentUser }) {
             ))}
           </>}
 
-          {dmView==='chat'&&selectedConv&&<>
+          {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<OmniCoreAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
+          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<>
             <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:58,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',zIndex:5}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
               <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
