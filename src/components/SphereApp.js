@@ -986,6 +986,13 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   const containerRef = useRef(null)
 
   useEffect(()=>{ loadReels() },[])
+  useEffect(()=>{
+    // lock body scroll/overscroll while reels are open
+    const prev = document.body.style.overscrollBehavior
+    document.body.style.overscrollBehavior = 'none'
+    document.body.style.overflow = 'hidden'
+    return ()=>{ document.body.style.overscrollBehavior = prev; document.body.style.overflow = '' }
+  },[])
   useEffect(()=>{ supabase.from('ads').select('*').eq('active',true).eq('type','reel').then(({data})=>setReelAds(data||[])) },[])
   useEffect(()=>{
     if(videoRef.current){
@@ -1025,15 +1032,24 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
 
   const openComments = async(reel) => {
     setShowComments(true)
-    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
-    setComments(data||[])
+    if(comments.length===0){
+      const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
+      setComments(data||[])
+      setCommentCounts(p=>({...p,[reel.id]:data?.length||0}))
+    }
   }
 
   const postComment = async(reel) => {
     if(!commentText.trim()) return
-    const {data:c} = await supabase.from('comments').insert({reel_id:reel.id,user_id:currentUser.id,content:commentText.trim()}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
-    if(c){ setComments(p=>[...p,c]); setCommentCounts(p=>({...p,[reel.id]:(p[reel.id]||0)+1})) }
+    const text = commentText.trim()
     setCommentText('')
+    // optimistic insert immediately so it never disappears
+    const optimistic = {id:'tmp_'+Date.now(),reel_id:reel.id,user_id:currentUser.id,content:text,author:{id:currentUser.id,display_name:currentUser.display_name,username:currentUser.username,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    setComments(p=>[...p,optimistic])
+    setCommentCounts(p=>({...p,[reel.id]:(p[reel.id]||0)+1}))
+    const {data:c} = await supabase.from('comments').insert({reel_id:reel.id,user_id:currentUser.id,content:text}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
+    // replace optimistic with real
+    if(c) setComments(p=>p.map(x=>x.id===optimistic.id?c:x))
   }
 
   const uploadReel = async() => {
@@ -1093,7 +1109,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   )
 
   return (
-    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',overflow:'hidden'}}
+    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',overflow:'hidden',overscrollBehavior:'none',touchAction:'pan-y'}}
       onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
 
       {/* top controls */}
@@ -1171,15 +1187,8 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
             </div>}
           </div>
 
-          {/* progress dots */}
-          <div style={{position:'absolute',bottom:72,left:'50%',transform:'translateX(-50%)',display:'flex',gap:6,zIndex:4}}>
-            {reels.map((_,i)=><div key={i} style={{width:i===currentIdx?20:6,height:6,borderRadius:3,background:i===currentIdx?'#fff':'rgba(255,255,255,0.4)',transition:'width 0.2s'}}/>)}
-          </div>
-
-          {/* swipe hints */}
-          {currentIdx<reels.length-1&&<div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',color:'rgba(255,255,255,0.4)',fontSize:12,zIndex:4,display:'flex',flexDirection:'column',alignItems:'center',gap:2}}>
-            <span style={{fontSize:16}}>↑</span>
-            <span>swipe for next</span>
+          {currentIdx<reels.length-1&&<div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',color:'rgba(255,255,255,0.35)',fontSize:11,zIndex:4,display:'flex',flexDirection:'column',alignItems:'center',gap:2,pointerEvents:'none'}}>
+            <span style={{fontSize:14}}>↑</span><span>swipe up</span>
           </div>}
 
           {/* comments panel */}
