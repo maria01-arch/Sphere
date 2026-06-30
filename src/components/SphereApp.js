@@ -31,6 +31,22 @@ function timeAgo(ts) {
   return `${Math.floor(d/86400)}d`
 }
 
+function TextWithMentions({ text, supabase, onUserClick }) {
+  if(!text) return null
+  const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
+  return <>{parts.map((part,i)=>{
+    if(part.startsWith('@')&&part.length>1){
+      const handle = part.slice(1)
+      return <span key={i} onClick={async(e)=>{
+        e.stopPropagation()
+        const {data} = await supabase.from('profiles').select('*').eq('username',handle.toLowerCase()).maybeSingle()
+        if(data) onUserClick(data)
+      }} style={{color:'#5B9CF6',fontWeight:600,cursor:'pointer'}}>{part}</span>
+    }
+    return <span key={i}>{part}</span>
+  })}</>
+}
+
 function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
   const i = (name||'?').trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)||'??'
   return (
@@ -403,6 +419,36 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
 }
 
 // ── POST CARD ──────────────────────────────────────────────────────────────
+function ReelPreviewCard({ supabase, onOpen }) {
+  const [reel, setReel] = useState(null)
+  useEffect(()=>{
+    let cancelled = false
+    supabase.from('reels').select('id,video_url,caption,author:profiles(display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}).limit(20).then(({data})=>{
+      if(cancelled||!data?.length) return
+      setReel(data[Math.floor(Math.random()*data.length)])
+    })
+    return ()=>{cancelled=true}
+  },[])
+  if(!reel) return null
+  return (
+    <div onClick={()=>onOpen(reel.id)} style={{margin:'10px 16px',borderRadius:18,overflow:'hidden',position:'relative',cursor:'pointer',height:200,background:'#000'}}>
+      <video src={reel.video_url} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
+      <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
+      <div style={{position:'absolute',top:12,left:12,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.5)',borderRadius:14,padding:'4px 10px'}}>
+        <span style={{fontSize:13}}>🎬</span>
+        <span style={{color:'#fff',fontSize:12,fontWeight:700}}>Reels</span>
+      </div>
+      <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        <div style={{width:56,height:56,borderRadius:'50%',background:'rgba(255,255,255,0.15)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>▶️</div>
+      </div>
+      <div style={{position:'absolute',bottom:10,left:12,right:12,display:'flex',alignItems:'center',gap:8}}>
+        <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={26}/>
+        <span style={{color:'#fff',fontSize:13,fontWeight:600,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
+      </div>
+    </div>
+  )
+}
+
 function AdCard({ ad }) {
   const openLink = () => {
     if(!ad.link_url) return
@@ -509,7 +555,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
             </div>
             {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:13,padding:'2px 6px'}}>🗑️</button>}
           </div>
-          {post.content&&<p style={{color:'#ddd',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word'}}>{post.content}</p>}
+          {post.content&&<p style={{color:'#ddd',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
           {post.image_url&&<img src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover'}} alt="post"/>}
           <div style={{display:'flex'}}>
             <button onClick={loadComments} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showComments?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
@@ -563,7 +609,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 
-function NotificationsPanel({ currentUser, supabase, onUserClick }) {
+function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick }) {
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
   const typeInfo = {
@@ -574,6 +620,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
     welcome:{emoji:'🌐',text:'Welcome to Sphere!'},
     follow_request:{emoji:'👤',text:'sent you a follow request'},
     follow_accepted:{emoji:'✅',text:'accepted your follow request'},
+    mention:{emoji:'📌',text:'tagged you in a post'},
   }
   useEffect(()=>{
     supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data})=>{setNotifs(data||[]);setLoading(false)})
@@ -592,7 +639,8 @@ function NotificationsPanel({ currentUser, supabase, onUserClick }) {
       {notifs.map((n,i)=>{
         const info = typeInfo[n.type]||{emoji:'🔔',text:''}
         const actor = n.actor
-        return(<div key={n.id||i} onClick={()=>actor&&onUserClick(actor)} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',cursor:actor?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
+        const goesToPost = ['mention','like','comment','repost'].includes(n.type) && n.post_id
+        return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
           <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
             {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span>{info.emoji}</span>}
           </div>
@@ -622,6 +670,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [editText, setEditText] = useState('')
   const [replyTo, setReplyTo] = useState(null)
   const longPressTimer = useRef(null)
+  const [fullscreenImg, setFullscreenImg] = useState(null)
   const gcChannelRef = useRef(null)
   const gcTypingTimeouts = useRef({})
   const gcMyTypingThrottle = useRef(0)
@@ -658,7 +707,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
         setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,...payload.new}:m))
       })
-      .on('postgres_changes',{event:'DELETE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'group_messages'},(payload)=>{
         setMessages(prev=>prev.filter(m=>m.id!==payload.old.id))
       })
       .on('postgres_changes',{event:'*',schema:'public',table:'group_message_reactions'},async()=>{
@@ -762,7 +811,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       await supabase.from('group_message_reactions').upsert({group_message_id:msg.id,user_id:currentUser.id,emoji},{onConflict:'group_message_id,user_id'})
     }
   }
-  const deleteGCMsg = async(msg) => { setSelectedMsg(null); await supabase.from('group_messages').delete().eq('id',msg.id).eq('sender_id',currentUser.id); setMessages(prev=>prev.filter(m=>m.id!==msg.id)) }
+  const deleteGCMsg = async(msg) => {
+    setSelectedMsg(null)
+    // optimistic remove
+    setMessages(prev=>prev.filter(m=>m.id!==msg.id))
+    await supabase.from('group_messages').delete().eq('id',msg.id).eq('sender_id',currentUser.id)
+  }
   const startEditGCMsg = (msg) => { setSelectedMsg(null); setEditingMsg(msg.id); setEditText(msg.content) }
   const saveEditGCMsg = async() => { if(!editText.trim()) return; await supabase.from('group_messages').update({content:editText.trim()}).eq('id',editingMsg).eq('sender_id',currentUser.id); setMessages(prev=>prev.map(m=>m.id===editingMsg?{...m,content:editText.trim()}:m)); setEditingMsg(null); setEditText('') }
 
@@ -911,6 +965,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
   return (
     <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
+      {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
@@ -969,7 +1024,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                   </div>
                 ):(
                   <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                    {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block'}} alt="img"/>:msg.content}
+                    {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
                     <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                   </div>
                 )}
@@ -1003,7 +1058,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 }
 
-function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
+function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId }) {
   const [reels, setReels] = useState([])
   const [reelAds, setReelAds] = useState([])
   const [currentIdx, setCurrentIdx] = useState(0)
@@ -1061,6 +1116,8 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
     }
     // preload first two videos
     data.slice(0,2).forEach(r=>{ const v=document.createElement('video'); v.src=r.video_url; v.preload='auto' })
+    // jump to specific reel if opened from feed preview
+    if(initialReelId){ const idx=data.findIndex(r=>r.id===initialReelId); if(idx>=0) setCurrentIdx(idx) }
   }
 
   const goToReel = (nextIdx, dir) => {
@@ -1278,7 +1335,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose }) {
   )
 }
 
-function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav }) {
+function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav, pendingReelId, onReelsOpened }) {
   const [groups, setGroups] = useState([])
   const [pulses, setPulses] = useState([])
   const [myPulse, setMyPulse] = useState([])
@@ -1315,6 +1372,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   useEffect(()=>{
     if(autoOpenGroup){setViewingGroup(autoOpenGroup);if(onAutoOpenDone)onAutoOpenDone()}
   },[autoOpenGroup])
+  useEffect(()=>{
+    if(pendingReelId){ setShowReels(true); onReelsOpened&&onReelsOpened() }
+  },[pendingReelId])
   useEffect(()=>{
     onHideNav&&onHideNav(!!(viewingGroup||viewingPulse||showCreatePulse||showCreateGroup))
   },[viewingGroup,viewingPulse,showCreatePulse,showCreateGroup])
@@ -1383,7 +1443,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
   }
 
-  if(showReels) return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false)}}/>
+  if(showReels) return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={pendingReelId} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false)}}/>
 
   if(viewingPulse) {
     const allPulses=[...(Array.isArray(myPulse)?myPulse:[]),...pulses]
@@ -1758,6 +1818,7 @@ function SphereAppInner({ currentUser }) {
   const ADMIN_ID = 'b29fa752-34f5-4a3e-a3e7-8178c2b176ae'
   const [tab, setTab] = useState('home')
   const [autoOpenGroup, setAutoOpenGroup] = useState(null)
+  const [pendingReelId, setPendingReelId] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
@@ -1792,6 +1853,7 @@ function SphereAppInner({ currentUser }) {
     dmChannelRef.current?.send({type:'broadcast',event:'typing',payload:{user_id:currentUser.id}})
   }
   const [sendingDMImg, setSendingDMImg] = useState(false)
+  const [fullscreenImg, setFullscreenImg] = useState(null)
   const [unreadDM, setUnreadDM] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [unreadGC, setUnreadGC] = useState(false)
@@ -1842,6 +1904,11 @@ function SphereAppInner({ currentUser }) {
   const [people, setPeople] = useState([])
   const [notifs, setNotifs] = useState([])
   const [viewingUser, setViewingUser] = useState(null)
+  const [viewingPost, setViewingPost] = useState(null)
+  const openPost = async(postId) => {
+    const {data} = await supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').eq('id',postId).single()
+    if(data) setViewingPost({...data,user_liked:data.likes?.some(l=>l.user_id===currentUser.id),user_reposted:data.reposts?.some(r=>r.user_id===currentUser.id),likes_count:data.likes?.length||0,reposts_count:data.reposts?.length||0,comments_count:data.comments?.length||0})
+  }
   const [showMyProfile, setShowMyProfile] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
@@ -1973,15 +2040,20 @@ function SphereAppInner({ currentUser }) {
 
   const loadPosts = useCallback(async (feedType='foryou') => {
     setLoading(true)
-    let query = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(40)
+    let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(40)
+    let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(40)
     if (feedType==='following') {
       const {data:follows} = await supabase.from('follows').select('following_id').eq('follower_id',currentUser.id)
       const ids = (follows||[]).map(f=>f.following_id)
       if (!ids.length) { setPosts([]); setLoading(false); return }
-      query = query.in('user_id',ids)
+      postsQuery = postsQuery.in('user_id',ids)
+      repostsQuery = repostsQuery.in('user_id',ids)
     }
-    const {data} = await query
-    setPosts((data||[]).map(p=>({...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
+    const [{data},{data:repostsData}] = await Promise.all([postsQuery,repostsQuery])
+    const normalized = (data||[]).map(p=>({...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,sortTime:p.created_at}))
+    const repostItems = (repostsData||[]).filter(r=>r.post).map(r=>({...r.post,user_liked:r.post.likes?.some(l=>l.user_id===currentUser.id),user_reposted:r.post.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:r.post.likes?.length||0,reposts_count:r.post.reposts?.length||0,comments_count:r.post.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at}))
+    const merged = [...normalized,...repostItems].sort((a,b)=>new Date(b.sortTime)-new Date(a.sortTime)).slice(0,50)
+    setPosts(merged)
     setLoading(false)
   },[currentUser.id])
 
@@ -2085,7 +2157,19 @@ function SphereAppInner({ currentUser }) {
       imageUrl = urlData.publicUrl
     }
     const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
-    if(data) setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
+    if(data) {
+      setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
+      // detect @mentions and notify tagged users
+      const handles = [...new Set((composeText.match(/@([a-zA-Z0-9_]+)/g)||[]).map(h=>h.slice(1).toLowerCase()))]
+      if(handles.length){
+        const {data:taggedUsers} = await supabase.from('profiles').select('id,username').in('username',handles)
+        if(taggedUsers?.length){
+          await Promise.all(taggedUsers.filter(u=>u.id!==currentUser.id).map(u=>
+            supabase.from('notifications').insert({user_id:u.id,actor_id:currentUser.id,type:'mention',post_id:data.id})
+          ))
+        }
+      }
+    }
     setComposeText(''); setComposeImage(null); setComposeImageUrl(null); setShowCompose(false)
   }
 
@@ -2212,6 +2296,15 @@ function SphereAppInner({ currentUser }) {
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser}/>
+  if(viewingPost) return (
+    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setViewingPost(null)} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>Post</span>
+      </div>
+      <PostCard post={viewingPost} currentUser={currentUser} supabase={supabase} onUserClick={u=>{setViewingPost(null);handleUserClick(u)}} onDelete={null} autoExpandComments/>
+    </div>
+  )
 
   return (
     <div style={{minHeight:'100vh',background:'#090B10',maxWidth:600,margin:'0 auto',color:'#fff',fontFamily:'sans-serif'}}>
@@ -2237,14 +2330,20 @@ function SphereAppInner({ currentUser }) {
           {loading&&<div style={{padding:'50px',textAlign:'center',color:'#444'}}>Loading...</div>}
           {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'#666',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Tap + to post!'}</p></div>}
           {posts.map((post,i)=>(
-            <div key={post.id}>
+            <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
+              {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'#888',fontSize:13,cursor:'pointer'}}>
+                <span style={{fontSize:14}}>🔁</span>
+                <span><strong style={{color:'#aaa'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
+              </div>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
+              {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTab('pulse');setPendingReelId(reelId)}}/>}
             </div>
           ))}
         </>}
 
         {tab==='messages'&&<>
+          {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
           {dmView==='list'&&<>
             <div style={{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
@@ -2369,7 +2468,7 @@ function SphereAppInner({ currentUser }) {
                       </div>
                     ):(
                       <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                        {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block'}} alt="img"/>:msg.content}
+                        {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
                         <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
                           <span>{timeAgo(msg.created_at)}</span>
                           {own&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
@@ -2442,10 +2541,10 @@ function SphereAppInner({ currentUser }) {
           </>}
         </>}
 
-        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav}/>}
+        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
-        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick}/>}
+        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>}
       </div>
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
