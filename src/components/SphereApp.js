@@ -59,12 +59,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
     if (!user) return
     // fetch full fresh profile so badges and counts are always accurate
     supabase.from('profiles').select('*').eq('id',user.id).single()
-      .then(({data})=>{ if(data) setProfile(data) })
-    // fetch real follower/following counts
-    Promise.all([
-      supabase.from('follows').select('id',{count:'exact',head:true}).eq('following_id',user.id),
-      supabase.from('follows').select('id',{count:'exact',head:true}).eq('follower_id',user.id)
-    ]).then(([{count:frs},{count:fng}])=>{ setFollowerCount(frs||0); setFollowingCount(fng||0) })
+      .then(({data})=>{ if(data){ setProfile(data); setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0) } })
     supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',user.id).order('created_at',{ascending:false})
       .then(({data}) => { setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,user_liked:p.likes?.some(l=>l.user_id===currentUser.id)}))); setLoading(false) })
     supabase.from('follows').select('id').eq('follower_id',currentUser.id).eq('following_id',user.id).maybeSingle()
@@ -356,10 +351,8 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
         setLoading(false)
       })
-    Promise.all([
-      supabase.from('follows').select('id',{count:'exact',head:true}).eq('following_id',currentUser.id),
-      supabase.from('follows').select('id',{count:'exact',head:true}).eq('follower_id',currentUser.id)
-    ]).then(([{count:frs},{count:fng}])=>{ setFollowerCount(frs||0); setFollowingCount(fng||0) })
+    supabase.from('profiles').select('followers_count,following_count').eq('id',currentUser.id).single()
+      .then(({data})=>{ if(data){ setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0) } })
   },[])
 
   const deletePost = async (postId) => {
@@ -629,6 +622,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [editText, setEditText] = useState('')
   const [replyTo, setReplyTo] = useState(null)
   const longPressTimer = useRef(null)
+  const gcChannelRef = useRef(null)
+  const gcTypingTimeouts = useRef({})
+  const gcMyTypingThrottle = useRef(0)
+  const [typingUsers, setTypingUsers] = useState({})
+  const sendGCTyping = () => {
+    const now = Date.now()
+    if(now - gcMyTypingThrottle.current < 2000) return
+    gcMyTypingThrottle.current = now
+    gcChannelRef.current?.send({type:'broadcast',event:'typing',payload:{user_id:currentUser.id,name:currentUser.display_name?.split(' ')[0]||'Someone'}})
+  }
   const [editName, setEditName] = useState(group.name)
   const [sendingImg, setSendingImg] = useState(false)
   const imgRef = useRef(null)
@@ -643,13 +646,14 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const isAdmin = myRole==='admin'
   const isCreator = group.creator_id===currentUser.id
 
-  useEffect(()=>{ loadAll() },[])
+  useEffect(()=>{ loadAll(); supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{}) },[])
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
   useEffect(()=>{
     const ch = supabase.channel('gc:'+group.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('temp_')),data])
+        supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{})
       })
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
         setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,...payload.new}:m))
@@ -661,7 +665,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
         if(data) setMessages(data)
       })
+      .on('broadcast',{event:'typing'},(payload)=>{
+        if(payload.payload?.user_id===currentUser.id) return
+        setTypingUsers(prev=>({...prev,[payload.payload.user_id]:payload.payload.name}))
+        clearTimeout(gcTypingTimeouts.current[payload.payload.user_id])
+        gcTypingTimeouts.current[payload.payload.user_id] = setTimeout(()=>{
+          setTypingUsers(prev=>{ const n={...prev}; delete n[payload.payload.user_id]; return n })
+        },3000)
+      })
       .subscribe()
+    gcChannelRef.current = ch
     return()=>supabase.removeChannel(ch)
   },[])
 
@@ -974,6 +987,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       </div>
 
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+        {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
         {replyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
           <span style={{color:'#888',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{replyTo}</span></span>
           <button onClick={()=>setReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:18}}>✕</button>
@@ -981,7 +995,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
-          <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+        <input value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping()}} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
         </div>
       </div>
@@ -1467,12 +1481,12 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         {groupSearch&&searchedGroups.length===0&&<p style={{color:'#444',fontSize:13,padding:'8px 4px'}}>No groups found for "@{groupSearch}"</p>}
       </div>
 
-      {groups.length>0&&<>
-        <p style={{padding:'0 16px 8px',color:'#555',fontSize:13,fontWeight:600}}>GROUPS</p>
+      {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).length>0&&<>
+        <p style={{padding:'0 16px 8px',color:'#555',fontSize:13,fontWeight:600}}>MY GROUPS</p>
         <div style={{display:'flex',gap:12,padding:'0 16px 16px',overflowX:'auto',scrollbarWidth:'none'}}>
-          {groups.map(g=>(
-            <div key={g.id} onClick={()=>joinGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
-              <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:g.group_members?.some(m=>m.user_id===currentUser.id)?'2px solid #5B9CF6':'2px solid transparent',overflow:'hidden'}}>
+          {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).map(g=>(
+            <div key={g.id} onClick={()=>setViewingGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
+              <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:'2px solid #5B9CF6',overflow:'hidden'}}>
               {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:g.name[0]}
             </div>
               <span style={{color:'#ccc',fontSize:11,maxWidth:60,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
@@ -1749,7 +1763,54 @@ function SphereAppInner({ currentUser }) {
   const [dmReplyTo, setDmReplyTo] = useState(null)
   const dmLongPressTimer = useRef(null)
   const dmImgRef = useRef(null)
+  const dmChannelRef = useRef(null)
+  const dmTypingTimeoutRef = useRef(null)
+  const dmMyTypingThrottle = useRef(0)
+  const [otherTyping, setOtherTyping] = useState(false)
+  const sendDMTyping = () => {
+    const now = Date.now()
+    if(now - dmMyTypingThrottle.current < 2000) return
+    dmMyTypingThrottle.current = now
+    dmChannelRef.current?.send({type:'broadcast',event:'typing',payload:{user_id:currentUser.id}})
+  }
   const [sendingDMImg, setSendingDMImg] = useState(false)
+  const [unreadDM, setUnreadDM] = useState(0)
+  const [unreadNotifs, setUnreadNotifs] = useState(0)
+  const [unreadGC, setUnreadGC] = useState(false)
+
+  const loadUnreadCounts = async () => {
+    try {
+      const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
+      if(parts?.length){
+        let dmCount = 0
+        await Promise.all(parts.map(async p=>{
+          const {count:c} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',p.conversation_id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
+          if(c>0) dmCount++
+        }))
+        setUnreadDM(dmCount)
+      } else setUnreadDM(0)
+
+      const {count:nc} = await supabase.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',currentUser.id).eq('read',false)
+      setUnreadNotifs(nc||0)
+
+      const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+      if(mems?.length){
+        let hasUnread = false
+        for(const m of mems){
+          const {count:gc} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',m.group_id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
+          if(gc>0){ hasUnread=true; break }
+        }
+        setUnreadGC(hasUnread)
+      } else setUnreadGC(false)
+    } catch(e) { /* tables may not have these columns yet */ }
+  }
+
+  useEffect(()=>{
+    loadUnreadCounts()
+    const interval = setInterval(loadUnreadCounts, 15000)
+    return ()=>clearInterval(interval)
+  },[])
+  useEffect(()=>{ loadUnreadCounts() },[tab])
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search)
     const gid = params.get('opengroup')
@@ -1790,6 +1851,7 @@ function SphereAppInner({ currentUser }) {
         const {data:actor} = await supabase.from('profiles').select('display_name').eq('id',payload.new.actor_id).single()
         const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your sphere',follow_accepted:'✅ accepted your follow request'}
         showLocalNotif('🌐 Sphere', (actor?.display_name||'Someone')+' '+(info[payload.new.type]||'sent you a notification'))
+        loadUnreadCounts()
       })
       .subscribe()
 
@@ -1802,6 +1864,7 @@ function SphereAppInner({ currentUser }) {
             if(payload.new.sender_id === currentUser.id) return
             const {data:sender} = await supabase.from('profiles').select('display_name').eq('id',payload.new.sender_id).single()
             showLocalNotif('💬 '+(sender?.display_name||'Someone'), payload.new.content?.slice(0,80)||'Sent you a message')
+            loadUnreadCounts()
           })
           .subscribe()
       })
@@ -1944,18 +2007,35 @@ function SphereAppInner({ currentUser }) {
 
   useEffect(()=>{
     if(!selectedConv) return
+    if(selectedConv.id!=='omnicore-ai') {
+      supabase.from('conversation_participants').update({last_read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).eq('user_id',currentUser.id).then(()=>loadUnreadCounts())
+      // mark all messages from the other person as read since this chat is open
+      supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
+    }
     supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
         setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('tmp')),data])
-        if(data.sender_id !== currentUser.id) showLocalNotif('💬 New Message', (data.sender?.display_name||'Someone')+': '+data.content?.slice(0,60))
+        if(data.sender_id !== currentUser.id) {
+          showLocalNotif('💬 New Message', (data.sender?.display_name||'Someone')+': '+data.content?.slice(0,60))
+          // immediately mark as read since the chat is actively open
+          supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',data.id).then(()=>{})
+        }
       }
+    }).on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},(payload)=>{
+      setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,read_at:payload.new.read_at}:m))
     }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
       if(data) setMessages(data)
+    }).on('broadcast',{event:'typing'},(payload)=>{
+      if(payload.payload?.user_id===currentUser.id) return
+      setOtherTyping(true)
+      clearTimeout(dmTypingTimeoutRef.current)
+      dmTypingTimeoutRef.current = setTimeout(()=>setOtherTyping(false),3000)
     }).subscribe()
-    return()=>supabase.removeChannel(ch)
+    dmChannelRef.current = ch
+    return()=>{ supabase.removeChannel(ch); setOtherTyping(false) }
   },[selectedConv])
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
@@ -2128,23 +2208,6 @@ function SphereAppInner({ currentUser }) {
         </div>
       </div>
 
-      {typeof Notification !== 'undefined' && Notification.permission !== 'granted' && (
-        <div onClick={async()=>{
-          if(Notification.permission === 'denied'){
-            alert('Notifications are blocked. Please go to your browser settings and allow notifications for this site, then refresh.')
-            return
-          }
-          const p = await Notification.requestPermission()
-          if(p==='granted') window.location.reload()
-        }} style={{margin:'8px 16px',background:'linear-gradient(135deg,rgba(91,156,246,0.15),rgba(132,94,247,0.15))',border:'1px solid rgba(91,156,246,0.3)',borderRadius:12,padding:'10px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer'}}>
-          <span style={{fontSize:20}}>🔔</span>
-          <div style={{flex:1}}>
-            <div style={{color:'#fff',fontWeight:700,fontSize:13}}>{typeof Notification !== 'undefined' && Notification.permission === 'denied' ? 'Notifications Blocked' : 'Enable Notifications'}</div>
-            <div style={{color:'#888',fontSize:11}}>Tap to get notified about likes, messages and more</div>
-          </div>
-          <span style={{color:'#5B9CF6',fontSize:13,fontWeight:700}}>{typeof Notification !== 'undefined' && Notification.permission === 'denied' ? 'Fix →' : 'Allow'}</span>
-        </div>
-      )}
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>
           <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)',position:'sticky',top:58,zIndex:5,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)'}}>
@@ -2239,7 +2302,7 @@ function SphereAppInner({ currentUser }) {
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
                 <div>
                   <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
-                  <div style={{color:onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555',fontSize:11}}>{onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline'}</div>
+                  <div style={{color:otherTyping?'#5B9CF6':(onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555'),fontSize:11}}>{otherTyping?'typing...':(onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline')}</div>
                 </div>
               </div>
             </div>
@@ -2285,7 +2348,10 @@ function SphereAppInner({ currentUser }) {
                     ):(
                       <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
                         {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block'}} alt="img"/>:msg.content}
-                        <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
+                        <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+                          <span>{timeAgo(msg.created_at)}</span>
+                          {own&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+                        </div>
                       </div>
                     )}
                     {msg.message_reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
@@ -2307,7 +2373,7 @@ function SphereAppInner({ currentUser }) {
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
-              <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:26,marginBottom:0,padding:'12px 18px'}}/>
+              <input value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping()}} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:26,marginBottom:0,padding:'12px 18px'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
               </div>
             </div>
@@ -2364,7 +2430,21 @@ function SphereAppInner({ currentUser }) {
 
       <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
         <div style={{background:'rgba(13,15,22,0.97)',backdropFilter:'blur(28px)',borderRadius:30,padding:'8px 4px',border:'1px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px rgba(0,0,0,0.7)'}}>
-          {TABS.map(({id,label,icon})=>(<button key={id} onClick={()=>{setTab(id);if(id==='messages')setDmView('list')}} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}><span style={{fontSize:20}}>{icon}</span><span style={{fontSize:9.5,fontWeight:tab===id?700:500}}>{label}</span></button>))}
+          {TABS.map(({id,label,icon})=>{
+            const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
+            const showDot = id==='pulse'&&unreadGC
+            return (
+            <button key={id} onClick={()=>{setTab(id);if(id==='messages')setDmView('list')}} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}>
+              <span style={{fontSize:20,position:'relative'}}>
+                {icon}
+                {badgeCount>0&&<span style={{position:'absolute',top:-6,right:-10,background:'#FF4757',color:'#fff',fontSize:10,fontWeight:800,borderRadius:9,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px',border:'2px solid #090B10'}}>{badgeCount>9?'9+':badgeCount}</span>}
+                {showDot&&<span style={{position:'absolute',top:-2,right:-6,width:9,height:9,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10',animation:'pulseDot 1.5s infinite'}}/>}
+              </span>
+              <span style={{fontSize:9.5,fontWeight:tab===id?700:500}}>{label}</span>
+            </button>
+            )
+          })}
+          <style>{`@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:0.6}}`}</style>
         </div>
       </div>
 
