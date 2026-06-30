@@ -2012,8 +2012,7 @@ function SphereAppInner({ currentUser }) {
   const loadConvos = async() => {
     const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
     if(!parts?.length){setConversations([]);return}
-    const ids = parts.map(p=>p.conversation_id)
-    const results = await Promise.all(ids.map(async p=>{
+    const results = await Promise.all(parts.map(async p=>{
       const id = p.conversation_id
       const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
       if(!op) return null
