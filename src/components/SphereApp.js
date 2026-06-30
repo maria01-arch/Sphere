@@ -1297,6 +1297,19 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   const [pulseBg, setPulseBg] = useState('#5B9CF6')
   const [saving, setSaving] = useState(false)
   const COLORS = ['#5B9CF6','#845EF7','#FF6B35','#00C9A7','#FF4757','#F7B731','#FD79A8','#A29BFE']
+  const [unreadGroups, setUnreadGroups] = useState({})
+
+  const loadUnreadGroups = async (myGroupIds) => {
+    if(!myGroupIds.length) { setUnreadGroups({}); return }
+    const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id).in('group_id',myGroupIds)
+    if(!mems?.length) return
+    const map = {}
+    await Promise.all(mems.map(async m=>{
+      const {count} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',m.group_id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
+      if(count>0) map[m.group_id] = true
+    }))
+    setUnreadGroups(map)
+  }
 
   useEffect(()=>{ loadAll() },[])
   useEffect(()=>{
@@ -1315,6 +1328,8 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     setGroups(g||[])
     setPulses((p||[]).filter(x=>x.user_id!==currentUser.id))
     setMyPulse(mp||[])
+    const myIds = (g||[]).filter(x=>x.group_members?.some(m=>m.user_id===currentUser.id)).map(x=>x.id)
+    loadUnreadGroups(myIds)
   }
 
   const searchGroups = async (q) => {
@@ -1405,7 +1420,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     </div>
   )}
 
-  if(viewingGroup) return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);onHideNav&&onHideNav(false)}} onUserClick={onUserClick}/>
+  if(viewingGroup) return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);onHideNav&&onHideNav(false);loadAll()}} onUserClick={onUserClick}/>
 
   if(showCreatePulse) return (
     <div style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
@@ -1486,9 +1501,12 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         <div style={{display:'flex',gap:12,padding:'0 16px 16px',overflowX:'auto',scrollbarWidth:'none'}}>
           {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).map(g=>(
             <div key={g.id} onClick={()=>setViewingGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
-              <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:'2px solid #5B9CF6',overflow:'hidden'}}>
-              {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:g.name[0]}
-            </div>
+              <div style={{position:'relative'}}>
+                <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:'2px solid #5B9CF6',overflow:'hidden'}}>
+                {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:g.name[0]}
+              </div>
+                {unreadGroups[g.id]&&<span style={{position:'absolute',top:-2,right:-2,width:14,height:14,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+              </div>
               <span style={{color:'#ccc',fontSize:11,maxWidth:60,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
             </div>
           ))}
@@ -1992,15 +2010,17 @@ function SphereAppInner({ currentUser }) {
   useEffect(()=>{ if(tab==='messages'&&dmView==='list') loadConvos() },[tab])
 
   const loadConvos = async() => {
-    const {data:parts} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
+    const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
     if(!parts?.length){setConversations([]);return}
     const ids = parts.map(p=>p.conversation_id)
-    const results = await Promise.all(ids.map(async id=>{
+    const results = await Promise.all(ids.map(async p=>{
+      const id = p.conversation_id
       const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
       if(!op) return null
       const {data:prof} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').eq('id',op.user_id).single()
       const {data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
-      return {id, other:prof, last:lastMsg}
+      const {count:unreadCount} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
+      return {id, other:prof, last:lastMsg, unread:(unreadCount||0)>0}
     }))
     setConversations(results.filter(Boolean).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)))
   }
@@ -2248,13 +2268,16 @@ function SphereAppInner({ currentUser }) {
               <div key={conv.id}
                 onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
                 style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none',active:{background:'rgba(255,255,255,0.04)'}}}>
-                <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
+                <div style={{position:'relative',flexShrink:0}}>
+                  <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
+                  {conv.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+                </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                    <span style={{fontWeight:700,fontSize:15}}>{conv.other?.display_name}</span>
-                    {conv.last&&<span style={{color:'#444',fontSize:12}}>{timeAgo(conv.last.created_at)}</span>}
+                    <span style={{fontWeight:conv.unread?800:700,fontSize:15}}>{conv.other?.display_name}</span>
+                    {conv.last&&<span style={{color:conv.unread?'#5B9CF6':'#444',fontSize:12,fontWeight:conv.unread?700:400}}>{timeAgo(conv.last.created_at)}</span>}
                   </div>
-                  <p style={{color:'#555',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
+                  <p style={{color:conv.unread?'#ddd':'#555',fontWeight:conv.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
                     {conv.last ? (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content : 'Tap to chat'}
                   </p>
                 </div>
