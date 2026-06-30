@@ -120,15 +120,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
         {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
         {!loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>No posts yet</p>}
         {posts.map(post=>(
-          <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-            <p style={{color:'#ddd',fontSize:15,lineHeight:1.6,marginBottom:10}}>{post.content}</p>
-            <div style={{display:'flex',gap:16,color:'#555',fontSize:13}}>
-              <span>💬 {post.comments_count}</span>
-              <span>{post.user_liked?'❤️':'🤍'} {post.likes_count}</span>
-              <span>🔁 {post.reposts_count}</span>
-              <span style={{marginLeft:'auto'}}>{timeAgo(post.created_at)}</span>
-            </div>
-          </div>
+          <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null}/>
         ))}
       </div>
     </div>
@@ -898,7 +890,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'#666',fontSize:22,cursor:'pointer'}}>⚙️</button>
       </div>
 
-      <div style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:20,minHeight:'70vh'}}>
+      <div style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:80,minHeight:'70vh'}}>
         {loading&&<p style={{textAlign:'center',color:'#444',marginTop:40}}>Loading...</p>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
@@ -931,7 +923,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
               onTouchStart={()=>handleLongPress(msg)} onTouchEnd={handlePressEnd}
               onMouseDown={()=>handleLongPress(msg)} onMouseUp={handlePressEnd}
               style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
-              {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
+              {!own&&<div onClick={()=>onUserClick(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
               <div style={{maxWidth:'75%'}}>
                 {!own&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
                 {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
@@ -957,15 +949,17 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div ref={bottomRef}/>
       </div>
 
-      <div style={{position:'sticky',bottom:0,background:'#090B10',padding:'10px 14px 24px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
+      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {replyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
           <span style={{color:'#888',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{replyTo}</span></span>
           <button onClick={()=>setReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:18}}>✕</button>
         </div>}
-        <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
-        <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
-        <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
-        <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
+        <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
+          <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
+          <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
+          <input value={msgText} onChange={e=>setMsgText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+          <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
+        </div>
       </div>
     </div>
   )
@@ -1491,7 +1485,11 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
 }
 
 function OmniCoreAI({ currentUser, onClose }) {
-  const [messages, setMessages] = useState([{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I am OmniCore AI by OmniSphereLabs. How can I help you today?'}])
+  const STORAGE_KEY = 'omnicore_history_'+(currentUser?.id||'guest')
+  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I am OmniCore AI by OmniSphereLabs. How can I help you today?'}]
+  const [messages, setMessages] = useState(()=>{
+    try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? JSON.parse(saved) : defaultMsg } catch(e) { return defaultMsg }
+  })
   const [input, setInput] = useState('')
   const [loading, setLoading] = useState(false)
   const [genImg, setGenImg] = useState('')
@@ -1501,6 +1499,9 @@ function OmniCoreAI({ currentUser, onClose }) {
   const bottomRef = useRef(null)
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  useEffect(()=>{ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch(e){} },[messages])
+
+  const clearHistory = () => { try { localStorage.removeItem(STORAGE_KEY) } catch(e){} ; setMessages(defaultMsg) }
 
   const generateImage = async() => {
     if(!imgPrompt.trim()) return
@@ -1543,6 +1544,7 @@ function OmniCoreAI({ currentUser, onClose }) {
           </div>
           <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
         </div>
+        <button onClick={clearHistory} style={{marginLeft:'auto',background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 12px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>🗑 Clear</button>
       </div>
 
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
@@ -2195,10 +2197,12 @@ function SphereAppInner({ currentUser }) {
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<>
             <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:58,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',zIndex:5}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
-              <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
-              <div>
-                <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
-                <div style={{color:onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555',fontSize:11}}>{onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline'}</div>
+              <div onClick={()=>setViewingUser(selectedConv.other)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
+                <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
+                <div>
+                  <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
+                  <div style={{color:onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555',fontSize:11}}>{onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline'}</div>
+                </div>
               </div>
             </div>
             <div style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70}}>
@@ -2227,7 +2231,7 @@ function SphereAppInner({ currentUser }) {
                   onTouchStart={()=>handleDMLongPress(msg)} onTouchEnd={handleDMPressEnd}
                   onMouseDown={()=>handleDMLongPress(msg)} onMouseUp={handleDMPressEnd}
                   style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
-                  {!own&&<Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/>}
+                  {!own&&<div onClick={()=>setViewingUser(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
                   <div style={{maxWidth:'75%'}}>
                     {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
                     {editingDMMsg===msg.id?(

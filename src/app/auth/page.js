@@ -3,17 +3,18 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function AuthPage() {
-  const [mode, setMode] = useState('login')
+  const [mode, setMode] = useState('login') // login | signup | forgot
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
   const supabase = createClient()
 
   const handleSubmit = async () => {
-    setError(''); setLoading(true)
+    setError(''); setSuccess(''); setLoading(true)
     try {
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
@@ -24,16 +25,22 @@ export default function AuthPage() {
         const { error: e2 } = await supabase.auth.signInWithPassword({ email, password })
         if (e2) throw e2
         window.location.href = '/'
-      } else {
+      } else if (mode === 'login') {
         const { error } = await supabase.auth.signInWithPassword({ email, password })
         if (error) throw error
         window.location.href = '/'
+      } else if (mode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + '/auth/reset'
+        })
+        if (error) throw error
+        setSuccess('Password reset link sent! Check your email inbox.')
       }
     } catch (e) { setError(e.message) }
     setLoading(false)
   }
 
-  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'13px 16px',color:'#fff',fontSize:15,outline:'none',marginBottom:12}
+  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'13px 16px',color:'#fff',fontSize:15,outline:'none',marginBottom:12,boxSizing:'border-box'}
 
   return (
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#090B10',padding:24}}>
@@ -42,23 +49,38 @@ export default function AuthPage() {
           <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🌐</div>
           <span style={{fontWeight:800,fontSize:24,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>sphere</span>
         </div>
-        <h1 style={{fontWeight:700,fontSize:22,marginBottom:6}}>{mode==='login'?'Welcome back':'Join Sphere'}</h1>
-        <p style={{color:'#555',fontSize:14,marginBottom:24}}>{mode==='login'?'Sign in to your account':'Connect with the world'}</p>
+
+        <h1 style={{fontWeight:700,fontSize:22,marginBottom:6}}>
+          {mode==='login'?'Welcome back':mode==='signup'?'Join Sphere':'Reset Password'}
+        </h1>
+        <p style={{color:'#555',fontSize:14,marginBottom:24}}>
+          {mode==='login'?'Sign in to your account':mode==='signup'?'Connect with the world':'Enter your email to receive a reset link'}
+        </p>
+
         {mode==='signup'&&<>
           <input style={inp} placeholder="Display name" value={displayName} onChange={e=>setDisplayName(e.target.value)}/>
           <input style={inp} placeholder="Username" value={username} onChange={e=>setUsername(e.target.value.replace(/\s/g,''))}/>
         </>}
+
         <input style={inp} type="email" placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
-        <input style={inp} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSubmit()}/>
+
+        {mode!=='forgot'&&<input style={inp} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSubmit()}/>}
+
         {error&&<div style={{padding:'10px 14px',borderRadius:10,background:'rgba(255,71,87,0.1)',color:'#FF4757',fontSize:13,marginBottom:14}}>{error}</div>}
+        {success&&<div style={{padding:'10px 14px',borderRadius:10,background:'rgba(0,201,167,0.1)',color:'#00C9A7',fontSize:13,marginBottom:14}}>{success}</div>}
+
         <button onClick={handleSubmit} disabled={loading} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',marginTop:4}}>
-          {loading?'Please wait...':mode==='login'?'Sign In':'Create Account'}
+          {loading?'Please wait...':mode==='login'?'Sign In':mode==='signup'?'Create Account':'Send Reset Link'}
         </button>
-        <p style={{textAlign:'center',marginTop:20,color:'#555',fontSize:14}}>
-          {mode==='login'?"Don't have an account? ":"Already on Sphere? "}
-          <span onClick={()=>{setMode(mode==='login'?'signup':'login');setError('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>
-            {mode==='login'?'Sign up':'Sign in'}
-          </span>
+
+        {mode==='login'&&<p style={{textAlign:'center',marginTop:14,marginBottom:0}}>
+          <span onClick={()=>{setMode('forgot');setError('');setSuccess('')}} style={{color:'#888',fontSize:13,cursor:'pointer'}}>Forgot password?</span>
+        </p>}
+
+        <p style={{textAlign:'center',marginTop:16,color:'#555',fontSize:14}}>
+          {mode==='forgot'?<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>← Back to Sign In</span>
+          :mode==='login'?<>{"Don't have an account? "}<span onClick={()=>{setMode('signup');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign up</span></>
+          :<>{"Already on Sphere? "}<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign in</span></>}
         </p>
       </div>
     </div>
