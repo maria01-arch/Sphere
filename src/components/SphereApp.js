@@ -49,8 +49,8 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
   const [posts, setPosts] = useState([])
   const [isFollowing, setIsFollowing] = useState(false)
   const [showBigAvatar, setShowBigAvatar] = useState(false)
-  const [followerCount, setFollowerCount] = useState(user?.followers_count||0)
-  const [followingCount, setFollowingCount] = useState(user?.following_count||0)
+  const [followerCount, setFollowerCount] = useState(null)
+  const [followingCount, setFollowingCount] = useState(null)
   const [profile, setProfile] = useState(user)
   const [loading, setLoading] = useState(true)
   const color = profile?.avatar_color || getColor(profile?.id)
@@ -111,8 +111,8 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
         {profile?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
         {profile?.location&&<p style={{color:'#555',fontSize:13,marginBottom:8}}>📍 {profile.location}</p>}
         <div style={{display:'flex',gap:20}}>
-          <span style={{fontSize:14}}><strong>{followingCount}</strong> <span style={{color:'#555'}}>Following</span></span>
-          <span style={{fontSize:14}}><strong>{followerCount}</strong> <span style={{color:'#555'}}>Followers</span></span>
+          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'#555'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'#555'}}>Followers</span></span>
         </div>
       </div>
       <div style={{borderTop:'1px solid rgba(255,255,255,0.07)'}}>
@@ -346,6 +346,8 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
 function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl }) {
   const [posts, setPosts] = useState([])
   const [loading, setLoading] = useState(true)
+  const [followerCount, setFollowerCount] = useState(null)
+  const [followingCount, setFollowingCount] = useState(null)
   const color = currentUser?.avatar_color||'#5B9CF6'
 
   useEffect(() => {
@@ -354,6 +356,10 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
         setLoading(false)
       })
+    Promise.all([
+      supabase.from('follows').select('id',{count:'exact',head:true}).eq('following_id',currentUser.id),
+      supabase.from('follows').select('id',{count:'exact',head:true}).eq('follower_id',currentUser.id)
+    ]).then(([{count:frs},{count:fng}])=>{ setFollowerCount(frs||0); setFollowingCount(fng||0) })
   },[])
 
   const deletePost = async (postId) => {
@@ -378,8 +384,8 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         {currentUser?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
         {currentUser?.location&&<p style={{color:'#555',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
         <div style={{display:'flex',gap:20,marginBottom:16}}>
-          <span style={{fontSize:14}}><strong>{currentUser?.following_count||0}</strong> <span style={{color:'#555'}}>Following</span></span>
-          <span style={{fontSize:14}}><strong>{currentUser?.followers_count||0}</strong> <span style={{color:'#555'}}>Followers</span></span>
+          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'#555'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'#555'}}>Followers</span></span>
         </div>
       </div>
       <div style={{borderTop:'1px solid rgba(255,255,255,0.07)'}}>
@@ -651,13 +657,17 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
         setMessages(prev=>prev.filter(m=>m.id!==payload.old.id))
       })
+      .on('postgres_changes',{event:'*',schema:'public',table:'group_message_reactions'},async()=>{
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
+        if(data) setMessages(data)
+      })
       .subscribe()
     return()=>supabase.removeChannel(ch)
   },[])
 
   const loadAll = async () => {
     const [{data:msgs},{data:mems},{data:reqs}] = await Promise.all([
-      supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
+      supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
       supabase.from('group_members').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id),
       supabase.from('group_join_requests').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id).eq('status','pending')
     ])
@@ -727,6 +737,18 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
   const handleLongPress = (msg) => { longPressTimer.current = setTimeout(()=>setSelectedMsg(msg),500) }
   const handlePressEnd = () => clearTimeout(longPressTimer.current)
+  const toggleGroupReaction = async(msg,emoji) => {
+    const mine = msg.group_message_reactions?.find(r=>r.user_id===currentUser.id)
+    setSelectedMsg(null)
+    if(mine && mine.emoji===emoji){
+      // tapping same emoji again removes it
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,group_message_reactions:(m.group_message_reactions||[]).filter(r=>r.user_id!==currentUser.id)}:m))
+      await supabase.from('group_message_reactions').delete().eq('group_message_id',msg.id).eq('user_id',currentUser.id)
+    } else {
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,group_message_reactions:[...(m.group_message_reactions||[]).filter(r=>r.user_id!==currentUser.id),{user_id:currentUser.id,emoji}]}:m))
+      await supabase.from('group_message_reactions').upsert({group_message_id:msg.id,user_id:currentUser.id,emoji},{onConflict:'group_message_id,user_id'})
+    }
+  }
   const deleteGCMsg = async(msg) => { setSelectedMsg(null); await supabase.from('group_messages').delete().eq('id',msg.id).eq('sender_id',currentUser.id); setMessages(prev=>prev.filter(m=>m.id!==msg.id)) }
   const startEditGCMsg = (msg) => { setSelectedMsg(null); setEditingMsg(msg.id); setEditText(msg.content) }
   const saveEditGCMsg = async() => { if(!editText.trim()) return; await supabase.from('group_messages').update({content:editText.trim()}).eq('id',editingMsg).eq('sender_id',currentUser.id); setMessages(prev=>prev.map(m=>m.id===editingMsg?{...m,content:editText.trim()}:m)); setEditingMsg(null); setEditText('') }
@@ -900,14 +922,13 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
             <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 16px'}}/>
             <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
-              {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>(
-                <button key={e} onClick={async()=>{
-                  const newReactions = [...(selectedMsg.reactions||[]),{emoji:e,user_id:currentUser.id}]
-                  await supabase.from('group_messages').update({reactions:newReactions}).eq('id',selectedMsg.id)
-                  setMessages(prev=>prev.map(m=>m.id===selectedMsg.id?{...m,reactions:newReactions}:m))
-                  setSelectedMsg(null)
-                }} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
-              ))}
+              {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>{
+                const mine = selectedMsg.group_message_reactions?.find(r=>r.user_id===currentUser.id)
+                const isMineActive = mine?.emoji===e
+                return (
+                <button key={e} onClick={()=>toggleGroupReaction(selectedMsg,e)} style={{background:isMineActive?'rgba(91,156,246,0.25)':'rgba(255,255,255,0.08)',border:isMineActive?'1px solid #5B9CF6':'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
+                )
+              })}
             </div>
             <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
             {selectedMsg.sender_id===currentUser.id&&<>
@@ -939,8 +960,11 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                     <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                   </div>
                 )}
-                {msg.reactions?.length>0&&<div style={{display:'flex',gap:2,marginTop:2,justifyContent:own?'flex-end':'flex-start'}}>
-                  {msg.reactions.map((r,i)=><span key={i} style={{background:'rgba(255,255,255,0.1)',borderRadius:10,padding:'2px 6px',fontSize:12}}>{r.emoji}</span>)}
+                {msg.group_message_reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
+                  {Object.entries(msg.group_message_reactions.reduce((acc,r)=>{acc[r.emoji]=(acc[r.emoji]||0)+1;return acc},{})).map(([emoji,count])=>{
+                    const mine = msg.group_message_reactions.some(r=>r.emoji===emoji&&r.user_id===currentUser.id)
+                    return <span key={emoji} onClick={()=>toggleGroupReaction(msg,emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'rgba(255,255,255,0.1)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
+                  })}
                 </div>}
               </div>
             </div>
@@ -1920,13 +1944,16 @@ function SphereAppInner({ currentUser }) {
 
   useEffect(()=>{
     if(!selectedConv) return
-    supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
+    supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
-      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url)').eq('id',payload.new.id).single()
+      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
         setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('tmp')),data])
         if(data.sender_id !== currentUser.id) showLocalNotif('💬 New Message', (data.sender?.display_name||'Someone')+': '+data.content?.slice(0,60))
       }
+    }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
+      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      if(data) setMessages(data)
     }).subscribe()
     return()=>supabase.removeChannel(ch)
   },[selectedConv])
@@ -2018,6 +2045,17 @@ function SphereAppInner({ currentUser }) {
 
   const handleDMLongPress = (msg) => { dmLongPressTimer.current = setTimeout(()=>setSelectedDMMsg(msg),500) }
   const handleDMPressEnd = () => clearTimeout(dmLongPressTimer.current)
+  const toggleDMReaction = async(msg,emoji) => {
+    const mine = msg.message_reactions?.find(r=>r.user_id===currentUser.id)
+    setSelectedDMMsg(null)
+    if(mine && mine.emoji===emoji){
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,message_reactions:(m.message_reactions||[]).filter(r=>r.user_id!==currentUser.id)}:m))
+      await supabase.from('message_reactions').delete().eq('message_id',msg.id).eq('user_id',currentUser.id)
+    } else {
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,message_reactions:[...(m.message_reactions||[]).filter(r=>r.user_id!==currentUser.id),{user_id:currentUser.id,emoji}]}:m))
+      await supabase.from('message_reactions').upsert({message_id:msg.id,user_id:currentUser.id,emoji},{onConflict:'message_id,user_id'})
+    }
+  }
 
   const deleteDMMsg = async(msg) => {
     setSelectedDMMsg(null)
@@ -2214,9 +2252,13 @@ function SphereAppInner({ currentUser }) {
                 <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
                   <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 16px'}}/>
                   <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
-                    {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>(
-                      <button key={e} onClick={async()=>{await supabase.from('messages').update({content:selectedDMMsg.content+' '+e}).eq('id',selectedDMMsg.id);setMessages(prev=>prev.map(m=>m.id===selectedDMMsg.id?{...m,content:m.content+' '+e}:m));setSelectedDMMsg(null)}} style={{background:'rgba(255,255,255,0.08)',border:'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
-                    ))}
+                    {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>{
+                      const mine = selectedDMMsg.message_reactions?.find(r=>r.user_id===currentUser.id)
+                      const isMineActive = mine?.emoji===e
+                      return (
+                      <button key={e} onClick={()=>toggleDMReaction(selectedDMMsg,e)} style={{background:isMineActive?'rgba(91,156,246,0.25)':'rgba(255,255,255,0.08)',border:isMineActive?'1px solid #5B9CF6':'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
+                      )
+                    })}
                   </div>
                   <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
                   {selectedDMMsg.sender_id===currentUser.id&&<>
@@ -2246,8 +2288,11 @@ function SphereAppInner({ currentUser }) {
                         <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                       </div>
                     )}
-                    {msg.reactions?.length>0&&<div style={{display:'flex',gap:2,marginTop:2,justifyContent:own?'flex-end':'flex-start'}}>
-                      {msg.reactions.map((r,i)=><span key={i} style={{background:'rgba(255,255,255,0.1)',borderRadius:10,padding:'2px 6px',fontSize:12}}>{r.emoji}</span>)}
+                    {msg.message_reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
+                      {Object.entries(msg.message_reactions.reduce((acc,r)=>{acc[r.emoji]=(acc[r.emoji]||0)+1;return acc},{})).map(([emoji,count])=>{
+                        const mine = msg.message_reactions.some(r=>r.emoji===emoji&&r.user_id===currentUser.id)
+                        return <span key={emoji} onClick={()=>toggleDMReaction(msg,emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'rgba(255,255,255,0.1)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
+                      })}
                     </div>}
                   </div>
                 </div>)
