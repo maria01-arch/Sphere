@@ -348,6 +348,11 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <button onClick={onSignOut} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#FF4757',borderTop:'1px solid rgba(255,255,255,0.07)',marginTop:8,fontSize:15}}>
           <span style={{fontSize:22}}>🚪</span><span style={{fontWeight:600}}>Sign Out</span>
         </button>
+        <div style={{padding:'16px 20px',borderTop:'1px solid rgba(255,255,255,0.04)',textAlign:'center'}}>
+          <a href="/privacy" style={{color:'#333',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
+          <span style={{color:'#222',fontSize:12}}> · </span>
+          <span style={{color:'#222',fontSize:12}}>© 2025 OmniSphere Labs</span>
+        </div>
       </div>
     </div>
   )
@@ -473,7 +478,34 @@ function AdCard({ ad }) {
   )
 }
 
-function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
+function AdsenseCard() {
+  const ref = React.useRef(null)
+  React.useEffect(()=>{
+    try {
+      if(ref.current && ref.current.offsetWidth > 0) {
+        // push the ad unit — safe to call multiple times, AdSense deduplicates
+        ;(window.adsbygoogle = window.adsbygoogle || []).push({})
+      }
+    } catch(e){}
+  },[])
+  return (
+    <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:4}}>
+        <span style={{fontSize:9,color:'#333',letterSpacing:0.5}}>ADVERTISEMENT</span>
+      </div>
+      <div ref={ref} style={{minHeight:100,background:'rgba(255,255,255,0.02)',borderRadius:8,overflow:'hidden'}}>
+        <ins className="adsbygoogle"
+          style={{display:'block',minHeight:100}}
+          data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+          data-ad-slot="XXXXXXXXXX"
+          data-ad-format="auto"
+          data-full-width-responsive="true"/>
+      </div>
+    </div>
+  )
+}
+
+
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
   const [likes, setLikes] = useState(post.likes_count||0)
@@ -700,8 +732,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   useEffect(()=>{
     const ch = supabase.channel('gc:'+group.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color)').eq('id',payload.new.id).single()
-        if(data) setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('temp_')),data])
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+        if(data) setMessages(prev=>{
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
+          const exists = filtered.some(m=>m.id===data.id)
+          return exists ? filtered : [...filtered,data]
+        })
         supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{})
       })
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
@@ -1080,6 +1116,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const fileRef = useRef(null)
   const touchStart = useRef(null)
   const containerRef = useRef(null)
+  const isMounted = useRef(false)
 
   useEffect(()=>{ loadReels() },[])
   useEffect(()=>{
@@ -1091,11 +1128,14 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   },[])
   useEffect(()=>{ supabase.from('ads').select('*').eq('active',true).eq('type','reel').then(({data})=>setReelAds(data||[])) },[])
   useEffect(()=>{
-    if(videoRef.current){
-      videoRef.current.currentTime=0
-      playing?videoRef.current.play().catch(()=>{}):videoRef.current.pause()
-    }
-  },[currentIdx,playing])
+    if(!isMounted.current){ isMounted.current=true; return }
+    if(videoRef.current){ videoRef.current.currentTime=0; videoRef.current.play().catch(()=>{}) }
+    setPlaying(true)
+  },[currentIdx])
+  useEffect(()=>{
+    if(!videoRef.current) return
+    playing?videoRef.current.play().catch(()=>{}):videoRef.current.pause()
+  },[playing])
 
   const loadReels = async() => {
     const {data} = await supabase.from('reels').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color,verified,is_authentic),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
@@ -1841,6 +1881,8 @@ function SphereAppInner({ currentUser }) {
   const [editDMText, setEditDMText] = useState('')
   const [dmReplyTo, setDmReplyTo] = useState(null)
   const dmLongPressTimer = useRef(null)
+  const selectedConvRef = useRef(null)
+  useEffect(()=>{ selectedConvRef.current = selectedConv },[selectedConv])
   const dmImgRef = useRef(null)
   const dmChannelRef = useRef(null)
   const dmTypingTimeoutRef = useRef(null)
@@ -1947,6 +1989,8 @@ function SphereAppInner({ currentUser }) {
         supabase.channel('dm_notif_'+conversation_id)
           .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conversation_id},async(payload)=>{
             if(payload.new.sender_id === currentUser.id) return
+            // don't show notification if already inside this conversation (handled by the chat-specific channel)
+            if(selectedConvRef.current?.id === conversation_id) return
             const {data:sender} = await supabase.from('profiles').select('display_name').eq('id',payload.new.sender_id).single()
             showLocalNotif('💬 '+(sender?.display_name||'Someone'), payload.new.content?.slice(0,80)||'Sent you a message')
             loadUnreadCounts()
@@ -2040,20 +2084,70 @@ function SphereAppInner({ currentUser }) {
 
   const loadPosts = useCallback(async (feedType='foryou') => {
     setLoading(true)
-    let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(40)
-    let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(40)
-    if (feedType==='following') {
-      const {data:follows} = await supabase.from('follows').select('following_id').eq('follower_id',currentUser.id)
-      const ids = (follows||[]).map(f=>f.following_id)
-      if (!ids.length) { setPosts([]); setLoading(false); return }
-      postsQuery = postsQuery.in('user_id',ids)
-      repostsQuery = repostsQuery.in('user_id',ids)
-    }
-    const [{data},{data:repostsData}] = await Promise.all([postsQuery,repostsQuery])
-    const normalized = (data||[]).map(p=>({...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,sortTime:p.created_at}))
-    const repostItems = (repostsData||[]).filter(r=>r.post).map(r=>({...r.post,user_liked:r.post.likes?.some(l=>l.user_id===currentUser.id),user_reposted:r.post.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:r.post.likes?.length||0,reposts_count:r.post.reposts?.length||0,comments_count:r.post.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at}))
-    const merged = [...normalized,...repostItems].sort((a,b)=>new Date(b.sortTime)-new Date(a.sortTime)).slice(0,50)
-    setPosts(merged)
+    try {
+      // fetch who current user follows and has interacted with
+      const [{data:followsData},{data:likedData},{data:commentedData}] = await Promise.all([
+        supabase.from('follows').select('following_id').eq('follower_id',currentUser.id),
+        supabase.from('likes').select('post_id,posts(user_id)').eq('user_id',currentUser.id).limit(50),
+        supabase.from('comments').select('post_id,posts(user_id)').eq('user_id',currentUser.id).limit(50),
+      ])
+      const followingIds = new Set((followsData||[]).map(f=>f.following_id))
+      // build author affinity score: how much this user has interacted with each author
+      const affinityMap = {}
+      ;(likedData||[]).forEach(l=>{ const uid=l.posts?.user_id; if(uid){ affinityMap[uid]=(affinityMap[uid]||0)+1 } })
+      ;(commentedData||[]).forEach(c=>{ const uid=c.posts?.user_id; if(uid){ affinityMap[uid]=(affinityMap[uid]||0)+2 } })
+      followingIds.forEach(id=>{ affinityMap[id]=(affinityMap[id]||0)+3 })
+
+      let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:100)
+      let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(40)
+
+      if(feedType==='following'){
+        if(!followingIds.size){ setPosts([]); setLoading(false); return }
+        postsQuery = postsQuery.in('user_id',[...followingIds])
+        repostsQuery = repostsQuery.in('user_id',[...followingIds])
+      }
+
+      const [{data},{data:repostsData}] = await Promise.all([postsQuery,repostsQuery])
+      const now = Date.now()
+
+      const normalized = (data||[]).map(p=>{
+        const ageHours = (now - new Date(p.created_at).getTime()) / 3600000
+        const likes = p.likes?.length||0
+        const comments = p.comments?.length||0
+        const reposts = p.reposts?.length||0
+        const engagement = likes*1 + comments*2 + reposts*1.5
+        const recencyScore = Math.max(0, 100 - ageHours*1.5) // decays over time
+        const affinityScore = (affinityMap[p.user_id]||0) * 8
+        const isOwn = p.user_id===currentUser.id ? -20 : 0 // slightly deprioritize own posts
+        const score = feedType==='foryou' ? (recencyScore + engagement*0.8 + affinityScore + isOwn) : recencyScore
+        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:likes,reposts_count:reposts,comments_count:comments,sortTime:p.created_at,_score:score}
+      })
+
+      const repostItems = (repostsData||[]).filter(r=>r.post).map(r=>{
+        const p=r.post
+        const ageHours=(now-new Date(r.created_at).getTime())/3600000
+        const recencyScore=Math.max(0,100-ageHours*1.5)
+        const affinityScore=(affinityMap[r.user?.id]||0)*8
+        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at,_score:recencyScore+affinityScore}
+      })
+
+      // sort by score descending
+      let merged = [...normalized,...repostItems].sort((a,b)=>b._score-a._score)
+
+      // diversity pass: avoid 3+ consecutive posts from same author
+      const final=[]
+      const recentAuthors=[]
+      for(const post of merged){
+        const author=post.user_id
+        const recentCount=recentAuthors.slice(-3).filter(a=>a===author).length
+        if(recentCount>=2){ merged.push(post); continue } // defer to end
+        final.push(post)
+        recentAuthors.push(author)
+        if(final.length>=60) break
+      }
+
+      setPosts(final)
+    } catch(e){ console.error('loadPosts error',e) }
     setLoading(false)
   },[currentUser.id])
 
@@ -2107,10 +2201,14 @@ function SphereAppInner({ currentUser }) {
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
-        setMessages(prev=>[...prev.filter(m=>!m.id.toString().startsWith('tmp')),data])
+        setMessages(prev=>{
+          // remove any optimistic temp message that matches, avoid duplicates
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('tmp')&&m.content===data.content&&m.sender_id===data.sender_id))
+          const exists = filtered.some(m=>m.id===data.id)
+          return exists ? filtered : [...filtered,data]
+        })
         if(data.sender_id !== currentUser.id) {
           showLocalNotif('💬 New Message', (data.sender?.display_name||'Someone')+': '+data.content?.slice(0,60))
-          // immediately mark as read since the chat is actively open
           supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',data.id).then(()=>{})
         }
       }
@@ -2337,6 +2435,7 @@ function SphereAppInner({ currentUser }) {
               </div>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
+              {(i+1)%7===0&&<AdsenseCard/>}
               {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTab('pulse');setPendingReelId(reelId)}}/>}
             </div>
           ))}
