@@ -732,7 +732,13 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   useEffect(()=>{
     const fetchGCMessages = async() => {
       const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
-      if(data) setMessages(data)
+      if(data) setMessages(prev=>{
+        // keep any temp messages not yet confirmed, merge with DB results
+        const temps = prev.filter(m=>m.id.toString().startsWith('temp_'))
+        const merged = [...data]
+        temps.forEach(t=>{ if(!merged.some(m=>m.content===t.content&&m.sender_id===t.sender_id)) merged.push(t) })
+        return merged
+      })
     }
     const gcPollInterval = setInterval(fetchGCMessages, 3000)
     const ch = supabase.channel('gc:'+group.id)
@@ -1040,6 +1046,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
               })}
             </div>
             <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
             {selectedMsg.sender_id===currentUser.id&&<>
               <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
               <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
@@ -1052,7 +1059,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
             <div key={msg.id}
               onTouchStart={()=>handleLongPress(msg)} onTouchEnd={handlePressEnd}
               onMouseDown={()=>handleLongPress(msg)} onMouseUp={handlePressEnd}
-              style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
+              style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
               {!own&&<div onClick={()=>onUserClick(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
               <div style={{maxWidth:'75%'}}>
                 {!own&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
@@ -2141,14 +2148,20 @@ function SphereAppInner({ currentUser }) {
 
       // diversity pass: avoid 3+ consecutive posts from same author
       const final=[]
+      const deferred=[]
       const recentAuthors=[]
       for(const post of merged){
         const author=post.user_id
         const recentCount=recentAuthors.slice(-3).filter(a=>a===author).length
-        if(recentCount>=2){ merged.push(post); continue } // defer to end
+        if(recentCount>=2){ deferred.push(post); continue }
         final.push(post)
         recentAuthors.push(author)
         if(final.length>=60) break
+      }
+      // append deferred posts at the end (no more loop risk)
+      for(const post of deferred){
+        if(final.length>=60) break
+        final.push(post)
       }
 
       setPosts(final)
@@ -2553,6 +2566,7 @@ function SphereAppInner({ currentUser }) {
                     })}
                   </div>
                   <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
                   {selectedDMMsg.sender_id===currentUser.id&&<>
                     <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
                     <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
@@ -2564,7 +2578,7 @@ function SphereAppInner({ currentUser }) {
                 return(<div key={msg.id}
                   onTouchStart={()=>handleDMLongPress(msg)} onTouchEnd={handleDMPressEnd}
                   onMouseDown={()=>handleDMLongPress(msg)} onMouseUp={handleDMPressEnd}
-                  style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
+                  style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
                   {!own&&<div onClick={()=>setViewingUser(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
                   <div style={{maxWidth:'75%'}}>
                     {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
