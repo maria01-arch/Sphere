@@ -739,21 +739,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     if(!userScrolledUp.current) bottomRef.current?.scrollIntoView({behavior:'smooth'})
   },[messages])
   useEffect(()=>{
-    const fetchGCMessages = async() => {
-      const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
-      if(data) setMessages(prev=>{
-        const temps = prev.filter(m=>m.id.toString().startsWith('temp_')&&!data.some(d=>d.content===m.content&&d.sender_id===m.sender_id))
-        return [...data,...temps]
-      })
-    }
-    const gcPollInterval = setInterval(fetchGCMessages, 3000)
     const ch = supabase.channel('gc:'+group.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>{
           const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
-          const exists = filtered.some(m=>m.id===data.id)
-          return exists ? filtered : [...filtered,data]
+          return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
         })
         supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{})
       })
@@ -763,17 +754,19 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       .on('postgres_changes',{event:'DELETE',schema:'public',table:'group_messages'},(payload)=>{
         setMessages(prev=>prev.filter(m=>m.id!==payload.old.id))
       })
-      .on('postgres_changes',{event:'*',schema:'public',table:'group_message_reactions'},async()=>{
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
-        if(data) setMessages(data)
+      .on('postgres_changes',{event:'*',schema:'public',table:'group_message_reactions'},async(payload)=>{
+        const msgId = payload.new?.group_message_id || payload.old?.group_message_id
+        if(!msgId) return
+        const {data} = await supabase.from('group_message_reactions').select('user_id,emoji').eq('group_message_id',msgId)
+        if(data) setMessages(prev=>prev.map(m=>m.id===msgId?{...m,group_message_reactions:data}:m))
       })
       .on('broadcast',{event:'new_message'},async(payload)=>{
         const msgId = payload.payload?.message_id
         if(!msgId) return
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',msgId).single()
         if(data) setMessages(prev=>{
-          const exists = prev.some(m=>m.id===data.id)
-          return exists ? prev : [...prev,data]
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
+          return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
         })
       })
       .on('broadcast',{event:'typing'},(payload)=>{
@@ -786,7 +779,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       })
       .subscribe()
     gcChannelRef.current = ch
-    return()=>{ clearInterval(gcPollInterval); supabase.removeChannel(ch) }
+    return()=>supabase.removeChannel(ch)
   },[])
 
   const loadAll = async () => {
@@ -1032,7 +1025,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
+    <div style={{minHeight:'100vh',height:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
@@ -1048,7 +1041,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'#666',fontSize:22,cursor:'pointer'}}>⚙️</button>
       </div>
 
-      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:80,minHeight:'70vh',overflowY:'auto'}}>
+      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:80,overflowY:'auto',height:0}}>
         {loading&&<p style={{textAlign:'center',color:'#444',marginTop:40}}>Loading...</p>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
@@ -2490,32 +2483,7 @@ function SphereAppInner({ currentUser }) {
         </>}
 
         {tab==='messages'&&<>
-          {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
-          {dmView==='list'&&<>
-            <div style={{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-              <span style={{fontWeight:800,fontSize:20}}>Messages</span>
-              <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
-            </div>
-            {/* OmniCore AI — always pinned first */}
-            <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
-              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',background:'rgba(91,156,246,0.04)'}}>
-              <div style={{width:50,height:50,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>🤖</div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
-                  <span style={{fontWeight:700,fontSize:15}}>OmniCore AI</span>
-                  <span style={{fontSize:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
-                </div>
-                <p style={{color:'#555',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
-              </div>
-              <span style={{color:'#444',fontSize:20}}>›</span>
-            </div>
-            {conversations.map(conv=>(
-              <div key={conv.id}
-                onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
-                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none',active:{background:'rgba(255,255,255,0.04)'}}}>
-                <div style={{position:'relative',flexShrink:0}}>
-                  <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
-                  {conv.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+          
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
@@ -2563,8 +2531,9 @@ function SphereAppInner({ currentUser }) {
           </>}
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<OmniCoreAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
-          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<>
-            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,position:'sticky',top:58,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',zIndex:5}}>
+          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'#090B10',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
+            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',flexShrink:0}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
               <div onClick={()=>setViewingUser(selectedConv.other)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
@@ -2574,7 +2543,7 @@ function SphereAppInner({ currentUser }) {
                 </div>
               </div>
             </div>
-            <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70,overflowY:'auto'}}>
+            <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70,overflowY:'auto',height:0}}>
               {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
                 <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
@@ -2646,7 +2615,7 @@ function SphereAppInner({ currentUser }) {
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
               </div>
             </div>
-          </>}
+          </div>}
         </>}
 
         {tab==='friends'&&<>
