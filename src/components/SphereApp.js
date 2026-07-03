@@ -479,11 +479,10 @@ function AdCard({ ad }) {
 }
 
 function AdsenseCard() {
-  const ref = React.useRef(null)
-  React.useEffect(()=>{
+  const ref = useRef(null)
+  useEffect(()=>{
     try {
       if(ref.current && ref.current.offsetWidth > 0) {
-        // push the ad unit — safe to call multiple times, AdSense deduplicates
         ;(window.adsbygoogle = window.adsbygoogle || []).push({})
       }
     } catch(e){}
