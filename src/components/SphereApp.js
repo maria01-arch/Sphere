@@ -730,6 +730,11 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   useEffect(()=>{ loadAll(); supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{}) },[])
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
   useEffect(()=>{
+    const fetchGCMessages = async() => {
+      const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
+      if(data) setMessages(data)
+    }
+    const gcPollInterval = setInterval(fetchGCMessages, 3000)
     const ch = supabase.channel('gc:'+group.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
@@ -760,7 +765,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       })
       .subscribe()
     gcChannelRef.current = ch
-    return()=>supabase.removeChannel(ch)
+    return()=>{ clearInterval(gcPollInterval); supabase.removeChannel(ch) }
   },[])
 
   const loadAll = async () => {
@@ -2194,10 +2199,14 @@ function SphereAppInner({ currentUser }) {
     if(!selectedConv) return
     if(selectedConv.id!=='omnicore-ai') {
       supabase.from('conversation_participants').update({last_read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).eq('user_id',currentUser.id).then(()=>loadUnreadCounts())
-      // mark all messages from the other person as read since this chat is open
       supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
     }
-    supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true}).then(({data})=>setMessages(data||[]))
+    const fetchMessages = async() => {
+      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      if(data) setMessages(data)
+    }
+    fetchMessages()
+    const pollInterval = setInterval(fetchMessages, 3000)
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
@@ -2224,7 +2233,7 @@ function SphereAppInner({ currentUser }) {
       dmTypingTimeoutRef.current = setTimeout(()=>setOtherTyping(false),3000)
     }).subscribe()
     dmChannelRef.current = ch
-    return()=>{ supabase.removeChannel(ch); setOtherTyping(false) }
+    return()=>{ clearInterval(pollInterval); supabase.removeChannel(ch); setOtherTyping(false) }
   },[selectedConv])
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])

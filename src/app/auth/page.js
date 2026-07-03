@@ -82,7 +82,11 @@ export default function AuthPage() {
           :mode==='login'?<>{"Don't have an account? "}<span onClick={()=>{setMode('signup');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign up</span></>
           :<>{"Already on Sphere? "}<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign in</span></>}
         </p>
+        <p style={{textAlign:'center',marginTop:16,color:'#333',fontSize:12}}>
+          By continuing you agree to our <a href="/privacy" style={{color:'#444',textDecoration:'underline'}}>Privacy Policy</a>
+        </p>
       </div>
     </div>
   )
 }
+// privacy link is inside the component above, adding via sed below
