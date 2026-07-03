@@ -495,7 +495,7 @@ function AdsenseCard() {
       <div ref={ref} style={{minHeight:100,background:'rgba(255,255,255,0.02)',borderRadius:8,overflow:'hidden'}}>
         <ins className="adsbygoogle"
           style={{display:'block',minHeight:100}}
-          data-ad-client="ca-pub-XXXXXXXXXXXXXXXX"
+          data-ad-client="ca-pub-1625129471311969"
           data-ad-slot="XXXXXXXXXX"
           data-ad-format="auto"
           data-full-width-responsive="true"/>
@@ -726,18 +726,24 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const myRole = members.find(m=>m.user_id===currentUser.id)?.role||'member'
   const isAdmin = myRole==='admin'
   const isCreator = group.creator_id===currentUser.id
+  const scrollRef = useRef(null)
+  const isNearBottom = () => {
+    const el = scrollRef.current
+    if(!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  }
+  const userScrolledUp = useRef(false)
 
   useEffect(()=>{ loadAll(); supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{}) },[])
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  useEffect(()=>{
+    if(!userScrolledUp.current) bottomRef.current?.scrollIntoView({behavior:'smooth'})
+  },[messages])
   useEffect(()=>{
     const fetchGCMessages = async() => {
       const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
       if(data) setMessages(prev=>{
-        // keep any temp messages not yet confirmed, merge with DB results
-        const temps = prev.filter(m=>m.id.toString().startsWith('temp_'))
-        const merged = [...data]
-        temps.forEach(t=>{ if(!merged.some(m=>m.content===t.content&&m.sender_id===t.sender_id)) merged.push(t) })
-        return merged
+        const temps = prev.filter(m=>m.id.toString().startsWith('temp_')&&!data.some(d=>d.content===m.content&&d.sender_id===m.sender_id))
+        return [...data,...temps]
       })
     }
     const gcPollInterval = setInterval(fetchGCMessages, 3000)
@@ -760,6 +766,15 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       .on('postgres_changes',{event:'*',schema:'public',table:'group_message_reactions'},async()=>{
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
         if(data) setMessages(data)
+      })
+      .on('broadcast',{event:'new_message'},async(payload)=>{
+        const msgId = payload.payload?.message_id
+        if(!msgId) return
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',msgId).single()
+        if(data) setMessages(prev=>{
+          const exists = prev.some(m=>m.id===data.id)
+          return exists ? prev : [...prev,data]
+        })
       })
       .on('broadcast',{event:'typing'},(payload)=>{
         if(payload.payload?.user_id===currentUser.id) return
@@ -790,9 +805,15 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     if(!msgText.trim()) return
     const text=msgText.trim(); const reply=replyTo
     setMsgText(''); setReplyTo(null)
-    const tempMsg = {id:'temp_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    const tempId = 'temp_'+Date.now()
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
-    await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply})
+    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?inserted:m))
+      // broadcast to other members for instant delivery
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{message_id:inserted.id}})
+    }
   }
 
   const sendImage = async (file) => {
@@ -1027,7 +1048,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'#666',fontSize:22,cursor:'pointer'}}>⚙️</button>
       </div>
 
-      <div style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:80,minHeight:'70vh'}}>
+      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:80,minHeight:'70vh',overflowY:'auto'}}>
         {loading&&<p style={{textAlign:'center',color:'#444',marginTop:40}}>Loading...</p>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
@@ -2249,7 +2270,12 @@ function SphereAppInner({ currentUser }) {
     return()=>{ clearInterval(pollInterval); supabase.removeChannel(ch); setOtherTyping(false) }
   },[selectedConv])
 
-  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  const dmScrollRef = useRef(null)
+  const dmUserScrolledUp = useRef(false)
+  const dmIsNearBottom = () => { const el=dmScrollRef.current; if(!el) return true; return el.scrollHeight-el.scrollTop-el.clientHeight < 120 }
+  useEffect(()=>{ if(!dmUserScrolledUp.current) bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  // reset scroll-up flag when conversation changes
+  useEffect(()=>{ dmUserScrolledUp.current=false },[selectedConv])
 
   const [allPeople, setAllPeople] = useState([])
 
@@ -2548,7 +2574,7 @@ function SphereAppInner({ currentUser }) {
                 </div>
               </div>
             </div>
-            <div style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70}}>
+            <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{minHeight:'60vh',padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70,overflowY:'auto'}}>
               {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
                 <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
