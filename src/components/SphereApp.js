@@ -505,6 +505,7 @@ function AdsenseCard() {
 }
 
 
+function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
   const [likes, setLikes] = useState(post.likes_count||0)
