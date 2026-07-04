@@ -799,11 +799,15 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     const tempId = 'temp_'+Date.now()
     const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
-    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').single()
+    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('id,created_at').single()
     if(inserted){
-      setMessages(prev=>prev.map(m=>m.id===tempId?inserted:m))
-      // broadcast to other members for instant delivery
+      // replace temp with confirmed message built locally (no RLS issue since we own all the data)
+      const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
+      setMessages(prev=>prev.map(m=>m.id===tempId?confirmed:m))
       gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{message_id:inserted.id}})
+    } else {
+      console.error('GC insert error:', error)
+      // keep temp visible so user knows message was sent
     }
   }
 
@@ -1880,7 +1884,26 @@ function SphereAppInner({ currentUser }) {
   const [ads, setAds] = useState([])
   const [showAdmin, setShowAdmin] = useState(false)
   const ADMIN_ID = 'b29fa752-34f5-4a3e-a3e7-8178c2b176ae'
-  const [tab, setTab] = useState('home')
+
+  // URL-based navigation
+  const getHashTab = () => {
+    const h = window.location.hash.replace('#','')
+    return ['home','messages','pulse','people','notifications'].includes(h) ? h : 'home'
+  }
+  const [tab, setTab] = useState(getHashTab)
+  const setTabWithHash = (t) => {
+    window.location.hash = t
+    setTab(t)
+    if(t==='messages') setDmView('list')
+  }
+  useEffect(()=>{
+    const onPop = () => {
+      setTab(getHashTab())
+      setHideNav(false)
+    }
+    window.addEventListener('popstate', onPop)
+    return ()=>window.removeEventListener('popstate', onPop)
+  },[])
   const [autoOpenGroup, setAutoOpenGroup] = useState(null)
   const [pendingReelId, setPendingReelId] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
@@ -1962,7 +1985,7 @@ function SphereAppInner({ currentUser }) {
     const gid = params.get('opengroup')
     if(gid){
       supabase.from('groups').select('*,group_members(user_id)').eq('id',gid).single().then(({data})=>{
-        if(data){setTab('pulse');setAutoOpenGroup(data)}
+        if(data){setTabWithHash('pulse');setAutoOpenGroup(data)}
       })
       window.history.replaceState({},'',window.location.pathname)
     }
@@ -2331,7 +2354,7 @@ function SphereAppInner({ currentUser }) {
     }
     setSelectedConv({id:convId,other:user})
     setDmView('chat')
-    setTab('messages')
+    setTabWithHash('messages')
   }
 
   const sendMsg = async() => {
@@ -2475,7 +2498,7 @@ function SphereAppInner({ currentUser }) {
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
               {(i+1)%7===0&&<AdsenseCard/>}
-              {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTab('pulse');setPendingReelId(reelId)}}/>}
+              {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTabWithHash('pulse');setPendingReelId(reelId)}}/>}
             </div>
           ))}
         </>}
@@ -2694,7 +2717,7 @@ function SphereAppInner({ currentUser }) {
             const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
             const showDot = id==='pulse'&&unreadGC
             return (
-            <button key={id} onClick={()=>{setTab(id);if(id==='messages')setDmView('list')}} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}>
+            <button key={id} onClick={()=>setTabWithHash(id)} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}>
               <span style={{fontSize:20,position:'relative'}}>
                 {icon}
                 {badgeCount>0&&<span style={{position:'absolute',top:-6,right:-10,background:'#FF4757',color:'#fff',fontSize:10,fontWeight:800,borderRadius:9,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px',border:'2px solid #090B10'}}>{badgeCount>9?'9+':badgeCount}</span>}
