@@ -10,6 +10,7 @@ export const metadata = {
   publisher: 'OmniSphere Labs',
   metadataBase: new URL('https://sphereapp.qzz.io'),
   alternates: { canonical: '/' },
+  verification: { google: '9XDPLjOPGXpC-aBASXvGyCogIS3P1jrATwQw0PXL8ZA' },
   openGraph: {
     title: 'Sphere — Connect Globally',
     description: 'Join Sphere and connect with the world. Share posts, reels, send messages, join groups and more.',
