@@ -488,18 +488,16 @@ function AdsenseCard() {
     } catch(e){}
   },[])
   return (
-    <div style={{padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+    <div ref={ref} style={{padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:4}}>
         <span style={{fontSize:9,color:'#333',letterSpacing:0.5}}>ADVERTISEMENT</span>
       </div>
-      <div ref={ref} style={{minHeight:100,background:'rgba(255,255,255,0.02)',borderRadius:8,overflow:'hidden'}}>
-        <ins className="adsbygoogle"
-          style={{display:'block',minHeight:100}}
-          data-ad-client="ca-pub-1625129471311969"
-          data-ad-slot="XXXXXXXXXX"
-          data-ad-format="auto"
-          data-full-width-responsive="true"/>
-      </div>
+      <ins className="adsbygoogle"
+        style={{display:'block'}}
+        data-ad-format="fluid"
+        data-ad-layout-key="-e5+6k-30-ac+ty"
+        data-ad-client="ca-pub-1625129471311969"
+        data-ad-slot="7026369503"/>
     </div>
   )
 }
@@ -2483,7 +2481,31 @@ function SphereAppInner({ currentUser }) {
         </>}
 
         {tab==='messages'&&<>
-          
+          {dmView==='list'&&<>
+            <div style={{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+              <span style={{fontWeight:800,fontSize:20}}>Messages</span>
+              <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
+            </div>
+            {/* OmniCore AI — always pinned first */}
+            <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
+              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',background:'rgba(91,156,246,0.04)'}}>
+              <div style={{width:50,height:50,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>🤖</div>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                  <span style={{fontWeight:700,fontSize:15}}>OmniCore AI</span>
+                  <span style={{fontSize:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+                </div>
+                <p style={{color:'#555',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
+              </div>
+              <span style={{color:'#444',fontSize:20}}>›</span>
+            </div>
+            {conversations.map(conv=>(
+              <div key={conv.id}
+                onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
+                <div style={{position:'relative',flexShrink:0}}>
+                  <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
+                  {conv.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
