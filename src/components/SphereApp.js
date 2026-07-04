@@ -759,12 +759,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         if(data) setMessages(prev=>prev.map(m=>m.id===msgId?{...m,group_message_reactions:data}:m))
       })
       .on('broadcast',{event:'new_message'},async(payload)=>{
-        const msgId = payload.payload?.message_id
-        if(!msgId) return
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',msgId).single()
-        if(data) setMessages(prev=>{
-          const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
-          return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
+        const msg = payload.payload
+        if(!msg?.id) return
+        // Use data directly from broadcast - no DB fetch needed, avoids RLS issues
+        setMessages(prev=>{
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===msg.content&&m.sender_id===msg.sender_id))
+          return filtered.some(m=>m.id===msg.id) ? filtered : [...filtered,{...msg,group_message_reactions:msg.group_message_reactions||[]}]
         })
       })
       .on('broadcast',{event:'typing'},(payload)=>{
@@ -804,7 +804,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       // replace temp with confirmed message built locally (no RLS issue since we own all the data)
       const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
       setMessages(prev=>prev.map(m=>m.id===tempId?confirmed:m))
-      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{message_id:inserted.id}})
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id,
+        group_id:group.id,
+        sender_id:currentUser.id,
+        content:confirmed.content,
+        reply_to:confirmed.reply_to,
+        created_at:confirmed.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
     } else {
       console.error('GC insert error:', error)
       // keep temp visible so user knows message was sent
@@ -1403,7 +1412,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   )
 }
 
-function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav, pendingReelId, onReelsOpened }) {
+function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav, pendingReelId, onReelsOpened, viewingGroupRef }) {
   const [groups, setGroups] = useState([])
   const [pulses, setPulses] = useState([])
   const [myPulse, setMyPulse] = useState([])
@@ -1548,7 +1557,13 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     </div>
   )}
 
-  if(viewingGroup) return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);onHideNav&&onHideNav(false);loadAll()}} onUserClick={onUserClick}/>
+  if(viewingGroup) {
+    // register closeGC callback for back button handler
+    if(viewingGroupRef) viewingGroupRef.current = {closeGC:()=>{ setViewingGroup(null); onHideNav&&onHideNav(false); loadAll() }}
+    return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);if(viewingGroupRef)viewingGroupRef.current=null;onHideNav&&onHideNav(false);loadAll()}} onUserClick={onUserClick}/>
+  }
+  // clear viewingGroupRef when no group open
+  if(viewingGroupRef) viewingGroupRef.current = null
 
   if(showCreatePulse) return (
     <div style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
@@ -1896,14 +1911,6 @@ function SphereAppInner({ currentUser }) {
     setTab(t)
     if(t==='messages') setDmView('list')
   }
-  useEffect(()=>{
-    const onPop = () => {
-      setTab(getHashTab())
-      setHideNav(false)
-    }
-    window.addEventListener('popstate', onPop)
-    return ()=>window.removeEventListener('popstate', onPop)
-  },[])
   const [autoOpenGroup, setAutoOpenGroup] = useState(null)
   const [pendingReelId, setPendingReelId] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
@@ -2014,9 +2021,10 @@ function SphereAppInner({ currentUser }) {
   const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'OmniCore AI',username:'omnicore',avatar_color:'#5B9CF6',avatar_url:null,is_ai:true}
   const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
+  const viewingGroupRef = useRef(null)
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav}
-  },[viewingUser,showMyProfile,showSettings,tab,dmView])
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav])
 
   // Global listener for push notifications regardless of tab
   useEffect(()=>{
@@ -2099,15 +2107,26 @@ function SphereAppInner({ currentUser }) {
   },[])
 
   useEffect(()=>{
-    window.history.pushState(null,'',window.location.href)
-    const handlePop = () => {
-      window.history.pushState(null,'',window.location.href)
+    // Prevent back button from ever going to auth/login
+    window.history.pushState({sphere:true},'',window.location.href)
+    const handlePop = (e) => {
+      // Always push a new state to stay in-app
+      window.history.pushState({sphere:true},'',window.location.href)
       const s = stateRef.current
+      // Priority order: deepest screen first
       if(s.viewingUser){setViewingUser(null);return}
       if(s.showMyProfile){setShowMyProfile(false);return}
       if(s.showSettings){setShowSettings(false);return}
-      if(s.dmView==='chat'){setDmView('list');setSelectedConv(null);return}
-      if(s.tab!=='home'){setTab('home');return}
+      if(s.dmView==='chat'){setDmView('list');setSelectedConv(null);setMessages([]);return}
+      if(s.viewingGroup){
+        // signal PulseTab to close GC via a shared ref callback
+        if(viewingGroupRef.current?.closeGC) viewingGroupRef.current.closeGC()
+        viewingGroupRef.current = null
+        stateRef.current.viewingGroup = null
+        setHideNav(false)
+        return
+      }
+      if(s.tab!=='home'){setTabWithHash('home');return}
     }
     window.addEventListener('popstate',handlePop)
     return()=>window.removeEventListener('popstate',handlePop)
@@ -2703,7 +2722,7 @@ function SphereAppInner({ currentUser }) {
           </>}
         </>}
 
-        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)}/>}
+        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>}
