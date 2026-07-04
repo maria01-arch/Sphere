@@ -801,22 +801,22 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     setMessages(prev=>[...prev,tempMsg])
     const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('id,created_at').single()
     if(inserted){
-      // replace temp with confirmed message built locally (no RLS issue since we own all the data)
       const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
       setMessages(prev=>prev.map(m=>m.id===tempId?confirmed:m))
+      // broadcast full message to other members
       gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
-        id:inserted.id,
-        group_id:group.id,
-        sender_id:currentUser.id,
-        content:confirmed.content,
-        reply_to:confirmed.reply_to,
-        created_at:confirmed.created_at,
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id,
+        content:text, reply_to:reply, created_at:inserted.created_at,
         sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
         group_message_reactions:[]
       }})
+      // one-time delayed fetch to sync with DB (catches any edge cases)
+      setTimeout(async()=>{
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
+        if(data) setMessages(data)
+      }, 2000)
     } else {
       console.error('GC insert error:', error)
-      // keep temp visible so user knows message was sent
     }
   }
 
