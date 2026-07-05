@@ -32,32 +32,15 @@ export default function Home() {
     }}>
       {/* Xchord Logo */}
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-        <svg width="80" height="80" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="90" height="90" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <radialGradient id="sphere_grad" cx="38%" cy="32%" r="60%">
-              <stop offset="0%" stopColor="#555"/>
-              <stop offset="40%" stopColor="#1a1a1a"/>
-              <stop offset="100%" stopColor="#000"/>
-            </radialGradient>
-            <radialGradient id="shine" cx="35%" cy="28%" r="45%">
-              <stop offset="0%" stopColor="rgba(255,255,255,0.35)"/>
-              <stop offset="100%" stopColor="rgba(255,255,255,0)"/>
-            </radialGradient>
-            <linearGradient id="x_grad" x1="20" y1="20" x2="60" y2="60" gradientUnits="userSpaceOnUse">
-              <stop offset="0%" stopColor="#ffffff"/>
-              <stop offset="50%" stopColor="#cccccc"/>
-              <stop offset="100%" stopColor="#888888"/>
-            </linearGradient>
+            <linearGradient id="rgl" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient>
           </defs>
-          {/* Sphere body */}
-          <circle cx="40" cy="40" r="38" fill="url(#sphere_grad)"/>
-          {/* Shine */}
-          <circle cx="40" cy="40" r="38" fill="url(#shine)"/>
-          {/* X mark - chrome style */}
-          <line x1="22" y1="22" x2="58" y2="58" stroke="url(#x_grad)" strokeWidth="9" strokeLinecap="round"/>
-          <line x1="58" y1="22" x2="22" y2="58" stroke="url(#x_grad)" strokeWidth="9" strokeLinecap="round"/>
-          {/* Sphere border */}
-          <circle cx="40" cy="40" r="38" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1"/>
+          <ellipse cx="52" cy="63" rx="40" ry="11" fill="none" stroke="url(#rgl)" strokeWidth="4.5" strokeDasharray="62 124" strokeDashoffset="0" opacity="0.4"/>
+          <circle cx="50" cy="50" r="33" fill="none" stroke="url(#rgl)" strokeWidth="2.5"/>
+          <line x1="33" y1="33" x2="67" y2="67" stroke="url(#rgl)" strokeWidth="8" strokeLinecap="round"/>
+          <line x1="67" y1="33" x2="33" y2="67" stroke="url(#rgl)" strokeWidth="8" strokeLinecap="round"/>
+          <ellipse cx="52" cy="63" rx="40" ry="11" fill="none" stroke="url(#rgl)" strokeWidth="4.5" strokeDasharray="58 124" strokeDashoffset="-66"/>
         </svg>
 
         <div style={{textAlign:'center'}}>
