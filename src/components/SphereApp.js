@@ -810,11 +810,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
         group_message_reactions:[]
       }})
-      // one-time delayed fetch to sync with DB (catches any edge cases)
+      // one-time delayed fetch to sync with DB - merges not overwrites
       setTimeout(async()=>{
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
-        if(data) setMessages(data)
-      }, 2000)
+        if(data) setMessages(prev=>{
+          const temps = prev.filter(m=>m.id.toString().startsWith('temp_'))
+          const confirmedIds = new Set(data.map(m=>m.id))
+          const stillPending = temps.filter(t=>!data.some(d=>d.content===t.content&&d.sender_id===t.sender_id&&Math.abs(new Date(d.created_at)-new Date(t.created_at))<10000))
+          return [...data,...stillPending]
+        })
+      }, 1500)
     } else {
       console.error('GC insert error:', error)
     }
@@ -2492,16 +2497,19 @@ function XchordAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="xg2" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient></defs>
-            <rect width="32" height="32" rx="10" fill="url(#xg2)"/>
-            <line x1="9" y1="9" x2="23" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
-            <line x1="23" y1="9" x2="9" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
-            <line x1="11" y1="16" x2="21" y2="16" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.8"/>
-            <circle cx="11" cy="16" r="2.2" fill="white"/>
-            <circle cx="21" cy="16" r="2.2" fill="white"/>
+          <svg width="30" height="30" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="sg2" cx="38%" cy="32%" r="60%"><stop offset="0%" stopColor="#555"/><stop offset="40%" stopColor="#1a1a1a"/><stop offset="100%" stopColor="#000"/></radialGradient>
+              <radialGradient id="sh2" cx="35%" cy="28%" r="45%"><stop offset="0%" stopColor="rgba(255,255,255,0.35)"/><stop offset="100%" stopColor="rgba(255,255,255,0)"/></radialGradient>
+              <linearGradient id="xg3" x1="20" y1="20" x2="60" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#ffffff"/><stop offset="50%" stopColor="#cccccc"/><stop offset="100%" stopColor="#888"/></linearGradient>
+            </defs>
+            <circle cx="40" cy="40" r="38" fill="url(#sg2)"/>
+            <circle cx="40" cy="40" r="38" fill="url(#sh2)"/>
+            <line x1="22" y1="22" x2="58" y2="58" stroke="url(#xg3)" strokeWidth="9" strokeLinecap="round"/>
+            <line x1="58" y1="22" x2="22" y2="58" stroke="url(#xg3)" strokeWidth="9" strokeLinecap="round"/>
+            <circle cx="40" cy="40" r="38" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1"/>
           </svg>
-          <span style={{fontWeight:900,fontSize:20,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px'}}>xchord</span>
+          <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>XCHORD</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           

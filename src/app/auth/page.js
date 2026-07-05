@@ -46,14 +46,17 @@ export default function AuthPage() {
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#090B10',padding:24}}>
       <div style={{width:'100%',maxWidth:420,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:24,padding:'40px 36px'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:32}}>
-          <svg width="40" height="40" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <defs><linearGradient id="xga" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient></defs>
-            <rect width="32" height="32" rx="10" fill="url(#xga)"/>
-            <line x1="9" y1="9" x2="23" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
-            <line x1="23" y1="9" x2="9" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
-            <line x1="11" y1="16" x2="21" y2="16" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.8"/>
-            <circle cx="11" cy="16" r="2.2" fill="white"/>
-            <circle cx="21" cy="16" r="2.2" fill="white"/>
+          <svg width="40" height="40" viewBox="0 0 80 80" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs>
+              <radialGradient id="xga" cx="38%" cy="32%" r="60%"><stop offset="0%" stopColor="#555"/><stop offset="40%" stopColor="#1a1a1a"/><stop offset="100%" stopColor="#000"/></radialGradient>
+              <radialGradient id="sha" cx="35%" cy="28%" r="45%"><stop offset="0%" stopColor="rgba(255,255,255,0.35)"/><stop offset="100%" stopColor="rgba(255,255,255,0)"/></radialGradient>
+              <linearGradient id="xla" x1="20" y1="20" x2="60" y2="60" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#ffffff"/><stop offset="50%" stopColor="#cccccc"/><stop offset="100%" stopColor="#888"/></linearGradient>
+            </defs>
+            <circle cx="40" cy="40" r="38" fill="url(#xga)"/>
+            <circle cx="40" cy="40" r="38" fill="url(#sha)"/>
+            <line x1="22" y1="22" x2="58" y2="58" stroke="url(#xla)" strokeWidth="9" strokeLinecap="round"/>
+            <line x1="58" y1="22" x2="22" y2="58" stroke="url(#xla)" strokeWidth="9" strokeLinecap="round"/>
+            <circle cx="40" cy="40" r="38" fill="none" stroke="rgba(255,255,255,0.08)" strokeWidth="1"/>
           </svg>
           <div>
             <div style={{fontWeight:900,fontSize:26,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px'}}>xchord</div>
