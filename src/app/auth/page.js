@@ -46,12 +46,25 @@ export default function AuthPage() {
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#090B10',padding:24}}>
       <div style={{width:'100%',maxWidth:420,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:24,padding:'40px 36px'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:32}}>
-          <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🌐</div>
-          <span style={{fontWeight:800,fontSize:24,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>sphere</span>
+          <svg width="40" height="40" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="xga" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient></defs>
+            <rect width="32" height="32" rx="10" fill="url(#xga)"/>
+            <line x1="9" y1="9" x2="23" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
+            <line x1="23" y1="9" x2="9" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
+            <line x1="11" y1="16" x2="21" y2="16" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.8"/>
+            <circle cx="11" cy="16" r="2.2" fill="white"/>
+            <circle cx="21" cy="16" r="2.2" fill="white"/>
+          </svg>
+          <div>
+            <span style={{fontWeight:900,fontSize:26,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px'}}>xchord</span>
+            <div style={{fontSize:10,color:'#444',marginTop:-2}}>formerly known as Sphere</div>
+          </div>
+        </div>
+
         </div>
 
         <h1 style={{fontWeight:700,fontSize:22,marginBottom:6}}>
-          {mode==='login'?'Welcome back':mode==='signup'?'Join Sphere':'Reset Password'}
+          {mode==='login'?'Welcome back':mode==='signup'?'Join Xchord':'Reset Password'}
         </h1>
         <p style={{color:'#555',fontSize:14,marginBottom:24}}>
           {mode==='login'?'Sign in to your account':mode==='signup'?'Connect with the world':'Enter your email to receive a reset link'}
@@ -80,7 +93,7 @@ export default function AuthPage() {
         <p style={{textAlign:'center',marginTop:16,color:'#555',fontSize:14}}>
           {mode==='forgot'?<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>← Back to Sign In</span>
           :mode==='login'?<>{"Don't have an account? "}<span onClick={()=>{setMode('signup');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign up</span></>
-          :<>{"Already on Sphere? "}<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign in</span></>}
+          :<>{"Already on Xchord? "}<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign in</span></>}
         </p>
         <p style={{textAlign:'center',marginTop:16,color:'#333',fontSize:12}}>
           By continuing you agree to our <a href="/privacy" style={{color:'#444',textDecoration:'underline'}}>Privacy Policy</a>

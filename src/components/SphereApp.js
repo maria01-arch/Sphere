@@ -116,7 +116,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
       </div>
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Sphere Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>SV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         </div>
         <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
         {profile?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
@@ -315,7 +315,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <MsgBox/>
         <div style={{background:'linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,165,0,0.08))',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'20px',marginBottom:24,textAlign:'center'}}>
           <div style={{fontSize:48,marginBottom:8}}>🏅</div>
-          <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Sphere Verified Badge</h2>
+          <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Xchord Verified Badge</h2>
           <p style={{color:'#aaa',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
           <p style={{color:'#FFD700',fontWeight:700,fontSize:18,marginTop:12}}>One-time fee: $5 USD</p>
         </div>
@@ -351,7 +351,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <div style={{padding:'16px 20px',borderTop:'1px solid rgba(255,255,255,0.04)',textAlign:'center'}}>
           <a href="/privacy" style={{color:'#333',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
           <span style={{color:'#222',fontSize:12}}> · </span>
-          <span style={{color:'#222',fontSize:12}}>© 2025 OmniSphere Labs</span>
+          <span style={{color:'#222',fontSize:12}}>© 2025 Xchord · fka Sphere</span>
         </div>
       </div>
     </div>
@@ -393,7 +393,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
       </div>
       <div style={{padding:'0 16px 20px'}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Sphere Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>SV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
         {currentUser?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
         {currentUser?.location&&<p style={{color:'#555',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
@@ -578,7 +578,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:6,justifyContent:'space-between'}}>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
               <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'#fff',fontWeight:700,fontSize:15}}>{a.display_name}</button>
-              {a.verified&&<span title='Sphere Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>SV</span></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+              {a.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
               <span style={{color:'#555',fontSize:13}}>@{a.username}</span>
               <span style={{color:'#333'}}>·</span>
               <span style={{color:'#444',fontSize:12}}>{timeAgo(post.created_at)}</span>
@@ -646,8 +646,8 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
     like:{emoji:'❤️',text:'liked your post'},
     comment:{emoji:'💬',text:'commented on your post'},
     follow:{emoji:'👤',text:'started following you'},
-    repost:{emoji:'🔁',text:'reposted your sphere'},
-    welcome:{emoji:'🌐',text:'Welcome to Sphere!'},
+    repost:{emoji:'🔁',text:'reposted your xchord'},
+    welcome:{emoji:'🌐',text:'Welcome to Xchord!'},
     follow_request:{emoji:'👤',text:'sent you a follow request'},
     follow_accepted:{emoji:'✅',text:'accepted your follow request'},
     mention:{emoji:'📌',text:'tagged you in a post'},
@@ -675,7 +675,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
             {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span>{info.emoji}</span>}
           </div>
           <div style={{flex:1,minWidth:0}}>
-            <span style={{fontWeight:700,fontSize:14,color:'#fff'}}>{actor?.display_name||'Sphere'} </span>
+            <span style={{fontWeight:700,fontSize:14,color:'#fff'}}>{actor?.display_name||'Xchord'} </span>
             <span style={{color:'#888',fontSize:14}}>{n.message||info.text}</span>
           </div>
           <span style={{color:'#444',fontSize:12,flexShrink:0}}>{timeAgo(n.created_at)}</span>
@@ -1348,7 +1348,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
               <div>
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
-                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:7,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>SV</span></span>}
+                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:7,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>XV</span></span>}
                   {reel.author?.is_authentic&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'#1877F2',flexShrink:0}}><svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'><polyline points='2,6 5,9 10,3' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
                 </div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>@{reel.author?.username}</div>
@@ -1685,7 +1685,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
 
 function OmniCoreAI({ currentUser, onClose }) {
   const STORAGE_KEY = 'omnicore_history_'+(currentUser?.id||'guest')
-  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I am OmniCore AI by OmniSphereLabs. How can I help you today?'}]
+  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I am OmniCore AI by Xchord. How can I help you today?'}]
   const [messages, setMessages] = useState(()=>{
     try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? JSON.parse(saved) : defaultMsg } catch(e) { return defaultMsg }
   })
@@ -1895,7 +1895,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   )
 }
 
-function SphereAppInner({ currentUser }) {
+function XchordAppInner({ currentUser }) {
   const [ads, setAds] = useState([])
   const [showAdmin, setShowAdmin] = useState(false)
   const ADMIN_ID = 'b29fa752-34f5-4a3e-a3e7-8178c2b176ae'
@@ -2031,8 +2031,8 @@ function SphereAppInner({ currentUser }) {
     const ch = supabase.channel('global_notifs_'+currentUser.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+currentUser.id},async(payload)=>{
         const {data:actor} = await supabase.from('profiles').select('display_name').eq('id',payload.new.actor_id).single()
-        const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your sphere',follow_accepted:'✅ accepted your follow request'}
-        showLocalNotif('🌐 Sphere', (actor?.display_name||'Someone')+' '+(info[payload.new.type]||'sent you a notification'))
+        const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your xchord',follow_accepted:'✅ accepted your follow request'}
+        showLocalNotif('🎵 Xchord', (actor?.display_name||'Someone')+' '+(info[payload.new.type]||'sent you a notification'))
         loadUnreadCounts()
       })
       .subscribe()
@@ -2108,10 +2108,10 @@ function SphereAppInner({ currentUser }) {
 
   useEffect(()=>{
     // Prevent back button from ever going to auth/login
-    window.history.pushState({sphere:true},'',window.location.href)
+    window.history.pushState({xchord:true},'',window.location.href)
     const handlePop = (e) => {
       // Always push a new state to stay in-app
-      window.history.pushState({sphere:true},'',window.location.href)
+      window.history.pushState({xchord:true},'',window.location.href)
       const s = stateRef.current
       // Priority order: deepest screen first
       if(s.viewingUser){setViewingUser(null);return}
@@ -2468,7 +2468,7 @@ function SphereAppInner({ currentUser }) {
   }
 
   const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
-  const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#SphereSpotlight',posts:'445K',cat:'Sphere'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
+  const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#XchordSpotlight',posts:'445K',cat:'Xchord'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
@@ -2491,7 +2491,18 @@ function SphereAppInner({ currentUser }) {
         <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
-        <span onClick={()=>window.location.reload()} style={{fontWeight:800,fontSize:20,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',cursor:'pointer'}}>🌐 sphere</span>
+        <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
+          <svg width="28" height="28" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <defs><linearGradient id="xg2" x1="0" y1="0" x2="32" y2="32" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient></defs>
+            <rect width="32" height="32" rx="10" fill="url(#xg2)"/>
+            <line x1="9" y1="9" x2="23" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
+            <line x1="23" y1="9" x2="9" y2="23" stroke="white" strokeWidth="2.8" strokeLinecap="round"/>
+            <line x1="11" y1="16" x2="21" y2="16" stroke="white" strokeWidth="1.8" strokeLinecap="round" opacity="0.8"/>
+            <circle cx="11" cy="16" r="2.2" fill="white"/>
+            <circle cx="21" cy="16" r="2.2" fill="white"/>
+          </svg>
+          <span style={{fontWeight:900,fontSize:20,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px'}}>xchord</span>
+        </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           
           {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>📢 Ads</button>}
@@ -2507,7 +2518,7 @@ function SphereAppInner({ currentUser }) {
             ))}
           </div>
           {loading&&<div style={{padding:'50px',textAlign:'center',color:'#444'}}>Loading...</div>}
-          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'#666',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Tap + to post!'}</p></div>}
+          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'#666',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Xchord! 🎵'}</p></div>}
           {posts.map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
               {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'#888',fontSize:13,cursor:'pointer'}}>
@@ -2718,7 +2729,7 @@ function SphereAppInner({ currentUser }) {
                 <button onClick={()=>toggleFollow(u)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Follow</button>
               </div>
             ))}
-            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'#444'}}>You follow everyone on Sphere!</p>}
+            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'#444'}}>You follow everyone on Xchord!</p>}
           </>}
         </>}
 
@@ -2767,7 +2778,7 @@ function SphereAppInner({ currentUser }) {
                   <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',fontSize:22}}>🖼️</button>
                   <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
                 </div>
-                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.07)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Sphere it</button>
+                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.07)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Xchord it</button>
               </div>
             </div>
           </div>
@@ -2777,6 +2788,6 @@ function SphereAppInner({ currentUser }) {
   )
 }
 
-export default function SphereApp({ currentUser }) {
-  return <ErrorBoundary><SphereAppInner currentUser={currentUser}/></ErrorBoundary>
+export default function XchordApp({ currentUser }) {
+  return <ErrorBoundary><XchordAppInner currentUser={currentUser}/></ErrorBoundary>
 }
