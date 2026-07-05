@@ -3,7 +3,7 @@ import { useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 
 export default function AuthPage() {
-  const [mode, setMode] = useState('login') // login | signup | forgot
+  const [mode, setMode] = useState('login')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [displayName, setDisplayName] = useState('')
@@ -56,14 +56,12 @@ export default function AuthPage() {
             <circle cx="21" cy="16" r="2.2" fill="white"/>
           </svg>
           <div>
-            <span style={{fontWeight:900,fontSize:26,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px'}}>xchord</span>
+            <div style={{fontWeight:900,fontSize:26,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px'}}>xchord</div>
             <div style={{fontSize:10,color:'#444',marginTop:-2}}>formerly known as Sphere</div>
           </div>
         </div>
 
-        </div>
-
-        <h1 style={{fontWeight:700,fontSize:22,marginBottom:6}}>
+        <h1 style={{fontWeight:700,fontSize:22,marginBottom:6,color:'#fff'}}>
           {mode==='login'?'Welcome back':mode==='signup'?'Join Xchord':'Reset Password'}
         </h1>
         <p style={{color:'#555',fontSize:14,marginBottom:24}}>
@@ -76,13 +74,12 @@ export default function AuthPage() {
         </>}
 
         <input style={inp} type="email" placeholder="Email address" value={email} onChange={e=>setEmail(e.target.value)}/>
-
         {mode!=='forgot'&&<input style={inp} type="password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleSubmit()}/>}
 
         {error&&<div style={{padding:'10px 14px',borderRadius:10,background:'rgba(255,71,87,0.1)',color:'#FF4757',fontSize:13,marginBottom:14}}>{error}</div>}
         {success&&<div style={{padding:'10px 14px',borderRadius:10,background:'rgba(0,201,167,0.1)',color:'#00C9A7',fontSize:13,marginBottom:14}}>{success}</div>}
 
-        <button onClick={handleSubmit} disabled={loading} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',marginTop:4}}>
+        <button onClick={handleSubmit} disabled={loading} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:14,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',marginTop:4}}>
           {loading?'Please wait...':mode==='login'?'Sign In':mode==='signup'?'Create Account':'Send Reset Link'}
         </button>
 
@@ -91,15 +88,16 @@ export default function AuthPage() {
         </p>}
 
         <p style={{textAlign:'center',marginTop:16,color:'#555',fontSize:14}}>
-          {mode==='forgot'?<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>← Back to Sign In</span>
-          :mode==='login'?<>{"Don't have an account? "}<span onClick={()=>{setMode('signup');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign up</span></>
-          :<>{"Already on Xchord? "}<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#5B9CF6',cursor:'pointer',fontWeight:600}}>Sign in</span></>}
+          {mode==='forgot'
+            ?<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#A855F7',cursor:'pointer',fontWeight:600}}>Back to Sign In</span>
+            :mode==='login'
+            ?<>{"Don't have an account? "}<span onClick={()=>{setMode('signup');setError('');setSuccess('')}} style={{color:'#A855F7',cursor:'pointer',fontWeight:600}}>Sign up</span></>
+            :<>{"Already on Xchord? "}<span onClick={()=>{setMode('login');setError('');setSuccess('')}} style={{color:'#A855F7',cursor:'pointer',fontWeight:600}}>Sign in</span></>}
         </p>
-        <p style={{textAlign:'center',marginTop:16,color:'#333',fontSize:12}}>
+        <p style={{textAlign:'center',marginTop:12,color:'#333',fontSize:11}}>
           By continuing you agree to our <a href="/privacy" style={{color:'#444',textDecoration:'underline'}}>Privacy Policy</a>
         </p>
       </div>
     </div>
   )
 }
-// privacy link is inside the component above, adding via sed below
