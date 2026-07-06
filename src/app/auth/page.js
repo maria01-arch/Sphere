@@ -60,20 +60,20 @@ export default function AuthPage() {
     </clipPath>
   </defs>
 
-  <!-- BACK half of ring (left side, behind planet) -->
+  {/* BACK half of ring (left side, behind planet) */}
   <ellipse cx="83" cy="78" rx="70" ry="18"
     stroke="url(#LGAU)" strokeWidth="9" fill="none" strokeLinecap="round"
     transform="rotate(-18 83 78)"
     clip-path="url(#BEHINDAU)" opacity="0.55"/>
 
-  <!-- Planet filled circle -->
+  {/* Planet filled circle */}
   <circle cx="80" cy="62" r="46" fill="url(#LGAU)"/>
 
-  <!-- X inside planet - BLACK bold strokes -->
+  {/* X inside planet - BLACK bold strokes */}
   <line x1="52" y1="36" x2="108" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
   <line x1="108" y1="36" x2="52" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
 
-  <!-- FRONTAU half of ring (right side, in front of planet) -->
+  {/* FRONTAU half of ring (right side, in front of planet) */}
   <ellipse cx="83" cy="78" rx="70" ry="18"
     stroke="url(#LGAU)" strokeWidth="9" fill="none" strokeLinecap="round"
     transform="rotate(-18 83 78)"
