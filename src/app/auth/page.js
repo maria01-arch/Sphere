@@ -46,6 +46,53 @@ export default function AuthPage() {
     <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#090B10',padding:24}}>
       <div style={{width:'100%',maxWidth:420,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:24,padding:'40px 36px'}}>
         <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:32}}>
+            <img src="/xchord-logo.svg" alt="Xchord" width="52" height="52" style={{objectFit:'contain'}}/>rt { useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+
+export default function AuthPage() {
+  const [mode, setMode] = useState('login')
+  const [email, setEmail] = useState('')
+  const [password, setPassword] = useState('')
+  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const supabase = createClient()
+
+  const handleSubmit = async () => {
+    setError(''); setSuccess(''); setLoading(true)
+    try {
+      if (mode === 'signup') {
+        const { error } = await supabase.auth.signUp({
+          email, password,
+          options: { data: { display_name: displayName, username: username.toLowerCase().replace(/\s/g,'') } }
+        })
+        if (error) throw error
+        const { error: e2 } = await supabase.auth.signInWithPassword({ email, password })
+        if (e2) throw e2
+        window.location.href = '/'
+      } else if (mode === 'login') {
+        const { error } = await supabase.auth.signInWithPassword({ email, password })
+        if (error) throw error
+        window.location.href = '/'
+      } else if (mode === 'forgot') {
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+          redirectTo: window.location.origin + '/auth/reset'
+        })
+        if (error) throw error
+        setSuccess('Password reset link sent! Check your email inbox.')
+      }
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'13px 16px',color:'#fff',fontSize:15,outline:'none',marginBottom:12,boxSizing:'border-box'}
+
+  return (
+    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#090B10',padding:24}}>
+      <div style={{width:'100%',maxWidth:420,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:24,padding:'40px 36px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:32}}>
             <svg width="60" height="50" viewBox="0 0 160 130" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="LGAU" x1="0" y1="0" x2="160" y2="130" gradientUnits="userSpaceOnUse">
@@ -60,20 +107,20 @@ export default function AuthPage() {
     </clipPath>
   </defs>
 
-  {/* BACK half of ring (left side, behind planet) */}
+  <!-- BACK half of ring (left side, behind planet) -->
   <ellipse cx="83" cy="78" rx="70" ry="18"
     stroke="url(#LGAU)" strokeWidth="9" fill="none" strokeLinecap="round"
     transform="rotate(-18 83 78)"
     clip-path="url(#BEHINDAU)" opacity="0.55"/>
 
-  {/* Planet filled circle */}
+  <!-- Planet filled circle -->
   <circle cx="80" cy="62" r="46" fill="url(#LGAU)"/>
 
-  {/* X inside planet - BLACK bold strokes */}
+  <!-- X inside planet - BLACK bold strokes -->
   <line x1="52" y1="36" x2="108" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
   <line x1="108" y1="36" x2="52" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
 
-  {/* FRONTAU half of ring (right side, in front of planet) */}
+  <!-- FRONTAU half of ring (right side, in front of planet) -->
   <ellipse cx="83" cy="78" rx="70" ry="18"
     stroke="url(#LGAU)" strokeWidth="9" fill="none" strokeLinecap="round"
     transform="rotate(-18 83 78)"

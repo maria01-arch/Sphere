@@ -32,6 +32,39 @@ export default function Home() {
     }}>
       {/* Xchord Logo */}
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+        <img src="/xchord-logo.svg" alt="Xchord" width="110" height="110" style={{objectFit:'contain'}}/>import { useEffect, useState } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import XchordApp from '@/components/SphereApp'
+
+export default function Home() {
+  const [profile, setProfile] = useState(null)
+  const [loading, setLoading] = useState(true)
+  const [fadeOut, setFadeOut] = useState(false)
+  const supabase = createClient()
+
+  useEffect(() => {
+    const init = async () => {
+      const { data: { session } } = await supabase.auth.getSession()
+      if (!session) { window.location.href = '/auth'; return }
+      const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+      setProfile(data)
+      // fade out loading screen smoothly
+      setFadeOut(true)
+      setTimeout(() => setLoading(false), 600)
+    }
+    init()
+  }, [])
+
+  if (loading) return (
+    <div style={{
+      minHeight:'100vh', background:'#090B10',
+      display:'flex', flexDirection:'column',
+      alignItems:'center', justifyContent:'center', gap:24,
+      opacity: fadeOut ? 0 : 1,
+      transition: 'opacity 0.6s ease',
+    }}>
+      {/* Xchord Logo */}
+      <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
         <svg width="110" height="90" viewBox="0 0 160 130" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
     <linearGradient id="LGLD" x1="0" y1="0" x2="160" y2="130" gradientUnits="userSpaceOnUse">
@@ -46,20 +79,20 @@ export default function Home() {
     </clipPath>
   </defs>
 
-  {/* BACK half of ring (left side, behind planet) */}
+  <!-- BACK half of ring (left side, behind planet) -->
   <ellipse cx="83" cy="78" rx="70" ry="18"
     stroke="url(#LGLD)" strokeWidth="9" fill="none" strokeLinecap="round"
     transform="rotate(-18 83 78)"
     clip-path="url(#BEHINDLD)" opacity="0.55"/>
 
-  {/* Planet filled circle */}
+  <!-- Planet filled circle -->
   <circle cx="80" cy="62" r="46" fill="url(#LGLD)"/>
 
-  {/* X inside planet - BLACK bold strokes */}
+  <!-- X inside planet - BLACK bold strokes -->
   <line x1="52" y1="36" x2="108" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
   <line x1="108" y1="36" x2="52" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
 
-  {/* FRONTLD half of ring (right side, in front of planet) */}
+  <!-- FRONTLD half of ring (right side, in front of planet) -->
   <ellipse cx="83" cy="78" rx="70" ry="18"
     stroke="url(#LGLD)" strokeWidth="9" fill="none" strokeLinecap="round"
     transform="rotate(-18 83 78)"

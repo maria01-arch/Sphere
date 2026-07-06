@@ -2497,39 +2497,7 @@ function XchordAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <svg width="44" height="36" viewBox="0 0 160 130" fill="none" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <linearGradient id="LGTB" x1="0" y1="0" x2="160" y2="130" gradientUnits="userSpaceOnUse">
-      <stop offset="0%" stopColor="#A855F7"/>
-      <stop offset="100%" stopColor="#06B6D4"/>
-    </linearGradient>
-    <clipPath id="BEHINDTB">
-      <rect x="0" y="0" width="80" height="130"/>
-    </clipPath>
-    <clipPath id="FRONTTB">
-      <rect x="80" y="0" width="80" height="130"/>
-    </clipPath>
-  </defs>
-
-  <!-- BACK half of ring (left side, behind planet) -->
-  <ellipse cx="83" cy="78" rx="70" ry="18"
-    stroke="url(#LGTB)" strokeWidth="9" fill="none" strokeLinecap="round"
-    transform="rotate(-18 83 78)"
-    clip-path="url(#BEHINDTB)" opacity="0.55"/>
-
-  <!-- Planet filled circle -->
-  <circle cx="80" cy="62" r="46" fill="url(#LGTB)"/>
-
-  <!-- X inside planet - BLACK bold strokes -->
-  <line x1="52" y1="36" x2="108" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
-  <line x1="108" y1="36" x2="52" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
-
-  <!-- FRONTTB half of ring (right side, in front of planet) -->
-  <ellipse cx="83" cy="78" rx="70" ry="18"
-    stroke="url(#LGTB)" strokeWidth="9" fill="none" strokeLinecap="round"
-    transform="rotate(-18 83 78)"
-    clip-path="url(#FRONTTB)"/>
-</svg>
+          <img src="/xchord-logo.svg" alt="Xchord" width="36" height="36" style={{objectFit:'contain'}}/>
           <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>XCHORD</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
