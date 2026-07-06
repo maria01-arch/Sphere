@@ -32,17 +32,39 @@ export default function Home() {
     }}>
       {/* Xchord Logo */}
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-        <svg width="100" height="84" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="rgld" x1="0" y1="0" x2="120" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient>
-            <linearGradient id="pgld" x1="20" y1="20" x2="100" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#c084fc"/><stop offset="50%" stopColor="#818cf8"/><stop offset="100%" stopColor="#22d3ee"/></linearGradient>
-          </defs>
-          <ellipse cx="62" cy="58" rx="52" ry="14" fill="none" stroke="url(#rgld)" strokeWidth="7" strokeLinecap="round" transform="rotate(-12 62 58)" strokeDasharray="75 200" strokeDashoffset="0" opacity="0.6"/>
-          <circle cx="60" cy="50" r="36" fill="url(#pgld)"/>
-          <line x1="38" y1="30" x2="80" y2="70" stroke="#090B10" strokeWidth="13" strokeLinecap="round"/>
-          <line x1="80" y1="30" x2="38" y2="70" stroke="#090B10" strokeWidth="13" strokeLinecap="round"/>
-          <ellipse cx="62" cy="58" rx="52" ry="14" fill="none" stroke="url(#rgld)" strokeWidth="7" strokeLinecap="round" transform="rotate(-12 62 58)" strokeDasharray="95 200" strokeDashoffset="-110"/>
-        </svg>
+        <svg width="110" height="90" viewBox="0 0 160 130" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="LGLD" x1="0" y1="0" x2="160" y2="130" gradientUnits="userSpaceOnUse">
+      <stop offset="0%" stopColor="#A855F7"/>
+      <stop offset="100%" stopColor="#06B6D4"/>
+    </linearGradient>
+    <clipPath id="BEHINDLD">
+      <rect x="0" y="0" width="80" height="130"/>
+    </clipPath>
+    <clipPath id="FRONTLD">
+      <rect x="80" y="0" width="80" height="130"/>
+    </clipPath>
+  </defs>
+
+  <!-- BACK half of ring (left side, behind planet) -->
+  <ellipse cx="83" cy="78" rx="70" ry="18"
+    stroke="url(#LGLD)" strokeWidth="9" fill="none" strokeLinecap="round"
+    transform="rotate(-18 83 78)"
+    clip-path="url(#BEHINDLD)" opacity="0.55"/>
+
+  <!-- Planet filled circle -->
+  <circle cx="80" cy="62" r="46" fill="url(#LGLD)"/>
+
+  <!-- X inside planet - BLACK bold strokes -->
+  <line x1="52" y1="36" x2="108" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
+  <line x1="108" y1="36" x2="52" y2="88" stroke="#090B10" strokeWidth="16" strokeLinecap="round"/>
+
+  <!-- FRONTLD half of ring (right side, in front of planet) -->
+  <ellipse cx="83" cy="78" rx="70" ry="18"
+    stroke="url(#LGLD)" strokeWidth="9" fill="none" strokeLinecap="round"
+    transform="rotate(-18 83 78)"
+    clip-path="url(#FRONTLD)"/>
+</svg>
 
         <div style={{textAlign:'center'}}>
           <div style={{
