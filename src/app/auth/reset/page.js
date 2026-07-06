@@ -29,36 +29,36 @@ export default function ResetPage() {
     setLoading(false)
   }
 
-  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'13px 16px',color:'#fff',fontSize:15,outline:'none',marginBottom:12,boxSizing:'border-box'}
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', color: '#fff', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
 
   return (
-    <div style={{minHeight:'100vh',display:'flex',alignItems:'center',justifyContent:'center',background:'#090B10',padding:24}}>
-      <div style={{width:'100%',maxWidth:420,background:'rgba(255,255,255,0.03)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:24,padding:'40px 36px'}}>
-        <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:32}}>
-          <div style={{width:40,height:40,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🌐</div>
-          <span style={{fontWeight:800,fontSize:24,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>sphere</span>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+          <img src="/xchord-logo.svg" alt="Xchord" width="40" height="40" style={{ objectFit: 'contain' }} />
+          <span style={{ fontWeight: 900, fontSize: 24, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Xchord</span>
         </div>
 
         {success ? <>
-          <div style={{textAlign:'center',padding:'20px 0'}}>
-            <div style={{fontSize:48,marginBottom:16}}>✅</div>
-            <h2 style={{fontWeight:700,fontSize:20,color:'#fff',marginBottom:8}}>Password Updated!</h2>
-            <p style={{color:'#555',fontSize:14,marginBottom:24}}>Your password has been successfully changed.</p>
-            <button onClick={()=>window.location.href='/'} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
-              Go to Sphere
+          <div style={{ textAlign: 'center', padding: '20px 0' }}>
+            <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
+            <h2 style={{ fontWeight: 700, fontSize: 20, color: '#fff', marginBottom: 8 }}>Password Updated!</h2>
+            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Your password has been successfully changed.</p>
+            <button onClick={() => window.location.href = '/'} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+              Go to Xchord
             </button>
           </div>
         </> : !ready ? <>
-          <h1 style={{fontWeight:700,fontSize:22,marginBottom:8}}>Checking link...</h1>
-          <p style={{color:'#555',fontSize:14}}>If this takes too long, your reset link may have expired. <span onClick={()=>window.location.href='/auth'} style={{color:'#5B9CF6',cursor:'pointer'}}>Request a new one</span>.</p>
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 8, color: '#fff' }}>Checking link...</h1>
+          <p style={{ color: '#555', fontSize: 14 }}>If this takes too long, your reset link may have expired. <span onClick={() => window.location.href = '/auth'} style={{ color: '#A855F7', cursor: 'pointer' }}>Request a new one</span>.</p>
         </> : <>
-          <h1 style={{fontWeight:700,fontSize:22,marginBottom:6}}>Set New Password</h1>
-          <p style={{color:'#555',fontSize:14,marginBottom:24}}>Choose a strong password for your account</p>
-          <input style={inp} type="password" placeholder="New password" value={password} onChange={e=>setPassword(e.target.value)}/>
-          <input style={inp} type="password" placeholder="Confirm new password" value={confirm} onChange={e=>setConfirm(e.target.value)} onKeyDown={e=>e.key==='Enter'&&handleReset()}/>
-          {error&&<div style={{padding:'10px 14px',borderRadius:10,background:'rgba(255,71,87,0.1)',color:'#FF4757',fontSize:13,marginBottom:14}}>{error}</div>}
-          <button onClick={handleReset} disabled={loading} style={{width:'100%',padding:'14px',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
-            {loading?'Updating...':'Update Password'}
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Set New Password</h1>
+          <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Choose a strong password for your account</p>
+          <input style={inp} type="password" placeholder="New password" value={password} onChange={e => setPassword(e.target.value)} />
+          <input style={inp} type="password" placeholder="Confirm new password" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleReset()} />
+          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+          <button onClick={handleReset} disabled={loading} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+            {loading ? 'Updating...' : 'Update Password'}
           </button>
         </>}
       </div>

@@ -27,7 +27,11 @@ export const metadata = {
     images: ['/og-image.png'],
   },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true } },
-  icons: { icon: '/favicon.ico', apple: '/apple-touch-icon.png' },
+  icons: {
+    icon: [{ url: '/xchord-logo.svg', type: 'image/svg+xml' }],
+    apple: [{ url: '/xchord-logo.svg', type: 'image/svg+xml' }],
+    shortcut: ['/xchord-logo.svg'],
+  },
 }
 
 export const viewport = {

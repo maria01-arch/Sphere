@@ -4,21 +4,20 @@ export default function PrivacyPolicy() {
   const s = {
     page: { minHeight:'100vh', background:'#090B10', color:'#fff', fontFamily:'sans-serif', padding:'0 0 80px' },
     header: { padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:12 },
-    logo: { width:36, height:36, borderRadius:'50%', background:'linear-gradient(135deg,#5B9CF6,#845EF7)', display:'flex', alignItems:'center', justifyContent:'center', fontSize:18 },
-    logoText: { fontWeight:800, fontSize:20, background:'linear-gradient(135deg,#5B9CF6,#845EF7)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent' },
+    logoText: { fontWeight:900, fontSize:20, background:'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', letterSpacing:'-0.5px' },
     body: { maxWidth:680, margin:'0 auto', padding:'32px 20px' },
     h1: { fontSize:28, fontWeight:800, marginBottom:8 },
     updated: { color:'#555', fontSize:13, marginBottom:36 },
-    h2: { fontSize:18, fontWeight:700, marginTop:32, marginBottom:12, color:'#5B9CF6' },
+    h2: { fontSize:18, fontWeight:700, marginTop:32, marginBottom:12, color:'#A855F7' },
     p: { color:'#aaa', fontSize:15, lineHeight:1.8, marginBottom:12 },
     ul: { color:'#aaa', fontSize:15, lineHeight:1.8, paddingLeft:20, marginBottom:12 },
-    a: { color:'#5B9CF6', textDecoration:'none' },
+    a: { color:'#A855F7', textDecoration:'none' },
   }
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <div style={s.logo}>🎵</div>
-        <span style={s.logoText}>xchord</span>
+        <img src="/xchord-logo.svg" alt="Xchord" width={36} height={36} style={{objectFit:'contain'}}/>
+        <span style={s.logoText}>Xchord</span>
       </div>
       <div style={s.body}>
         <h1 style={s.h1}>Privacy Policy</h1>
