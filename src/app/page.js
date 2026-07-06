@@ -32,15 +32,16 @@ export default function Home() {
     }}>
       {/* Xchord Logo */}
       <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
-        <svg width="90" height="90" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <svg width="100" height="84" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
           <defs>
-            <linearGradient id="rgl" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient>
+            <linearGradient id="rgld" x1="0" y1="0" x2="120" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient>
+            <linearGradient id="pgld" x1="20" y1="20" x2="100" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#c084fc"/><stop offset="50%" stopColor="#818cf8"/><stop offset="100%" stopColor="#22d3ee"/></linearGradient>
           </defs>
-          <ellipse cx="52" cy="63" rx="40" ry="11" fill="none" stroke="url(#rgl)" strokeWidth="4.5" strokeDasharray="62 124" strokeDashoffset="0" opacity="0.4"/>
-          <circle cx="50" cy="50" r="33" fill="none" stroke="url(#rgl)" strokeWidth="2.5"/>
-          <line x1="33" y1="33" x2="67" y2="67" stroke="url(#rgl)" strokeWidth="8" strokeLinecap="round"/>
-          <line x1="67" y1="33" x2="33" y2="67" stroke="url(#rgl)" strokeWidth="8" strokeLinecap="round"/>
-          <ellipse cx="52" cy="63" rx="40" ry="11" fill="none" stroke="url(#rgl)" strokeWidth="4.5" strokeDasharray="58 124" strokeDashoffset="-66"/>
+          <ellipse cx="62" cy="58" rx="52" ry="14" fill="none" stroke="url(#rgld)" strokeWidth="7" strokeLinecap="round" transform="rotate(-12 62 58)" strokeDasharray="75 200" strokeDashoffset="0" opacity="0.6"/>
+          <circle cx="60" cy="50" r="36" fill="url(#pgld)"/>
+          <line x1="38" y1="30" x2="80" y2="70" stroke="#090B10" strokeWidth="13" strokeLinecap="round"/>
+          <line x1="80" y1="30" x2="38" y2="70" stroke="#090B10" strokeWidth="13" strokeLinecap="round"/>
+          <ellipse cx="62" cy="58" rx="52" ry="14" fill="none" stroke="url(#rgld)" strokeWidth="7" strokeLinecap="round" transform="rotate(-12 62 58)" strokeDasharray="95 200" strokeDashoffset="-110"/>
         </svg>
 
         <div style={{textAlign:'center'}}>

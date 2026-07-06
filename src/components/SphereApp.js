@@ -2497,16 +2497,16 @@ function XchordAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <svg width="32" height="32" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <svg width="38" height="32" viewBox="0 0 120 100" fill="none" xmlns="http://www.w3.org/2000/svg">
             <defs>
-              <linearGradient id="rg1" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient>
-              <linearGradient id="cg1" x1="0" y1="0" x2="100" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#1a1a2e"/><stop offset="100%" stopColor="#0f0f1a"/></linearGradient>
+              <linearGradient id="rgtb" x1="0" y1="0" x2="120" y2="100" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#A855F7"/><stop offset="100%" stopColor="#06B6D4"/></linearGradient>
+              <linearGradient id="pgtb" x1="20" y1="20" x2="100" y2="80" gradientUnits="userSpaceOnUse"><stop offset="0%" stopColor="#c084fc"/><stop offset="50%" stopColor="#818cf8"/><stop offset="100%" stopColor="#22d3ee"/></linearGradient>
             </defs>
-            <ellipse cx="52" cy="63" rx="40" ry="11" fill="none" stroke="url(#rg1)" strokeWidth="4" strokeDasharray="62 124" strokeDashoffset="0" opacity="0.45"/>
-            <circle cx="50" cy="50" r="33" fill="url(#cg1)" stroke="url(#rg1)" strokeWidth="2.5"/>
-            <line x1="33" y1="33" x2="67" y2="67" stroke="url(#rg1)" strokeWidth="7" strokeLinecap="round"/>
-            <line x1="67" y1="33" x2="33" y2="67" stroke="url(#rg1)" strokeWidth="7" strokeLinecap="round"/>
-            <ellipse cx="52" cy="63" rx="40" ry="11" fill="none" stroke="url(#rg1)" strokeWidth="4" strokeDasharray="58 124" strokeDashoffset="-66"/>
+            <ellipse cx="62" cy="58" rx="52" ry="14" fill="none" stroke="url(#rgtb)" strokeWidth="7" strokeLinecap="round" transform="rotate(-12 62 58)" strokeDasharray="75 200" strokeDashoffset="0" opacity="0.6"/>
+            <circle cx="60" cy="50" r="36" fill="url(#pgtb)"/>
+            <line x1="38" y1="30" x2="80" y2="70" stroke="#090B10" strokeWidth="13" strokeLinecap="round"/>
+            <line x1="80" y1="30" x2="38" y2="70" stroke="#090B10" strokeWidth="13" strokeLinecap="round"/>
+            <ellipse cx="62" cy="58" rx="52" ry="14" fill="none" stroke="url(#rgtb)" strokeWidth="7" strokeLinecap="round" transform="rotate(-12 62 58)" strokeDasharray="95 200" strokeDashoffset="-110"/>
           </svg>
           <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>XCHORD</span>
         </div>
