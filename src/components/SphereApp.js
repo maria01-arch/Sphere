@@ -602,7 +602,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
             </button>
           </div>
           {showComments&&(
-            <div style={{marginTop:12,borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:12}}>
+            <div className="sheet-in" style={{marginTop:12,borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
                 <span style={{color:'#888',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
                 <button onClick={()=>setShowReply(!showReply)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
@@ -931,13 +931,13 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
 
   const deleteGroup = async () => {
-    if(!isCreator) return
+    if(!isCreator && !isAdmin) return
     await supabase.from('groups').delete().eq('id',group.id)
     onBack()
   }
 
   if(showRequests) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Join Requests ({joinRequests.length})</span>
@@ -960,7 +960,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   if(showMembers) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowMembers(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Members ({members.length})</span>
@@ -995,7 +995,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   if(showSettings) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Group Settings</span>
@@ -1032,7 +1032,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           <button onClick={leaveGroup} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:isCreator?'1px solid rgba(255,255,255,0.07)':'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
             🚪 Leave Group
           </button>
-          {isCreator&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
+          {(isCreator||isAdmin)&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
             🗑️ Delete Group
           </button>}
         </div>
@@ -1041,7 +1041,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   return (
-    <div style={{minHeight:'100vh',height:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    <div className="screen-in" style={{minHeight:'100vh',height:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
@@ -1222,11 +1222,10 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
 
   const openComments = async(reel) => {
     setShowComments(true)
-    if(comments.length===0){
-      const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
-      setComments(data||[])
-      setCommentCounts(p=>({...p,[reel.id]:data?.length||0}))
-    }
+    setComments([]) // clear stale comments from a previously viewed reel immediately
+    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
+    setComments(data||[])
+    setCommentCounts(p=>({...p,[reel.id]:data?.length||0}))
   }
 
   const postComment = async(reel) => {
@@ -1382,7 +1381,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           </div>}
 
           {/* comments panel */}
-          {showComments&&<div style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
+          {showComments&&<div className="sheet-in" style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
             <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
               <span style={{fontWeight:700,fontSize:15,color:'#fff'}}>Comments</span>
               <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'#888',fontSize:22,cursor:'pointer'}}>✕</button>
@@ -1571,7 +1570,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   if(viewingGroupRef) viewingGroupRef.current = null
 
   if(showCreatePulse) return (
-    <div style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
+    <div className="screen-in" style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Pulse</span>
@@ -1587,7 +1586,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   )
 
   if(showCreateGroup) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
@@ -2492,7 +2491,7 @@ function XchordAppInner({ currentUser }) {
 
   return (
     <div style={{minHeight:'100vh',background:'#090B10',maxWidth:600,margin:'0 auto',color:'#fff',fontFamily:'sans-serif'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+      {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
@@ -2505,7 +2504,7 @@ function XchordAppInner({ currentUser }) {
           {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>📢 Ads</button>}
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
         </div>
-      </div>
+      </div>}
 
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>

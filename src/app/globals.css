@@ -2,3 +2,43 @@
 html,body{height:100%;min-height:100dvh;background:#090B10;color:#fff;font-family:sans-serif;overscroll-behavior-y:none}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+
+/* Remove default flat gray tap highlight everywhere */
+*{-webkit-tap-highlight-color:transparent}
+
+/* Premium iOS-style press feedback: soft scale-down + fade, GPU-accelerated */
+button,[role="button"],.tappable{
+  transition:transform 0.15s cubic-bezier(0.4,0,0.2,1),opacity 0.15s cubic-bezier(0.4,0,0.2,1);
+  will-change:transform,opacity;
+}
+button:active,[role="button"]:active,.tappable:active{
+  transform:scale(0.96);
+  opacity:0.75;
+}
+
+/* Smooth slide-up + fade for bottom-sheet style overlays (comments, compose boxes, etc) */
+@keyframes sheetSlideUp{
+  from{transform:translateY(24px);opacity:0}
+  to{transform:translateY(0);opacity:1}
+}
+.sheet-in{
+  animation:sheetSlideUp 0.28s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* Smooth fade-in for full screen page overlays (settings, group chat, profile, etc) */
+@keyframes screenFadeIn{
+  from{opacity:0;transform:translateY(8px)}
+  to{opacity:1;transform:translateY(0)}
+}
+.screen-in{
+  animation:screenFadeIn 0.22s cubic-bezier(0.16,1,0.3,1) both;
+}
+
+/* Backdrop fade for dimmed overlays behind sheets/modals */
+@keyframes backdropFadeIn{
+  from{opacity:0}
+  to{opacity:1}
+}
+.backdrop-in{
+  animation:backdropFadeIn 0.2s ease-out both;
+}
