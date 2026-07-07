@@ -11,7 +11,7 @@ const COUNTRIES = [
 ]
 
 const XLogo = ({ size = 52 }) => (
-  <img src="/xchord-logo.svg" alt="Xchord" width={size} height={size} style={{ objectFit: 'contain' }} />
+  <img src="/xchord-logo-white.svg" alt="Xchord" width={size} height={size} style={{ objectFit: 'contain' }} />
 )
 
 const isEmail = (v) => v.includes('@')

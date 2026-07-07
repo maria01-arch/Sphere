@@ -33,7 +33,7 @@ export default function Home() {
       {/* Xchord Logo */}
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
         <div style={{ animation: 'xspin 2.2s ease-in-out infinite' }}>
-          <img src="/xchord-logo.svg" alt="Xchord" width="110" height="110" style={{ objectFit: 'contain' }} />
+          <img src="/xchord-logo-white.svg" alt="Xchord" width="110" height="110" style={{ objectFit: 'contain' }} />
         </div>
 
         <div style={{ textAlign: 'center' }}>

@@ -2497,7 +2497,7 @@ function XchordAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <img src="/xchord-logo.svg" alt="Xchord" width="36" height="36" style={{objectFit:'contain'}}/>
+          <img src="/xchord-logo-white.svg" alt="Xchord" width="36" height="36" style={{objectFit:'contain'}}/>
           <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>XCHORD</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>

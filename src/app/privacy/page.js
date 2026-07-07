@@ -16,7 +16,7 @@ export default function PrivacyPolicy() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <img src="/xchord-logo.svg" alt="Xchord" width={36} height={36} style={{objectFit:'contain'}}/>
+        <img src="/xchord-logo-white.svg" alt="Xchord" width={36} height={36} style={{objectFit:'contain'}}/>
         <span style={s.logoText}>Xchord</span>
       </div>
       <div style={s.body}>
