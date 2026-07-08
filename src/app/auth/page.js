@@ -18,7 +18,7 @@ const isEmail = (v) => v.includes('@')
 
 export default function AuthPage() {
   const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
-  const [step, setStep] = useState(1) // signup wizard step 1-6
+  const [step, setStep] = useState(1) // signup wizard step 1-7 (7 = OTP, email path only)
 
   // step 1
   const [displayName, setDisplayName] = useState('')
@@ -26,8 +26,10 @@ export default function AuthPage() {
   // step 2
   const [dob, setDob] = useState('')
   const [country, setCountry] = useState('')
-  // step 3 — single field, email or phone
-  const [contact, setContact] = useState('')
+  // step 3 — explicit email vs phone path
+  const [contactMethod, setContactMethod] = useState('email') // 'email' | 'phone'
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
   // step 4
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
@@ -37,6 +39,10 @@ export default function AuthPage() {
   const fileRef = useRef(null)
   // step 6 — policy
   const [acceptedPolicy, setAcceptedPolicy] = useState(false)
+  // step 7 — OTP (email signups only)
+  const [otpCode, setOtpCode] = useState('')
+  const [pendingEmail, setPendingEmail] = useState('')
+  const [pendingSignupData, setPendingSignupData] = useState(null)
 
   // login / forgot
   const [loginContact, setLoginContact] = useState('')
@@ -74,9 +80,11 @@ export default function AuthPage() {
       return ''
     }
     if (step === 3) {
-      if (!contact.trim()) return 'Please enter your email or phone number'
-      const isPhoneLike = /^[0-9+()\-\s]{7,}$/.test(contact.trim())
-      if (!isEmail(contact) && !isPhoneLike) return 'Enter a valid email address or phone number'
+      if (contactMethod === 'email') {
+        if (!email.trim() || !isEmail(email)) return 'Please enter a valid email address'
+      } else {
+        if (!phone.trim() || phone.trim().length < 7) return 'Please enter a valid mobile number'
+      }
       return ''
     }
     if (step === 4) {
@@ -101,49 +109,97 @@ export default function AuthPage() {
     setStep(s => s - 1)
   }
 
+  const finishAccountSetup = async (userId) => {
+    // Optional profile picture upload — skip silently on any failure, don't block account creation
+    if (avatarFile && userId) {
+      try {
+        const ext = avatarFile.name.split('.').pop()
+        const path = `avatars/${userId}.${ext}`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true })
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId)
+        }
+      } catch { /* non-fatal — account already created */ }
+    }
+    window.location.href = '/'
+  }
+
   const handleCreateAccount = async () => {
     if (!acceptedPolicy) { setError('Please accept the Privacy Policy to continue'); return }
     setError(''); setLoading(true)
     try {
-      const trimmedContact = contact.trim()
-      const usingEmail = isEmail(trimmedContact)
-      const signupEmail = usingEmail ? trimmedContact : `${trimmedContact.replace(/[^0-9]/g, '')}@phone.xchord.placeholder`
-
-      const { error: signUpError } = await supabase.auth.signUp({
-        email: signupEmail,
-        password,
-        options: {
-          data: {
-            display_name: displayName.trim(),
-            username: username.toLowerCase().replace(/\s/g, ''),
-            date_of_birth: dob,
-            location: country,
-            phone: usingEmail ? null : trimmedContact,
-          }
-        }
-      })
-      if (signUpError) throw signUpError
-
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: signupEmail, password })
-      if (signInError) throw signInError
-
-      // Optional profile picture upload — skip silently on any failure, don't block account creation
-      if (avatarFile && signInData?.user?.id) {
-        try {
-          const ext = avatarFile.name.split('.').pop()
-          const path = `avatars/${signInData.user.id}.${ext}`
-          const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true })
-          if (!upErr) {
-            const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-            await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', signInData.user.id)
-          }
-        } catch { /* non-fatal — account already created */ }
+      const signupData = {
+        display_name: displayName.trim(),
+        username: username.toLowerCase().replace(/\s/g, ''),
+        date_of_birth: dob,
+        location: country,
       }
 
-      window.location.href = '/'
+      if (contactMethod === 'email') {
+        const trimmedEmail = email.trim()
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password,
+          options: { data: signupData }
+        })
+        if (signUpError) throw signUpError
+
+        // Email path requires OTP confirmation before we can sign in —
+        // move to the code-entry step instead of signing in immediately.
+        setPendingEmail(trimmedEmail)
+        setPendingSignupData(signupData)
+        setLoading(false)
+        setStep(7)
+        return
+      } else {
+        // Phone path — no SMS provider configured yet, so we skip verification
+        // entirely and use a placeholder email under the hood, same as before.
+        const trimmedPhone = phone.trim()
+        const placeholderEmail = `${trimmedPhone.replace(/[^0-9]/g, '')}@phone.xchord.placeholder`
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: placeholderEmail,
+          password,
+          options: { data: { ...signupData, phone: trimmedPhone } }
+        })
+        if (signUpError) throw signUpError
+
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: placeholderEmail, password })
+        if (signInError) throw signInError
+
+        await finishAccountSetup(signInData?.user?.id)
+        return
+      }
     } catch (e) {
       setError(e.message)
     }
+    setLoading(false)
+  }
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim() || otpCode.trim().length < 6) { setError('Enter the 6-digit code from your email'); return }
+    setError(''); setLoading(true)
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: pendingEmail,
+        token: otpCode.trim(),
+        type: 'signup'
+      })
+      if (error) throw error
+      await finishAccountSetup(data?.user?.id)
+    } catch (e) {
+      setError(e.message)
+    }
+    setLoading(false)
+  }
+
+  const handleResendOtp = async () => {
+    setError(''); setSuccess(''); setLoading(true)
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: pendingEmail })
+      if (error) throw error
+      setSuccess('Code resent! Check your inbox.')
+    } catch (e) { setError(e.message) }
     setLoading(false)
   }
 
@@ -192,6 +248,7 @@ export default function AuthPage() {
   const secondaryBtn = { width: '100%', padding: '14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10 }
   const skipBtn = { width: '100%', padding: '12px', background: 'none', border: 'none', color: '#666', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 6 }
   const discordBtn = { width: '100%', padding: '13px', background: '#5865F2', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }
+  const switchLink = { textAlign: 'center', marginTop: 2, marginBottom: 14, color: '#888', fontSize: 13, cursor: 'pointer' }
 
   const DiscordIcon = () => (
     <svg width="20" height="20" viewBox="0 0 245 240" fill="#fff">
@@ -203,10 +260,11 @@ export default function AuthPage() {
   const stepTitles = {
     1: 'Your name',
     2: 'Date of birth & country',
-    3: 'Email or phone number',
+    3: contactMethod === 'email' ? 'Your email' : 'Your mobile number',
     4: 'Create a password',
     5: 'Add a profile picture',
     6: 'Almost done',
+    7: 'Verify your email',
   }
 
   return (
@@ -274,14 +332,14 @@ export default function AuthPage() {
 
         {/* ---------- SIGNUP WIZARD ---------- */}
         {mode === 'signup' && <>
-          <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+          {step <= totalSteps && <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
             {Array.from({ length: totalSteps }, (_, i) => i + 1).map(n => (
               <div key={n} style={{ flex: 1, height: 4, borderRadius: 2, background: n <= step ? 'linear-gradient(135deg,#A855F7,#06B6D4)' : 'rgba(255,255,255,0.08)' }} />
             ))}
-          </div>
+          </div>}
 
           <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>{stepTitles[step]}</h1>
-          <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Step {step} of {totalSteps}</p>
+          {step <= totalSteps && <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Step {step} of {totalSteps}</p>}
 
           {step === 1 && <>
             <label style={label}>Full name</label>
@@ -301,9 +359,17 @@ export default function AuthPage() {
             <p style={{ color: '#444', fontSize: 12, marginTop: -6 }}>This becomes your Location — editable anytime in Settings.</p>
           </>}
 
-          {step === 3 && <>
-            <label style={label}>Email or phone number</label>
-            <input style={inp} type="text" placeholder="you@example.com or +234 801 234 5678" value={contact} onChange={e => setContact(e.target.value)} />
+          {step === 3 && contactMethod === 'email' && <>
+            <label style={label}>Email address</label>
+            <input style={inp} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+            <p style={switchLink} onClick={() => { setContactMethod('phone'); setError('') }}>Sign up with mobile number instead</p>
+          </>}
+
+          {step === 3 && contactMethod === 'phone' && <>
+            <label style={label}>Mobile number</label>
+            <input style={inp} type="tel" placeholder="+234 801 234 5678" value={phone} onChange={e => setPhone(e.target.value)} />
+            <p style={{ color: '#444', fontSize: 12, marginTop: -6, marginBottom: 14 }}>SMS verification isn't available yet — your number is saved to your profile.</p>
+            <p style={switchLink} onClick={() => { setContactMethod('email'); setError('') }}>Sign up with email instead</p>
           </>}
 
           {step === 4 && <>
@@ -343,7 +409,7 @@ export default function AuthPage() {
               <div>
                 <div><strong style={{ color: '#fff' }}>{displayName}</strong> · @{username}</div>
                 <div>{country} · {dob}</div>
-                <div>{contact}</div>
+                <div>{contactMethod === 'email' ? email : phone}</div>
               </div>
             </div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: 'pointer' }}>
@@ -354,17 +420,34 @@ export default function AuthPage() {
             </label>
           </>}
 
-          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginTop: 10, marginBottom: 4 }}>{error}</div>}
+          {step === 7 && <>
+            <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              We sent a 6-digit code to <strong style={{ color: '#fff' }}>{pendingEmail}</strong>. Enter it below to finish creating your account.
+            </p>
+            <input style={{ ...inp, fontSize: 24, letterSpacing: 8, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={6} placeholder="000000" value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()} />
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            <button onClick={handleVerifyOtp} disabled={loading} style={primaryBtn}>
+              {loading ? 'Verifying...' : 'Verify & Create Account'}
+            </button>
+            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+              {"Didn't get a code? "}<span onClick={handleResendOtp} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Resend</span>
+            </p>
+          </>}
+
+          {step !== 7 && error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginTop: 10, marginBottom: 4 }}>{error}</div>}
 
           {step < totalSteps
             ? <button onClick={handleNext} style={primaryBtn}>Next</button>
-            : <button onClick={handleCreateAccount} disabled={loading || !acceptedPolicy} style={{ ...primaryBtn, opacity: (loading || !acceptedPolicy) ? 0.6 : 1 }}>
-                {loading ? 'Creating account...' : 'Create Account'}
-              </button>}
+            : step === totalSteps
+              ? <button onClick={handleCreateAccount} disabled={loading || !acceptedPolicy} style={{ ...primaryBtn, opacity: (loading || !acceptedPolicy) ? 0.6 : 1 }}>
+                  {loading ? 'Creating account...' : 'Create Account'}
+                </button>
+              : null}
 
           {step === 5 && <button onClick={() => setStep(s => s + 1)} style={skipBtn}>Skip for now</button>}
 
-          <button onClick={handleBack} style={secondaryBtn}>Back</button>
+          {step <= totalSteps && <button onClick={handleBack} style={secondaryBtn}>Back</button>}
 
           {step === 1 && <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
             {"Already on Xchord? "}<span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign in</span>

@@ -792,10 +792,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     setLoading(false)
   }
 
+  const gcInputRef = useRef(null)
   const sendMsg = async () => {
     if(!msgText.trim()) return
     const text=msgText.trim(); const reply=replyTo
     setMsgText(''); setReplyTo(null)
+    if(gcInputRef.current) gcInputRef.current.style.height='auto'
     const tempId = 'temp_'+Date.now()
     const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
@@ -1128,7 +1130,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
-        <input value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping()}} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:20,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
         </div>
       </div>
@@ -1721,7 +1723,7 @@ function XChordAI({ currentUser, onClose }) {
       const res = await fetch('/api/xchordai-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:imgPrompt})})
       const data = await res.json()
       if(data.image) setGenImg(data.image)
-      else alert('Generation failed, try again')
+      else alert(data.error||'Generation failed, try again')
     } catch(e) { alert('Error: '+e.message) }
     setGeneratingImg(false)
   }
@@ -1734,8 +1736,28 @@ function XChordAI({ currentUser, onClose }) {
     setLoading(true)
     try {
       const res = await fetch('/api/xchordai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
-      const data = await res.json()
-      setMessages(prev=>[...prev,{role:'assistant',content:data.reply}])
+      if(!res.body) throw new Error('No response stream')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let fullText = ''
+      let started = false
+      while(true) {
+        const {done, value} = await reader.read()
+        if(done) break
+        fullText += decoder.decode(value, {stream:true})
+        if(!started) {
+          started = true
+          setLoading(false)
+          setMessages(prev=>[...prev,{role:'assistant',content:fullText}])
+        } else {
+          setMessages(prev=>{
+            const copy=[...prev]
+            copy[copy.length-1] = {role:'assistant',content:fullText}
+            return copy
+          })
+        }
+      }
+      if(!started) setMessages(prev=>[...prev,{role:'assistant',content:fullText||'Sorry, I am having trouble connecting. Please try again.'}])
     } catch(e) {
       setMessages(prev=>[...prev,{role:'assistant',content:'Sorry, I am having trouble connecting. Please try again.'}])
     }
@@ -2414,10 +2436,12 @@ function XchordAppInner({ currentUser }) {
     setTabWithHash('messages')
   }
 
+  const dmInputRef = useRef(null)
   const sendMsg = async() => {
     if(!msgText.trim()||!selectedConv?.id) return
     const content=msgText.trim(); const reply=dmReplyTo
     setMsgText(''); setDmReplyTo(null)
+    if(dmInputRef.current) dmInputRef.current.style.height='auto'
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
@@ -2723,7 +2747,7 @@ function XchordAppInner({ currentUser }) {
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
-              <input value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping()}} onKeyDown={e=>e.key==='Enter'&&sendMsg()} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:26,marginBottom:0,padding:'12px 18px'}}/>
+              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
               </div>
             </div>
