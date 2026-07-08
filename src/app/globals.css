@@ -25,13 +25,21 @@ button:active,[role="button"]:active,.tappable:active{
   animation:sheetSlideUp 0.28s cubic-bezier(0.16,1,0.3,1) both;
 }
 
-/* Smooth fade-in for full screen page overlays (settings, group chat, profile, etc) */
+/* Smooth fade-in for full screen page overlays (settings, group chat, profile, etc)
+   NOTE: opacity-only on purpose — a transform here would create a new containing
+   block for any position:fixed descendants (e.g. sticky message input bars),
+   causing them to detach from the viewport and appear to "float". */
 @keyframes screenFadeIn{
-  from{opacity:0;transform:translateY(8px)}
-  to{opacity:1;transform:translateY(0)}
+  from{opacity:0}
+  to{opacity:1}
 }
 .screen-in{
-  animation:screenFadeIn 0.22s cubic-bezier(0.16,1,0.3,1) both;
+  animation:screenFadeIn 0.2s ease-out both;
+}
+
+/* Same fade, safe to use even when the screen has position:fixed children */
+.screen-in-safe{
+  animation:screenFadeIn 0.2s ease-out both;
 }
 
 /* Backdrop fade for dimmed overlays behind sheets/modals */

@@ -1041,7 +1041,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   return (
-    <div className="screen-in" style={{minHeight:'100vh',height:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    <div className="screen-in-safe" style={{minHeight:'100vh',height:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
@@ -1416,7 +1416,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   )
 }
 
-function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav, pendingReelId, onReelsOpened, viewingGroupRef }) {
+function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav, pendingReelId, onReelsOpened, viewingGroupRef, reelsRef }) {
   const [groups, setGroups] = useState([])
   const [pulses, setPulses] = useState([])
   const [myPulse, setMyPulse] = useState([])
@@ -1524,7 +1524,11 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
   }
 
-  if(showReels) return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={pendingReelId} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false)}}/>
+  if(showReels){
+    if(reelsRef) reelsRef.current = {closeReels:()=>{setShowReels(false);onHideNav&&onHideNav(false)}}
+    return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={pendingReelId} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false);if(reelsRef)reelsRef.current=null}}/>
+  }
+  if(reelsRef) reelsRef.current = null
 
   if(viewingPulse) {
     const allPulses=[...(Array.isArray(myPulse)?myPulse:[]),...pulses]
@@ -2026,8 +2030,9 @@ function XchordAppInner({ currentUser }) {
   const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
   const viewingGroupRef = useRef(null)
+  const reelsRef = useRef(null)
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current}
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current,viewingReels:reelsRef.current}
   },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav])
 
   // Global listener for push notifications regardless of tab
@@ -2122,6 +2127,13 @@ function XchordAppInner({ currentUser }) {
       if(s.showMyProfile){setShowMyProfile(false);return}
       if(s.showSettings){setShowSettings(false);return}
       if(s.dmView==='chat'){setDmView('list');setSelectedConv(null);setMessages([]);return}
+      if(s.viewingReels){
+        if(reelsRef.current?.closeReels) reelsRef.current.closeReels()
+        reelsRef.current = null
+        stateRef.current.viewingReels = null
+        setHideNav(false)
+        return
+      }
       if(s.viewingGroup){
         // signal PulseTab to close GC via a shared ref callback
         if(viewingGroupRef.current?.closeGC) viewingGroupRef.current.closeGC()
@@ -2387,6 +2399,9 @@ function XchordAppInner({ currentUser }) {
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
+    if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+      sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), content.slice(0,100))
+    }
     loadConvos()
   }
 
@@ -2466,7 +2481,11 @@ function XchordAppInner({ currentUser }) {
     try {
       const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
       if(data?.subscription) {
-        fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+        const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+        if(!res.ok) {
+          const err = await res.json().catch(()=>({}))
+          console.error('Push send failed:', res.status, err.error||'unknown error')
+        }
       }
     } catch(e) { console.log('Push send error',e) }
   }
@@ -2729,7 +2748,7 @@ function XchordAppInner({ currentUser }) {
           </>}
         </>}
 
-        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef}/>}
+        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef} reelsRef={reelsRef}/>}
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>}
