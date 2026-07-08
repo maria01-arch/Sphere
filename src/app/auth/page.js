@@ -138,15 +138,22 @@ export default function AuthPage() {
 
       if (contactMethod === 'email') {
         const trimmedEmail = email.trim()
-        const { error: signUpError } = await supabase.auth.signUp({
+        const { data: signUpResult, error: signUpError } = await supabase.auth.signUp({
           email: trimmedEmail,
           password,
           options: { data: signupData }
         })
         if (signUpError) throw signUpError
 
-        // Email path requires OTP confirmation before we can sign in —
-        // move to the code-entry step instead of signing in immediately.
+        if (signUpResult?.session) {
+          // Email confirmation isn't required on this project (or already satisfied) —
+          // we're already signed in, so skip the OTP step entirely.
+          await finishAccountSetup(signUpResult.user?.id)
+          return
+        }
+
+        // A session wasn't returned, meaning Supabase is holding for email
+        // confirmation — move to the code-entry step.
         setPendingEmail(trimmedEmail)
         setPendingSignupData(signupData)
         setLoading(false)

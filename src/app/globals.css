@@ -42,7 +42,12 @@ button:active,[role="button"]:active,.tappable:active{
   animation:screenFadeIn 0.2s ease-out both;
 }
 
-/* Backdrop fade for dimmed overlays behind sheets/modals */
+/* Full-screen height that accounts for mobile browser chrome/keyboard resizing.
+   Falls back to 100vh on browsers that don't support dvh. */
+.full-screen-height{
+  height:100vh;
+  height:100dvh;
+}
 @keyframes backdropFadeIn{
   from{opacity:0}
   to{opacity:1}

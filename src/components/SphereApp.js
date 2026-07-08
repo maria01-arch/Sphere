@@ -1043,9 +1043,9 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   return (
-    <div className="screen-in-safe" style={{minHeight:'100vh',height:'100vh',background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    <div className="screen-in-safe full-screen-height" style={{background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
           <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',overflow:'hidden'}}>
@@ -1059,7 +1059,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'#666',fontSize:22,cursor:'pointer'}}>⚙️</button>
       </div>
 
-      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:80,overflowY:'auto',height:0}}>
+      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,paddingBottom:80,overflowY:'auto',height:0}}>
         {loading&&<p style={{textAlign:'center',color:'#444',marginTop:40}}>Loading...</p>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
@@ -1130,7 +1130,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
-        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:20,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
+        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:20,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
         </div>
       </div>
@@ -2747,7 +2747,7 @@ function XchordAppInner({ currentUser }) {
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
-              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} onKeyDown={e=>{if(e.key==='Enter'&&!e.shiftKey){e.preventDefault();sendMsg()}}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
+              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
               </div>
             </div>
