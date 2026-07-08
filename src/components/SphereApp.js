@@ -1691,9 +1691,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   )
 }
 
-function OmniCoreAI({ currentUser, onClose }) {
-  const STORAGE_KEY = 'omnicore_history_'+(currentUser?.id||'guest')
-  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I am OmniCore AI by Xchord. How can I help you today?'}]
+function XChordAI({ currentUser, onClose }) {
+  const STORAGE_KEY = 'xchordai_history_'+(currentUser?.id||'guest')
+  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I\'m xChord AI. How can I help you today?'}]
   const [messages, setMessages] = useState(()=>{
     try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? JSON.parse(saved) : defaultMsg } catch(e) { return defaultMsg }
   })
@@ -1703,7 +1703,10 @@ function OmniCoreAI({ currentUser, onClose }) {
   const [imgPrompt, setImgPrompt] = useState('')
   const [generatingImg, setGeneratingImg] = useState(false)
   const [showImgGen, setShowImgGen] = useState(false)
+  const [showAbout, setShowAbout] = useState(false)
+  const [deepThink, setDeepThink] = useState(false)
   const bottomRef = useRef(null)
+  const AI_GRADIENT = 'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)'
 
   useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
   useEffect(()=>{ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch(e){} },[messages])
@@ -1715,7 +1718,7 @@ function OmniCoreAI({ currentUser, onClose }) {
     setGeneratingImg(true)
     setGenImg(null)
     try {
-      const res = await fetch('/api/imagine',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:imgPrompt})})
+      const res = await fetch('/api/xchordai-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:imgPrompt})})
       const data = await res.json()
       if(data.image) setGenImg(data.image)
       else alert('Generation failed, try again')
@@ -1730,7 +1733,7 @@ function OmniCoreAI({ currentUser, onClose }) {
     setInput('')
     setLoading(true)
     try {
-      const res = await fetch('/api/omnicore',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system')})})
+      const res = await fetch('/api/xchordai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
       const data = await res.json()
       setMessages(prev=>[...prev,{role:'assistant',content:data.reply}])
     } catch(e) {
@@ -1740,52 +1743,71 @@ function OmniCoreAI({ currentUser, onClose }) {
   }
 
   return (
-    <div style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
+    <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
         <button onClick={onClose} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
-        <div style={{width:38,height:38,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20}}>🤖</div>
-        <div>
+        <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:38,height:38,objectFit:'contain'}}/>
+        <div onClick={()=>setShowAbout(true)} style={{cursor:'pointer'}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <div style={{fontWeight:800,fontSize:16,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>OmniCore AI</div>
-            <span style={{fontSize:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+            <div style={{fontWeight:800,fontSize:16,background:AI_GRADIENT,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>xChord AI</div>
+            {deepThink&&<span style={{fontSize:10,background:AI_GRADIENT,color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>DEEP THINK</span>}
           </div>
           <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
         </div>
-        <button onClick={clearHistory} style={{marginLeft:'auto',background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 12px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>🗑 Clear</button>
+        <button onClick={()=>setDeepThink(d=>!d)} title="Toggle deep thinking mode" style={{marginLeft:'auto',background:deepThink?AI_GRADIENT:'rgba(255,255,255,0.07)',border:'none',borderRadius:14,padding:'6px 12px',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
+          🧠 {deepThink?'Deep':'Fast'}
+        </button>
+        <button onClick={clearHistory} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 10px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>🗑</button>
       </div>
 
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
         {messages.map((msg,i)=>(
           <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
-            {msg.role==='assistant'&&<div style={{width:28,height:28,borderRadius:8,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14,flexShrink:0}}>🤖</div>}
-            <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.08)',color:'#fff',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
+            {msg.role==='assistant'&&<img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}}/>}
+            <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?AI_GRADIENT:'rgba(255,255,255,0.08)',color:'#fff',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
               {msg.content}
             </div>
           </div>
         ))}
         {loading&&<div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
-          <div style={{width:28,height:28,borderRadius:8,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:14}}>🤖</div>
-          <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'rgba(255,255,255,0.08)',color:'#888',fontSize:15}}>Thinking...</div>
+          <img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}}/>
+          <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'rgba(255,255,255,0.08)',color:'#888',fontSize:15}}>{deepThink?'Thinking deeply...':'Thinking...'}</div>
         </div>}
         <div ref={bottomRef}/>
       </div>
 
-      {showImgGen&&<div style={{position:'fixed',inset:0,zIndex:10,background:'rgba(0,0,0,0.85)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:12}}>
-        <div style={{width:'100%',maxWidth:400,background:'#1a1d26',borderRadius:20,padding:20,display:'flex',flexDirection:'column',gap:12}}>
+      {showAbout&&<div className="backdrop-in" onClick={()=>setShowAbout(false)} style={{position:'fixed',inset:0,zIndex:20,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div className="sheet-in" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:380,background:'#12141c',borderRadius:20,padding:'28px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+          <img src="/xchord-ai-logo.png" alt="xChord AI" style={{width:160,objectFit:'contain',marginBottom:6}}/>
+          <p style={{color:'#999',fontSize:13,lineHeight:1.7,marginTop:8}}>
+            xChord AI is built and maintained by <strong style={{color:'#fff'}}>XChordLabs Corp</strong>.
+          </p>
+          <p style={{color:'#999',fontSize:13,lineHeight:1.7}}>
+            Founded by <strong style={{color:'#fff'}}>Dara Samuel</strong>, popularly known as <strong style={{color:'#fff'}}>Samzy Bankz</strong>, with support from <strong style={{color:'#fff'}}>Beauty</strong>.
+          </p>
+          <p style={{color:'#999',fontSize:13,lineHeight:1.7}}>
+            Logo design by <strong style={{color:'#fff'}}>Artist Bigkizz</strong>.
+          </p>
+          <button onClick={()=>setShowAbout(false)} style={{marginTop:14,background:AI_GRADIENT,border:'none',borderRadius:14,padding:'10px 24px',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer'}}>Close</button>
+        </div>
+      </div>}
+
+      {showImgGen&&<div className="backdrop-in" style={{position:'fixed',inset:0,zIndex:10,background:'rgba(0,0,0,0.85)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:12}}>
+        <div className="sheet-in" style={{width:'100%',maxWidth:400,background:'#1a1d26',borderRadius:20,padding:20,display:'flex',flexDirection:'column',gap:12}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
             <span style={{fontWeight:700,fontSize:17,color:'#fff'}}>🎨 Image Generator</span>
             <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'#888',fontSize:22,cursor:'pointer'}}>✕</button>
           </div>
           <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none'}}/>
-          <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'12px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
+          <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:AI_GRADIENT,border:'none',borderRadius:12,padding:'12px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
           {genImg&&<img src={genImg} style={{width:'100%',borderRadius:12,marginTop:4}} alt="generated"/>}
           {genImg&&<button onClick={()=>window.open(genImg,'_blank')} style={{background:'rgba(255,255,255,0.07)',border:'none',borderRadius:12,padding:'10px',color:'#fff',fontSize:13,cursor:'pointer'}}>💾 Open / Save Image</button>}
         </div>
       </div>}
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
         <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',fontSize:18,flexShrink:0}}>🎨</button>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask OmniCore anything..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
-        <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask xChord AI anything..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+        <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'rgba(255,255,255,0.06)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
       </div>
     </div>
   )
@@ -2026,7 +2048,7 @@ function XchordAppInner({ currentUser }) {
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
   const OMNICORE_ID = 'omnicore-ai'
-  const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'OmniCore AI',username:'omnicore',avatar_color:'#5B9CF6',avatar_url:null,is_ai:true}
+  const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'xChord AI',username:'xchordai',avatar_color:'#A855F7',avatar_url:'/xchord-ai-icon.png',is_ai:true}
   const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
   const viewingGroupRef = useRef(null)
@@ -2554,14 +2576,14 @@ function XchordAppInner({ currentUser }) {
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
               <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
             </div>
-            {/* OmniCore AI — always pinned first */}
+            {/* xChord AI — always pinned first */}
             <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
-              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',background:'rgba(91,156,246,0.04)'}}>
-              <div style={{width:50,height:50,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,flexShrink:0}}>🤖</div>
+              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',background:'rgba(168,85,247,0.04)'}}>
+              <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
-                  <span style={{fontWeight:700,fontSize:15}}>OmniCore AI</span>
-                  <span style={{fontSize:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+                  <span style={{fontWeight:700,fontSize:15}}>xChord AI</span>
+                  <span style={{fontSize:10,background:'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
                 </div>
                 <p style={{color:'#555',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
               </div>
@@ -2620,7 +2642,7 @@ function XchordAppInner({ currentUser }) {
             ))}
           </>}
 
-          {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<OmniCoreAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
+          {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<XChordAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'#090B10',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
             <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',flexShrink:0}}>
