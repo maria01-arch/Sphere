@@ -1,7 +1,41 @@
-// xChord AI image generation — tries OpenRouter first, falls back through
-// multiple HuggingFace models since the free serverless inference API can
-// rate-limit or "cold start" (503) after a couple of requests.
+// xChord AI image generation — uses Hugging Face's Inference Providers (the
+// current, supported routing layer as of 2026; the old api-inference.huggingface.co
+// REST endpoints are deprecated for most image models). Falls back to OpenRouter
+// if HuggingFace is unavailable.
+import { InferenceClient } from '@huggingface/inference'
+
 export const runtime = 'nodejs'
+
+// General-purpose, safe image models only.
+// Each entry pins the provider that actually hosts it, since 'auto' routing
+// can fail to find a free/available provider even when the model itself works.
+const HF_MODELS = [
+  { model: 'RudySen/Krea2-realism-V1', provider: 'fal-ai' },
+  { model: 'black-forest-labs/FLUX.1-schnell', provider: 'auto' },
+  { model: 'stabilityai/stable-diffusion-xl-base-1.0', provider: 'auto' }
+]
+
+async function tryHuggingFace(prompt) {
+  const client = new InferenceClient(process.env.HF_TOKEN)
+  let lastError = null
+  for (const { model, provider } of HF_MODELS) {
+    try {
+      const blob = await client.textToImage({
+        model,
+        inputs: prompt + ', high quality, detailed, 4k',
+        provider
+      })
+      const arrayBuffer = await blob.arrayBuffer()
+      const base64 = Buffer.from(arrayBuffer).toString('base64')
+      const mime = blob.type || 'image/jpeg'
+      return `data:${mime};base64,${base64}`
+    } catch (e) {
+      lastError = e
+      console.error(`${model} (${provider}) failed:`, e.message)
+    }
+  }
+  throw lastError || new Error('All HuggingFace models failed')
+}
 
 async function tryOpenRouterImage(prompt) {
   const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -26,69 +60,36 @@ async function tryOpenRouterImage(prompt) {
   return imageUrl
 }
 
-async function tryHuggingFaceModel(model, prompt, attempt=1) {
-  const response = await fetch(
-    `https://api-inference.huggingface.co/models/${model}`,
-    {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${process.env.HF_TOKEN}`,
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify({ inputs: prompt + ', high quality, detailed, 4k' })
-    }
-  )
-
-  if(response.status === 503 && attempt <= 2) {
-    // Model is cold-starting — HF tells us roughly how long to wait
-    let waitMs = 4000
-    try { const info = await response.clone().json(); if(info?.estimated_time) waitMs = Math.min(info.estimated_time*1000, 15000) } catch(e){}
-    await new Promise(r=>setTimeout(r, waitMs))
-    return tryHuggingFaceModel(model, prompt, attempt+1)
-  }
-
-  if(response.status === 429) { const e = new Error(`${model} rate limited`); e.rateLimited = true; throw e }
-  if(!response.ok) throw new Error(`${model} failed: ${response.status}`)
-
-  const buffer = await response.arrayBuffer()
-  const base64 = Buffer.from(buffer).toString('base64')
-  return 'data:image/jpeg;base64,' + base64
-}
-
-const HF_MODELS = [
-  'stabilityai/stable-diffusion-xl-base-1.0',
-  'black-forest-labs/FLUX.1-schnell'
-]
-
 export async function POST(request) {
   try {
     const { prompt } = await request.json()
     if(!prompt?.trim()) return Response.json({ error: 'No prompt provided' }, { status: 400 })
 
+    let hfError = null
+    try {
+      const image = await tryHuggingFace(prompt)
+      return Response.json({ image })
+    } catch(e) {
+      hfError = e.message
+      console.error('HuggingFace image gen failed, falling back to OpenRouter:', e.message)
+    }
+
+    let orError = null
     try {
       const image = await tryOpenRouterImage(prompt)
       return Response.json({ image })
     } catch(e) {
-      console.error('OpenRouter image gen failed, falling back to HuggingFace:', e.message)
+      orError = e.message
+      console.error('OpenRouter image gen also failed:', e.message)
     }
 
-    let rateLimited = false
-    for(const model of HF_MODELS) {
-      try {
-        const image = await tryHuggingFaceModel(model, prompt)
-        return Response.json({ image })
-      } catch(e) {
-        if(e.rateLimited) rateLimited = true
-        console.error(`${model} failed:`, e.message)
-      }
-    }
-
-    const message = rateLimited
-      ? "Image generation is busy right now — please wait a moment and try again."
-      : "Image generation is temporarily unavailable. Please try again shortly."
-    return Response.json({ error: message }, { status: 503 })
+    // Surface real error detail so failures are diagnosable instead of a
+    // generic message every time.
+    return Response.json({
+      error: `Image generation is temporarily unavailable. (${hfError || 'HF failed'} / ${orError || 'OR failed'})`
+    }, { status: 503 })
   } catch(e) {
     console.error('Image route error:', e)
-    return Response.json({ error: 'Something went wrong generating the image.' }, { status: 500 })
+    return Response.json({ error: 'Something went wrong generating the image: ' + e.message }, { status: 500 })
   }
 }
