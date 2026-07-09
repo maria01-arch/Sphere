@@ -1,5 +1,5 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;min-height:100dvh;background:#090B10;color:#fff;font-family:sans-serif;overscroll-behavior-y:none}
+html,body{height:100%;min-height:100dvh;font-family:sans-serif;overscroll-behavior-y:none}
 ::-webkit-scrollbar{width:4px}
 ::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
 
@@ -55,3 +55,60 @@ button:active,[role="button"]:active,.tappable:active{
 .backdrop-in{
   animation:backdropFadeIn 0.2s ease-out both;
 }
+
+/* ==========================================================================
+   THEME SYSTEM
+   Dark is the default (matches original design). Light overrides via
+   [data-theme="light"] on <html>. Applied through CSS variables so React
+   inline styles can reference them as var(--token-name) without a rewrite
+   of the whole styling approach.
+   ========================================================================== */
+:root{
+  --bg-app:#090B10;
+  --bg-header:rgba(9,11,16,0.95);
+  --bg-card:rgba(255,255,255,0.07);
+  --bg-card-2:rgba(255,255,255,0.1);
+  --bg-card-3:rgba(255,255,255,0.06);
+  --bg-card-4:rgba(255,255,255,0.05);
+  --bg-card-5:rgba(255,255,255,0.04);
+  --bg-card-6:rgba(255,255,255,0.08);
+  --bg-card-7:rgba(255,255,255,0.09);
+  --bg-card-8:rgba(255,255,255,0.15);
+  --text-primary:#fff;
+  --text-secondary:#555;
+  --text-tertiary:#888;
+  --text-quaternary:#444;
+  --text-subtle:#aaa;
+  --text-muted:#666;
+  --text-faint:#333;
+  --border-color:rgba(255,255,255,0.07);
+  --border-color-2:rgba(255,255,255,0.1);
+  --shadow-color:rgba(0,0,0,0.5);
+  color-scheme:dark;
+}
+
+[data-theme="light"]{
+  --bg-app:#F5F6F8;
+  --bg-header:rgba(255,255,255,0.92);
+  --bg-card:rgba(15,23,42,0.045);
+  --bg-card-2:rgba(15,23,42,0.07);
+  --bg-card-3:rgba(15,23,42,0.035);
+  --bg-card-4:rgba(15,23,42,0.03);
+  --bg-card-5:rgba(15,23,42,0.025);
+  --bg-card-6:rgba(15,23,42,0.05);
+  --bg-card-7:rgba(15,23,42,0.055);
+  --bg-card-8:rgba(15,23,42,0.1);
+  --text-primary:#0F172A;
+  --text-secondary:#64748B;
+  --text-tertiary:#94A3B8;
+  --text-quaternary:#94A3B8;
+  --text-subtle:#475569;
+  --text-muted:#94A3B8;
+  --text-faint:#CBD5E1;
+  --border-color:rgba(15,23,42,0.08);
+  --border-color-2:rgba(15,23,42,0.12);
+  --shadow-color:rgba(15,23,42,0.12);
+  color-scheme:light;
+}
+
+html,body{background:var(--bg-app);color:var(--text-primary)}

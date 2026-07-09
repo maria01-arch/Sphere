@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { useTheme } from '@/lib/theme'
 const supabase = createClient()
 
 class ErrorBoundary extends (require('react').Component) {
@@ -8,11 +9,11 @@ class ErrorBoundary extends (require('react').Component) {
   static getDerivedStateFromError(e) { return {error:e} }
   render() {
     if(this.state.error) return (
-      <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',padding:20,fontFamily:'sans-serif'}}>
+      <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)',padding:20,fontFamily:'sans-serif'}}>
         <h2 style={{color:'#FF4757'}}>App Error</h2>
-        <p style={{color:'#aaa',fontSize:14,wordBreak:'break-word'}}>{this.state.error?.message}</p>
-        <pre style={{color:'#666',fontSize:11,overflow:'auto'}}>{this.state.error?.stack?.slice(0,500)}</pre>
-        <button onClick={()=>window.location.reload()} style={{marginTop:16,background:'#5B9CF6',border:'none',borderRadius:12,padding:'12px 24px',color:'#fff',cursor:'pointer'}}>Reload</button>
+        <p style={{color:'var(--text-subtle)',fontSize:14,wordBreak:'break-word'}}>{this.state.error?.message}</p>
+        <pre style={{color:'var(--text-muted)',fontSize:11,overflow:'auto'}}>{this.state.error?.stack?.slice(0,500)}</pre>
+        <button onClick={()=>window.location.reload()} style={{marginTop:16,background:'#5B9CF6',border:'none',borderRadius:12,padding:'12px 24px',color:'var(--text-primary)',cursor:'pointer'}}>Reload</button>
       </div>
     )
     return this.props.children
@@ -53,7 +54,7 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
     <div style={{position:'relative',flexShrink:0,display:'inline-block'}}>
       {url
         ? <img src={url} alt={name} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',boxShadow:`0 0 0 2px #090B10`}}/>
-        : <div style={{width:size,height:size,borderRadius:'50%',background:`linear-gradient(135deg,${color}88,${color})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.36,fontWeight:800,color:'#fff',boxShadow:`0 0 0 2px #090B10`}}>{i}</div>
+        : <div style={{width:size,height:size,borderRadius:'50%',background:`linear-gradient(135deg,${color}88,${color})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.36,fontWeight:800,color:'var(--text-primary)',boxShadow:`0 0 0 2px #090B10`}}>{i}</div>
       }
       {online&&<div style={{position:'absolute',bottom:1,right:1,width:size*0.27,height:size*0.27,borderRadius:'50%',background:'#00C9A7',border:'2px solid #090B10'}}/>}
     </div>
@@ -94,9 +95,9 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>{profile?.display_name}</span>
       </div>
       <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
@@ -107,8 +108,8 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
         </div>
         <div style={{display:'flex',gap:8}}>
           {profile?.id !== currentUser.id && <>
-            <div onClick={()=>onMessage(profile)} style={{background:'rgba(255,255,255,0.08)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none'}}>💬 Message</div>
-            <button onClick={toggleFollow} style={{background:isFollowing?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:isFollowing?'1px solid rgba(255,255,255,0.15)':'none',borderRadius:20,padding:'8px 16px',color:'#fff',cursor:'pointer',fontWeight:700,fontSize:13}}>
+            <div onClick={()=>onMessage(profile)} style={{background:'var(--bg-card-6)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none'}}>💬 Message</div>
+            <button onClick={toggleFollow} style={{background:isFollowing?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:isFollowing?'1px solid rgba(255,255,255,0.15)':'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:700,fontSize:13}}>
               {isFollowing?'Following':'Follow'}
             </button>
           </>}
@@ -118,18 +119,18 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         </div>
-        <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
-        {profile?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
-        {profile?.location&&<p style={{color:'#555',fontSize:13,marginBottom:8}}>📍 {profile.location}</p>}
+        <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
+        {profile?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
+        {profile?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:8}}>📍 {profile.location}</p>}
         <div style={{display:'flex',gap:20}}>
-          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'#555'}}>Following</span></span>
-          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'#555'}}>Followers</span></span>
+          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'var(--text-secondary)'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'var(--text-secondary)'}}>Followers</span></span>
         </div>
       </div>
-      <div style={{borderTop:'1px solid rgba(255,255,255,0.07)'}}>
+      <div style={{borderTop:'1px solid var(--border-color)'}}>
         <p style={{padding:'14px 16px',fontWeight:700,fontSize:15}}>Posts</p>
-        {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
-        {!loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>No posts yet</p>}
+        {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+        {!loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>No posts yet</p>}
         {posts.map(post=>(
           <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null}/>
         ))}
@@ -171,6 +172,38 @@ function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) 
   </div>)
 }
 
+function ThemeToggleRow() {
+  const { theme, setTheme, isManual, useSystemTheme } = useTheme()
+  const opt = (id, icon, label) => {
+    const active = id === 'system' ? !isManual : (isManual && theme === id)
+    return (
+      <button
+        onClick={() => id === 'system' ? useSystemTheme() : setTheme(id)}
+        style={{
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
+          border: active ? '1.5px solid #A855F7' : '1px solid var(--border-color-2)',
+          background: active ? 'rgba(168,85,247,0.1)' : 'var(--bg-card)',
+          color: active ? '#A855F7' : 'var(--text-tertiary)',
+        }}
+      >
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+      </button>
+    )
+  }
+  return (
+    <div style={{ padding: '4px 20px 18px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
+      <div style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 10, fontWeight: 600 }}>Appearance</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {opt('light', '☀️', 'Light')}
+        {opt('dark', '🌙', 'Dark')}
+        {opt('system', '⚙️', 'System')}
+      </div>
+    </div>
+  )
+}
+
 function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate }) {
   const [section, setSection] = useState('main')
   const [displayName, setDisplayName] = useState(currentUser?.display_name||'')
@@ -187,7 +220,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const [testMsg, setTestMsg] = useState('')
 
   const showMsg = (text, ok=true) => { setMsg({text,ok}); setTimeout(()=>setMsg({text:'',ok:true}),3000) }
-  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}
+  const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}
   const LANGUAGES = ['English','French','Spanish','Arabic','Portuguese','Swahili','Hindi','Chinese','German','Japanese','Russian','Italian']
 
   const uploadAvatar = async (file) => {
@@ -228,37 +261,37 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const MsgBox = () => msg.text ? <div style={{padding:'10px 14px',borderRadius:10,background:msg.ok?'rgba(0,201,167,0.1)':'rgba(255,71,87,0.1)',border:`1px solid ${msg.ok?'rgba(0,201,167,0.2)':'rgba(255,71,87,0.2)'}`,color:msg.ok?'#00C9A7':'#FF4757',fontSize:13,marginBottom:16}}>{msg.text}</div> : null
 
   const Header = ({title}) => (
-    <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-      <button onClick={()=>setSection('main')} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24}}>‹</button>
+    <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+      <button onClick={()=>setSection('main')} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
       <span style={{fontWeight:700,fontSize:17}}>{title}</span>
     </div>
   )
 
   if (section==='avatar') return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Profile Picture"/>
       <div style={{padding:'30px 20px',display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
         <MsgBox/>
         <Avatar url={currentUser?.avatar_url} name={currentUser?.display_name} color={currentUser?.avatar_color||'#5B9CF6'} size={100}/>
         <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>uploadAvatar(e.target.files[0])}/>
-        <button onClick={()=>fileRef.current?.click()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px 32px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',width:'100%'}}>
+        <button onClick={()=>fileRef.current?.click()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px 32px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',width:'100%'}}>
           {uploading?'Uploading...':'Choose Photo'}
         </button>
-        <p style={{color:'#555',fontSize:13,textAlign:'center'}}>Tap to select a photo from your device</p>
+        <p style={{color:'var(--text-secondary)',fontSize:13,textAlign:'center'}}>Tap to select a photo from your device</p>
       </div>
     </div>
   )
 
   if (section==='profile') return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Edit Profile"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
-        <label style={{color:'#888',fontSize:13,display:'block',marginBottom:6}}>Display Name</label>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Display Name</label>
         <input value={displayName} onChange={e=>setDisplayName(e.target.value)} style={{...inp}} placeholder="Your name"/>
-        <label style={{color:'#888',fontSize:13,display:'block',marginBottom:6}}>Bio</label>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Bio</label>
         <textarea value={bio} onChange={e=>setBio(e.target.value)} rows={3} style={{...inp,resize:'none'}} placeholder="Tell the world about yourself"/>
-        <button onClick={saveProfile} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+        <button onClick={saveProfile} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>
           {saving?'Saving...':'Save Changes'}
         </button>
       </div>
@@ -266,15 +299,15 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='password') return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Change Password"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
-        <label style={{color:'#888',fontSize:13,display:'block',marginBottom:6}}>New Password</label>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>New Password</label>
         <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} style={{...inp}} placeholder="New password"/>
-        <label style={{color:'#888',fontSize:13,display:'block',marginBottom:6}}>Confirm Password</label>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Confirm Password</label>
         <input type="password" value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} style={{...inp}} placeholder="Confirm new password"/>
-        <button onClick={changePassword} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+        <button onClick={changePassword} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>
           {saving?'Saving...':'Update Password'}
         </button>
       </div>
@@ -282,13 +315,13 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='location') return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Location"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
-        <label style={{color:'#888',fontSize:13,display:'block',marginBottom:6}}>Your Country / City</label>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Your Country / City</label>
         <input value={location} onChange={e=>setLocation(e.target.value)} style={{...inp}} placeholder="e.g. Lagos, Nigeria"/>
-        <button onClick={async()=>{setSaving(true);const {error}=await supabase.from('profiles').update({location}).eq('id',currentUser.id);if(error)showMsg(error.message,false);else{currentUser.location=location;showMsg('Saved!')};setSaving(false)}} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+        <button onClick={async()=>{setSaving(true);const {error}=await supabase.from('profiles').update({location}).eq('id',currentUser.id);if(error)showMsg(error.message,false);else{currentUser.location=location;showMsg('Saved!')};setSaving(false)}} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>
           {saving?'Saving...':'Save Location'}
         </button>
       </div>
@@ -296,11 +329,11 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='language') return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Language"/>
       <div style={{padding:'8px 0'}}>
         {LANGUAGES.map(lang=>(
-          <div key={lang} onClick={()=>setLanguage(lang)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',cursor:'pointer',borderBottom:'1px solid rgba(255,255,255,0.05)',background:language===lang?'rgba(91,156,246,0.08)':'transparent'}}>
+          <div key={lang} onClick={()=>setLanguage(lang)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',cursor:'pointer',borderBottom:'1px solid var(--bg-card-4)',background:language===lang?'rgba(91,156,246,0.08)':'transparent'}}>
             <span style={{fontSize:15}}>{lang}</span>
             {language===lang&&<span style={{color:'#5B9CF6',fontSize:18}}>✓</span>}
           </div>
@@ -311,24 +344,24 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
 
 
   if(section==='verify') return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Get Verified ✓"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
         <div style={{background:'linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,165,0,0.08))',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'20px',marginBottom:24,textAlign:'center'}}>
           <div style={{fontSize:48,marginBottom:8}}>🏅</div>
           <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Xchord Verified Badge</h2>
-          <p style={{color:'#aaa',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
+          <p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
           <p style={{color:'#FFD700',fontWeight:700,fontSize:18,marginTop:12}}>One-time fee: $5 USD</p>
         </div>
         <h3 style={{fontWeight:700,fontSize:15,marginBottom:12}}>Pay to one of these:</h3>
-        <div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'14px',marginBottom:10}}>
+        <div style={{background:'var(--bg-card-4)',borderRadius:12,padding:'14px',marginBottom:10}}>
           <p style={{fontWeight:700,marginBottom:6}}>USDT TRC-20</p>
-          <p style={{color:'#888',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>TABFK9Z3yC4kKtVzqEwqoyAfwSySkzJcHL</p>
+          <p style={{color:'var(--text-tertiary)',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>TABFK9Z3yC4kKtVzqEwqoyAfwSySkzJcHL</p>
         </div>
-        <div style={{background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'14px',marginBottom:20}}>
+        <div style={{background:'var(--bg-card-4)',borderRadius:12,padding:'14px',marginBottom:20}}>
           <p style={{fontWeight:700,marginBottom:6}}>Bitcoin BTC</p>
-          <p style={{color:'#888',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>bc1ql7qzefrh2czl29krzzsnwkr6dvnp2few2h80s7</p>
+          <p style={{color:'var(--text-tertiary)',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>bc1ql7qzefrh2czl29krzzsnwkr6dvnp2few2h80s7</p>
         </div>
         <h3 style={{fontWeight:700,fontSize:15,marginBottom:12}}>Application Form</h3>
         <VerifyForm currentUser={currentUser} supabase={supabase} showMsg={showMsg} saving={saving} setSaving={setSaving} inp={inp}/>
@@ -355,39 +388,40 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       }
     }
     return (
-      <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+      <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
         <Header title="Notifications"/>
         <div style={{padding:'20px 16px'}}>
-          <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'#aaa'}}>
+          <div style={{background:'var(--bg-card-5)',border:'1px solid var(--bg-card-6)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'var(--text-subtle)'}}>
             <div>Browser permission status: <strong style={{color: permState==='granted'?'#00C9A7':'#FF4757'}}>{permState}</strong></div>
           </div>
-          <button onClick={runTest} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
+          <button onClick={runTest} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
             Send Test Notification
           </button>
-          {testMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(255,255,255,0.05)',color:'#ccc',fontSize:13,lineHeight:1.5}}>{testMsg}</div>}
-          <p style={{color:'#555',fontSize:12,marginTop:20,lineHeight:1.6}}>This sends a notification directly from this screen, bypassing chat/likes/comments entirely — useful for checking whether notifications work in this browser or app at all.</p>
+          {testMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'#ccc',fontSize:13,lineHeight:1.5}}>{testMsg}</div>}
+          <p style={{color:'var(--text-secondary)',fontSize:12,marginTop:20,lineHeight:1.6}}>This sends a notification directly from this screen, bypassing chat/likes/comments entirely — useful for checking whether notifications work in this browser or app at all.</p>
         </div>
       </div>
     )
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24}}>‹</button>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Settings</span>
       </div>
       <div style={{padding:'12px 0'}}>
+        <ThemeToggleRow/>
         {[{icon:'🖼️',label:'Profile Picture',id:'avatar'},{icon:'👤',label:'Edit Profile',id:'profile'},{icon:'🔒',label:'Change Password',id:'password'},{icon:'📍',label:'Location',id:'location'},{icon:'🌐',label:'Language',id:'language'},{icon:'🏅',label:'Get Verified Badge',id:'verify'},{icon:'🔔',label:'Notifications',id:'notiftest'}].map(s=>(
-          <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#fff',borderBottom:'1px solid rgba(255,255,255,0.05)',textAlign:'left',fontSize:15}}>
-            <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'#444'}}>›</span>
+          <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
+            <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
           </button>
         ))}
-        <button onClick={onSignOut} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#FF4757',borderTop:'1px solid rgba(255,255,255,0.07)',marginTop:8,fontSize:15}}>
+        <button onClick={onSignOut} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#FF4757',borderTop:'1px solid var(--border-color)',marginTop:8,fontSize:15}}>
           <span style={{fontSize:22}}>🚪</span><span style={{fontWeight:600}}>Sign Out</span>
         </button>
-        <div style={{padding:'16px 20px',borderTop:'1px solid rgba(255,255,255,0.04)',textAlign:'center'}}>
-          <a href="/privacy" style={{color:'#333',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
+        <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
+          <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
           <span style={{color:'#222',fontSize:12}}> · </span>
           <span style={{color:'#222',fontSize:12}}>© 2025 Xchord · fka Sphere</span>
         </div>
@@ -420,11 +454,11 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24}}>‹</button>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>My Profile</span>
-        <button onClick={onSettings} style={{background:'none',border:'none',color:'#aaa',cursor:'pointer',fontSize:22}}>⚙️</button>
+        <button onClick={onSettings} style={{background:'none',border:'none',color:'var(--text-subtle)',cursor:'pointer',fontSize:22}}>⚙️</button>
       </div>
       <div style={{height:110,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16}}>
@@ -432,22 +466,22 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
       </div>
       <div style={{padding:'0 16px 20px'}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
-        <p style={{color:'#555',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
-        {currentUser?.bio&&<p style={{color:'#aaa',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
-        {currentUser?.location&&<p style={{color:'#555',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
+        <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
+        {currentUser?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
+        {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
         <div style={{display:'flex',gap:20,marginBottom:16}}>
-          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'#555'}}>Following</span></span>
-          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'#555'}}>Followers</span></span>
+          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'var(--text-secondary)'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'var(--text-secondary)'}}>Followers</span></span>
         </div>
       </div>
-      <div style={{borderTop:'1px solid rgba(255,255,255,0.07)'}}>
-        <p style={{padding:'14px 16px',fontWeight:700,fontSize:15,borderBottom:'1px solid rgba(255,255,255,0.07)'}}>My Posts</p>
-        {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
-        {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📝</p><p style={{color:'#555',marginTop:8}}>No posts yet</p></div>}
+      <div style={{borderTop:'1px solid var(--border-color)'}}>
+        <p style={{padding:'14px 16px',fontWeight:700,fontSize:15,borderBottom:'1px solid var(--border-color)'}}>My Posts</p>
+        {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+        {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📝</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No posts yet</p></div>}
         {posts.map(post=>(
           <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
             <p style={{color:'#ddd',fontSize:15,lineHeight:1.6,marginBottom:10}}>{post.content}</p>
-            <div style={{display:'flex',gap:16,color:'#555',fontSize:13,alignItems:'center'}}>
+            <div style={{display:'flex',gap:16,color:'var(--text-secondary)',fontSize:13,alignItems:'center'}}>
               <span>💬 {post.comments_count}</span>
               <span>❤️ {post.likes_count}</span>
               <span>🔁 {post.reposts_count}</span>
@@ -479,14 +513,14 @@ function ReelPreviewCard({ supabase, onOpen }) {
       <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
       <div style={{position:'absolute',top:12,left:12,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.5)',borderRadius:14,padding:'4px 10px'}}>
         <span style={{fontSize:13}}>🎬</span>
-        <span style={{color:'#fff',fontSize:12,fontWeight:700}}>Reels</span>
+        <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700}}>Reels</span>
       </div>
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <div style={{width:56,height:56,borderRadius:'50%',background:'rgba(255,255,255,0.15)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>▶️</div>
+        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--bg-card-8)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>▶️</div>
       </div>
       <div style={{position:'absolute',bottom:10,left:12,right:12,display:'flex',alignItems:'center',gap:8}}>
         <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={26}/>
-        <span style={{color:'#fff',fontSize:13,fontWeight:600,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
+        <span style={{color:'var(--text-primary)',fontSize:13,fontWeight:600,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
       </div>
     </div>
   )
@@ -501,15 +535,15 @@ function AdCard({ ad }) {
   return (
     <div onClick={openLink} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',cursor:ad.link_url?'pointer':'default'}}>
       <div style={{display:'flex',gap:12}}>
-        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
+        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:2}}>
-            <span style={{color:'#fff',fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
+            <span style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
             <span style={{background:'rgba(247,183,49,0.15)',border:'1px solid rgba(247,183,49,0.3)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
           </div>
           {ad.content&&<p style={{color:'#ddd',fontSize:15,lineHeight:1.6,marginBottom:10}}>{ad.content}</p>}
           {ad.image_url&&<img src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover'}} alt="ad"/>}
-          {ad.link_url&&<div style={{marginTop:10,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:10,padding:'8px 14px',display:'inline-block',color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More →</div>}
+          {ad.link_url&&<div style={{marginTop:10,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 14px',display:'inline-block',color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More →</div>}
         </div>
       </div>
     </div>
@@ -528,7 +562,7 @@ function AdsenseCard() {
   return (
     <div ref={ref} style={{padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:4}}>
-        <span style={{fontSize:9,color:'#333',letterSpacing:0.5}}>ADVERTISEMENT</span>
+        <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:0.5}}>ADVERTISEMENT</span>
       </div>
       <ins className="adsbygoogle"
         style={{display:'block'}}
@@ -615,13 +649,13 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:6,justifyContent:'space-between'}}>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
-              <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'#fff',fontWeight:700,fontSize:15}}>{a.display_name}</button>
+              <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{a.display_name}</button>
               {a.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
-              <span style={{color:'#555',fontSize:13}}>@{a.username}</span>
-              <span style={{color:'#333'}}>·</span>
-              <span style={{color:'#444',fontSize:12}}>{timeAgo(post.created_at)}</span>
+              <span style={{color:'var(--text-secondary)',fontSize:13}}>@{a.username}</span>
+              <span style={{color:'var(--text-faint)'}}>·</span>
+              <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
             </div>
-            {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:13,padding:'2px 6px'}}>🗑️</button>}
+            {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:13,padding:'2px 6px'}}>🗑️</button>}
           </div>
           {post.content&&<p style={{color:'#ddd',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
           {post.image_url&&<img src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover'}} alt="post"/>}
@@ -635,38 +669,38 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
             <button onClick={toggleLike} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:liked?'#FF4757':'#555',fontSize:13,padding:'6px 0'}}>
               <span style={{fontSize:16}}>{liked?'❤️':'🤍'}</span><span>{likes}</span>
             </button>
-            <button style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'#555',fontSize:13,padding:'6px 0'}}>
+            <button style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'var(--text-secondary)',fontSize:13,padding:'6px 0'}}>
               <span style={{fontSize:16}}>📤</span>
             </button>
           </div>
           {showComments&&(
-            <div className="sheet-in" style={{marginTop:12,borderTop:'1px solid rgba(255,255,255,0.07)',paddingTop:12}}>
+            <div className="sheet-in" style={{marginTop:12,borderTop:'1px solid var(--border-color)',paddingTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
-                <span style={{color:'#888',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
+                <span style={{color:'var(--text-tertiary)',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
                 <button onClick={()=>setShowReply(!showReply)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
               </div>
-              {loadingComments&&<p style={{color:'#444',fontSize:13,textAlign:'center'}}>Loading...</p>}
+              {loadingComments&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>Loading...</p>}
               {commentsList.map((cm,i)=>(
                 <div key={cm.id} style={{display:'flex',gap:10,marginBottom:12,alignItems:'flex-start'}}>
                   <Avatar url={cm.author?.avatar_url} name={cm.author?.display_name} color={cm.author?.avatar_color||'#5B9CF6'} size={32}/>
-                  <div style={{flex:1,background:'rgba(255,255,255,0.05)',borderRadius:12,padding:'8px 12px'}}>
+                  <div style={{flex:1,background:'var(--bg-card-4)',borderRadius:12,padding:'8px 12px'}}>
                     <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
-                      <span onClick={()=>onUserClick(cm.author)} style={{fontWeight:700,fontSize:13,color:'#fff',cursor:'pointer'}}>{cm.author?.display_name}</span>
-                      <span style={{color:'#555',fontSize:11}}>{timeAgo(cm.created_at)}</span>
+                      <span onClick={()=>onUserClick(cm.author)} style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',cursor:'pointer'}}>{cm.author?.display_name}</span>
+                      <span style={{color:'var(--text-secondary)',fontSize:11}}>{timeAgo(cm.created_at)}</span>
                     </div>
                     <p style={{color:'#ddd',fontSize:14,lineHeight:1.5,margin:0}}>{cm.content}</p>
                   </div>
                 </div>
               ))}
-              {!loadingComments&&commentsList.length===0&&<p style={{color:'#444',fontSize:13,textAlign:'center'}}>No comments yet</p>}
+              {!loadingComments&&commentsList.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>No comments yet</p>}
             </div>
           )}
           {showReply&&(
             <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center'}}>
               <Avatar url={currentUser.avatar_url} name={currentUser.display_name} color={currentUser.avatar_color||'#5B9CF6'} size={28}/>
               <input value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply()} placeholder="Write a reply..." autoFocus
-                style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:20,padding:'8px 14px',color:'#fff',fontSize:14,outline:'none'}}/>
-              <button onClick={submitReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',cursor:'pointer',fontWeight:700}}>→</button>
+                style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+              <button onClick={submitReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',cursor:'pointer',fontWeight:700}}>→</button>
             </div>
           )}
         </div>
@@ -701,22 +735,22 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
   },[])
   return(
     <div>
-      <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'#fff'}}>Notifications 🔔</div>
-      {loading&&<p style={{padding:'20px',textAlign:'center',color:'#444'}}>Loading...</p>}
-      {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>🔔</p><p style={{color:'#555',marginTop:8}}>No notifications yet</p></div>}
+      <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'var(--text-primary)'}}>Notifications 🔔</div>
+      {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+      {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>🔔</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No notifications yet</p></div>}
       {notifs.map((n,i)=>{
         const info = typeInfo[n.type]||{emoji:'🔔',text:''}
         const actor = n.actor
         const goesToPost = ['mention','like','comment','repost'].includes(n.type) && n.post_id
-        return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
-          <div style={{width:44,height:44,borderRadius:'50%',background:'rgba(255,255,255,0.06)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
+        return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
+          <div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
             {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span>{info.emoji}</span>}
           </div>
           <div style={{flex:1,minWidth:0}}>
-            <span style={{fontWeight:700,fontSize:14,color:'#fff'}}>{actor?.display_name||'Xchord'} </span>
-            <span style={{color:'#888',fontSize:14}}>{n.message||info.text}</span>
+            <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Xchord'} </span>
+            <span style={{color:'var(--text-tertiary)',fontSize:14}}>{n.message||info.text}</span>
           </div>
-          <span style={{color:'#444',fontSize:12,flexShrink:0}}>{timeAgo(n.created_at)}</span>
+          <span style={{color:'var(--text-quaternary)',fontSize:12,flexShrink:0}}>{timeAgo(n.created_at)}</span>
         </div>)
       })}
     </div>
@@ -977,21 +1011,21 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
 
   if(showRequests) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Join Requests ({joinRequests.length})</span>
       </div>
-      {joinRequests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📭</p><p style={{color:'#555',marginTop:8}}>No pending requests</p></div>}
+      {joinRequests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📭</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No pending requests</p></div>}
       {joinRequests.map(req=>(
-        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
           <Avatar url={req.profile?.avatar_url} name={req.profile?.display_name} color={req.profile?.avatar_color||'#5B9CF6'} size={46}/>
           <div style={{flex:1}}>
             <div style={{fontWeight:700,fontSize:15}}>{req.profile?.display_name}</div>
-            <div style={{color:'#555',fontSize:13}}>@{req.profile?.username} · {timeAgo(req.created_at)}</div>
+            <div style={{color:'var(--text-secondary)',fontSize:13}}>@{req.profile?.username} · {timeAgo(req.created_at)}</div>
           </div>
           <div style={{display:'flex',gap:6}}>
-            <button onClick={()=>acceptRequest(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:10,padding:'8px 12px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</button>
+            <button onClick={()=>acceptRequest(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:10,padding:'8px 12px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</button>
             <button onClick={()=>rejectRequest(req)} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:10,padding:'8px 12px',color:'#FF4757',fontWeight:700,fontSize:13,cursor:'pointer'}}>Reject</button>
           </div>
         </div>
@@ -1000,16 +1034,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   if(showMembers) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowMembers(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowMembers(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Members ({members.length})</span>
       </div>
       {members.map(m=>{
         const isThisCreator = m.user_id===group.creator_id
         const isThisAdmin = m.role==='admin'
         return(
-          <div key={m.user_id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+          <div key={m.user_id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
             <button onClick={()=>onUserClick(m.profile)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
               <Avatar url={m.profile?.avatar_url} name={m.profile?.display_name} color={m.profile?.avatar_color||'#5B9CF6'} size={46}/>
             </button>
@@ -1019,7 +1053,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                 {isThisCreator&&<span style={{background:'linear-gradient(135deg,#FFD700,#FFA500)',borderRadius:8,padding:'2px 7px',fontSize:10,fontWeight:800,color:'#000'}}>Creator</span>}
                 {isThisAdmin&&!isThisCreator&&<span style={{background:'rgba(91,156,246,0.2)',border:'1px solid rgba(91,156,246,0.4)',borderRadius:8,padding:'2px 7px',fontSize:10,fontWeight:700,color:'#5B9CF6'}}>Admin</span>}
               </div>
-              <div style={{color:'#555',fontSize:13}}>@{m.profile?.username}</div>
+              <div style={{color:'var(--text-secondary)',fontSize:13}}>@{m.profile?.username}</div>
             </div>
             {(isAdmin||isCreator)&&m.user_id!==currentUser.id&&!isThisCreator&&(
               <div style={{display:'flex',gap:6}}>
@@ -1035,44 +1069,44 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   if(showSettings) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Group Settings</span>
-        {isCreator&&<button onClick={saveGroupSettings} disabled={editSaving} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>{editSaving?'Saving...':'Save'}</button>}
+        {isCreator&&<button onClick={saveGroupSettings} disabled={editSaving} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>{editSaving?'Saving...':'Save'}</button>}
       </div>
       <div style={{padding:20}}>
         <div style={{textAlign:'center',marginBottom:24}}>
-          <div onClick={()=>isCreator&&avatarRef.current?.click()} style={{width:88,height:88,borderRadius:24,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,fontWeight:800,color:'#fff',margin:'0 auto 8px',cursor:isCreator?'pointer':'default',overflow:'hidden',position:'relative'}}>
+          <div onClick={()=>isCreator&&avatarRef.current?.click()} style={{width:88,height:88,borderRadius:24,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,fontWeight:800,color:'var(--text-primary)',margin:'0 auto 8px',cursor:isCreator?'pointer':'default',overflow:'hidden',position:'relative'}}>
             {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:editName[0]||'G'}
-            {isCreator&&<div style={{position:'absolute',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.5)',padding:'4px',textAlign:'center',fontSize:11,color:'#fff'}}>Edit</div>}
+            {isCreator&&<div style={{position:'absolute',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.5)',padding:'4px',textAlign:'center',fontSize:11,color:'var(--text-primary)'}}>Edit</div>}
           </div>
           {isCreator&&<input ref={avatarRef} type="file" accept="image/*" onChange={e=>uploadGroupAvatar(e.target.files[0])} style={{display:'none'}}/>}
-          <p style={{color:'#555',fontSize:13}}>{members.length} members · @{group.tag}</p>
+          <p style={{color:'var(--text-secondary)',fontSize:13}}>{members.length} members · @{group.tag}</p>
         </div>
         {isCreator&&<>
-          <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
-          <textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
-          <p style={{color:'#888',fontSize:13,marginBottom:8}}>Who can join?</p>
+          <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+          <textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
           <div style={{display:'flex',gap:8,marginBottom:20}}>
             <button onClick={()=>setEditJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='open'?'#5B9CF6':'rgba(255,255,255,0.1)'),background:editJoinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:editJoinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer'}}>🌐 Anyone</button>
             <button onClick={()=>setEditJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='request'?'#845EF7':'rgba(255,255,255,0.1)'),background:editJoinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:editJoinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer'}}>🔒 Request</button>
           </div>
         </>}
-        <div style={{borderRadius:16,overflow:'hidden',border:'1px solid rgba(255,255,255,0.07)'}}>
-          <button onClick={()=>{setShowSettings(false);setShowMembers(true)}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',color:'#fff',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
-            <span>👥 Members</span><span style={{color:'#555'}}>{members.length} ›</span>
+        <div style={{borderRadius:16,overflow:'hidden',border:'1px solid var(--border-color)'}}>
+          <button onClick={()=>{setShowSettings(false);setShowMembers(true)}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'var(--text-primary)',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+            <span>👥 Members</span><span style={{color:'var(--text-secondary)'}}>{members.length} ›</span>
           </button>
-          <button onClick={copyInviteLink} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',color:'#00C9A7',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
-            <span>🔗 Copy Invite Link</span><span style={{color:'#555',fontSize:13}}>@{group.tag}</span>
+          <button onClick={copyInviteLink} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'#00C9A7',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+            <span>🔗 Copy Invite Link</span><span style={{color:'var(--text-secondary)',fontSize:13}}>@{group.tag}</span>
           </button>
-          {(isAdmin||isCreator)&&<button onClick={()=>{setShowSettings(false);setShowRequests(true)}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'16px',color:'#F7B731',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
-            <span>📬 Join Requests</span>{joinRequests.length>0&&<span style={{background:'#FF4757',borderRadius:10,padding:'2px 8px',fontSize:12,color:'#fff'}}>{joinRequests.length}</span>}
+          {(isAdmin||isCreator)&&<button onClick={()=>{setShowSettings(false);setShowRequests(true)}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'#F7B731',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+            <span>📬 Join Requests</span>{joinRequests.length>0&&<span style={{background:'#FF4757',borderRadius:10,padding:'2px 8px',fontSize:12,color:'var(--text-primary)'}}>{joinRequests.length}</span>}
           </button>}
-          <button onClick={leaveGroup} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',borderBottom:isCreator?'1px solid rgba(255,255,255,0.07)':'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
+          <button onClick={leaveGroup} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:isCreator?'1px solid rgba(255,255,255,0.07)':'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
             🚪 Leave Group
           </button>
-          {(isCreator||isAdmin)&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'rgba(255,255,255,0.04)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
+          {(isCreator||isAdmin)&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
             🗑️ Delete Group
           </button>}
         </div>
@@ -1081,31 +1115,31 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   return (
-    <div className="screen-in-safe full-screen-height" style={{background:'#090B10',color:'#fff',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+    <div className="screen-in-safe full-screen-height" style={{background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
-      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
-          <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',overflow:'hidden'}}>
+          <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',overflow:'hidden'}}>
             {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:group.name[0]}
           </div>
           <div>
             <div style={{fontWeight:700,fontSize:16}}>{group.name}</div>
-            <div style={{color:'#555',fontSize:12}}>{members.length} members</div>
+            <div style={{color:'var(--text-secondary)',fontSize:12}}>{members.length} members</div>
           </div>
         </div>
-        <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'#666',fontSize:22,cursor:'pointer'}}>⚙️</button>
+        <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'var(--text-muted)',fontSize:22,cursor:'pointer'}}>⚙️</button>
       </div>
 
       <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,paddingBottom:80,overflowY:'auto',height:0}}>
-        {loading&&<p style={{textAlign:'center',color:'#444',marginTop:40}}>Loading...</p>}
+        {loading&&<p style={{textAlign:'center',color:'var(--text-quaternary)',marginTop:40}}>Loading...</p>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
-          <p style={{color:'#444',fontSize:14,marginTop:8}}>Say hello to the group!</p>
+          <p style={{color:'var(--text-quaternary)',fontSize:14,marginTop:8}}>Say hello to the group!</p>
         </div>}
         {selectedMsg&&<div onClick={()=>setSelectedMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
           <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
-            <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 16px'}}/>
+            <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 16px'}}/>
             <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
               {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>{
                 const mine = selectedMsg.group_message_reactions?.find(r=>r.user_id===currentUser.id)
@@ -1115,8 +1149,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                 )
               })}
             </div>
-            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
-            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
+            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
             {selectedMsg.sender_id===currentUser.id&&<>
               <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
               <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
@@ -1133,15 +1167,15 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
               {!own&&<div onClick={()=>onUserClick(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
               <div style={{maxWidth:'75%'}}>
                 {!own&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
-                {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
+                {msg.reply_to&&<div style={{background:'var(--bg-card-4)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'var(--text-tertiary)'}}>↩ {msg.reply_to}</div>}
                 {editingMsg===msg.id?(
                   <div style={{display:'flex',gap:6}}>
-                    <input value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveEditGCMsg()} style={{flex:1,background:'rgba(255,255,255,0.1)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'#fff',fontSize:14,outline:'none'}}/>
-                    <button onClick={saveEditGCMsg} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✓</button>
-                    <button onClick={()=>setEditingMsg(null)} style={{background:'rgba(255,255,255,0.1)',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✕</button>
+                    <input value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveEditGCMsg()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+                    <button onClick={saveEditGCMsg} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✓</button>
+                    <button onClick={()=>setEditingMsg(null)} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
                   </div>
                 ):(
-                  <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
+                  <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
                     {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
                     <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                   </div>
@@ -1159,16 +1193,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div ref={bottomRef}/>
       </div>
 
-      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
         {replyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-          <span style={{color:'#888',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{replyTo}</span></span>
-          <button onClick={()=>setReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:18}}>✕</button>
+          <span style={{color:'var(--text-tertiary)',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{replyTo}</span></span>
+          <button onClick={()=>setReplyTo(null)} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:18}}>✕</button>
         </div>}
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
-          <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
-        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:20,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
+          <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
+        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
         </div>
       </div>
@@ -1321,18 +1355,18 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const reel = reels[currentIdx]
 
   if(showUpload) return (
-    <div style={{position:'fixed',inset:0,zIndex:400,background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
-      <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
-        <button onClick={()=>setShowUpload(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
+    <div style={{position:'fixed',inset:0,zIndex:400,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid var(--border-color)'}}>
+        <button onClick={()=>setShowUpload(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Reel</span>
-        <button onClick={uploadReel} disabled={!videoFile||uploading} style={{background:videoFile?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 20px',color:'#fff',fontWeight:700,cursor:'pointer'}}>{uploading?'Uploading...':'Post'}</button>
+        <button onClick={uploadReel} disabled={!videoFile||uploading} style={{background:videoFile?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{uploading?'Uploading...':'Post'}</button>
       </div>
       <div style={{flex:1,padding:20,display:'flex',flexDirection:'column',gap:16}}>
-        <div onClick={()=>fileRef.current?.click()} style={{height:200,background:'rgba(255,255,255,0.05)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:8}}>
-          {videoFile?<><span style={{fontSize:40}}>🎬</span><span style={{color:'#00C9A7',fontSize:14}}>{videoFile.name}</span></>:<><span style={{fontSize:40}}>📹</span><span style={{color:'#555',fontSize:14}}>Tap to select video</span></>}
+        <div onClick={()=>fileRef.current?.click()} style={{height:200,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:8}}>
+          {videoFile?<><span style={{fontSize:40}}>🎬</span><span style={{color:'#00C9A7',fontSize:14}}>{videoFile.name}</span></>:<><span style={{fontSize:40}}>📹</span><span style={{color:'var(--text-secondary)',fontSize:14}}>Tap to select video</span></>}
         </div>
         <input ref={fileRef} type="file" accept="video/*" onChange={e=>setVideoFile(e.target.files[0])} style={{display:'none'}}/>
-        <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Write a caption..." rows={3} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+        <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Write a caption..." rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
       </div>
     </div>
   )
@@ -1342,13 +1376,13 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
       onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
 
       {/* top controls */}
-      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',fontSize:20,cursor:'pointer'}}>✕</button>
-      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
+      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'var(--text-primary)',fontSize:20,cursor:'pointer'}}>✕</button>
+      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
 
-      {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'#fff'}}>
+      {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'var(--text-primary)'}}>
         <p style={{fontSize:48}}>🎬</p>
         <p style={{fontSize:18,fontWeight:700}}>No reels yet</p>
-        <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
+        <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
       </div>}
 
       {/* animated reel container */}
@@ -1356,16 +1390,16 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
         {isAdSlot&&currentAd?<>
           <video src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={false}/>
           <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
-          <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
+          <div style={{position:'absolute',bottom:100,left:16,right:80,color:'var(--text-primary)'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
+              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'var(--text-primary)'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
                 <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{currentAd.advertiser_name}</span>
                 <span style={{background:'rgba(247,183,49,0.2)',border:'1px solid rgba(247,183,49,0.4)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
               </div>
             </div>
             {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
-            {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
+            {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
           </div>
         </>:reel?<>
           {/* dark background while buffering — no gray flash */}
@@ -1386,7 +1420,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           </div>}
 
           {/* author + caption */}
-          <div style={{position:'absolute',bottom:showComments?'52%':110,left:16,right:80,color:'#fff',zIndex:4,transition:'bottom 0.3s'}}>
+          <div style={{position:'absolute',bottom:showComments?'52%':110,left:16,right:80,color:'var(--text-primary)',zIndex:4,transition:'bottom 0.3s'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,cursor:'pointer'}} onClick={()=>onUserClick(reel.author)}>
               <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={38}/>
               <div>
@@ -1405,11 +1439,11 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           <div style={{position:'absolute',bottom:130,right:12,display:'flex',flexDirection:'column',alignItems:'center',gap:22,zIndex:4}}>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>toggleLike(reel)}>
               <span style={{fontSize:30}}>{liked[reel.id]?'❤️':'🤍'}</span>
-              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
+              <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
             </div>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>openComments(reel)}>
               <span style={{fontSize:28}}>💬</span>
-              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
+              <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
             </div>
             {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
               <span style={{fontSize:26}}>🗑️</span>
@@ -1422,30 +1456,30 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
 
           {/* comments panel */}
           {showComments&&<div className="sheet-in" style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
-            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
-              <span style={{fontWeight:700,fontSize:15,color:'#fff'}}>Comments</span>
-              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'#888',fontSize:22,cursor:'pointer'}}>✕</button>
+            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--border-color)'}}>
+              <span style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>Comments</span>
+              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'var(--text-tertiary)',fontSize:22,cursor:'pointer'}}>✕</button>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
-              {comments.length===0&&<p style={{color:'#555',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
+              {comments.length===0&&<p style={{color:'var(--text-secondary)',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
               {comments.map(c=>(
                 <div key={c.id} style={{display:'flex',gap:10,alignItems:'flex-end'}}>
                   <div style={{cursor:'pointer',flexShrink:0}} onClick={()=>{ setShowComments(false); onUserClick(c.author) }}>
                     <Avatar url={c.author?.avatar_url} name={c.author?.display_name} color={c.author?.avatar_color||'#5B9CF6'} size={32}/>
                   </div>
                   <div style={{flex:1,maxWidth:'80%'}}>
-                    <div style={{fontSize:11,color:'#555',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
-                    <div style={{background:'rgba(255,255,255,0.09)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
+                    <div style={{fontSize:11,color:'var(--text-secondary)',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
+                    <div style={{background:'var(--bg-card-7)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
                       <span style={{fontSize:14,color:'rgba(255,255,255,0.92)',lineHeight:1.4}}>{c.content}</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{padding:'10px 14px',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center',paddingBottom:'env(safe-area-inset-bottom,10px)'}}>
+            <div style={{padding:'10px 14px',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center',paddingBottom:'env(safe-area-inset-bottom,10px)'}}>
               <Avatar url={currentUser?.avatar_url} name={currentUser?.display_name} color={currentUser?.avatar_color||'#5B9CF6'} size={32}/>
-              <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&postComment(reel)} placeholder="Add a comment..." style={{flex:1,background:'rgba(255,255,255,0.08)',border:'none',borderRadius:20,padding:'10px 14px',color:'#fff',fontSize:14,outline:'none'}}/>
-              <button onClick={()=>postComment(reel)} disabled={!commentText.trim()} style={{background:commentText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Post</button>
+              <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&postComment(reel)} placeholder="Add a comment..." style={{flex:1,background:'var(--bg-card-6)',border:'none',borderRadius:20,padding:'10px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+              <button onClick={()=>postComment(reel)} disabled={!commentText.trim()} style={{background:commentText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Post</button>
             </div>
           </div>}
         </>:null}
@@ -1587,20 +1621,20 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
       </div>
       <style>{'@keyframes progress{from{width:0}to{width:100%}}'}</style>
       <div style={{padding:'20px 16px 8px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>{setViewingPulse(null);onHideNav&&onHideNav(false)}} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>{setViewingPulse(null);onHideNav&&onHideNav(false)}} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
         <Avatar url={viewingPulse.author?.avatar_url} name={viewingPulse.author?.display_name} color={viewingPulse.author?.avatar_color||'#5B9CF6'} size={38}/>
         <div>
-          <div style={{color:'#fff',fontWeight:700,fontSize:15}}>{viewingPulse.author?.display_name}</div>
+          <div style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{viewingPulse.author?.display_name}</div>
           <div style={{color:'rgba(255,255,255,0.6)',fontSize:12}}>{timeAgo(viewingPulse.created_at)}</div>
         </div>
       </div>
       <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-        <p style={{color:'#fff',fontSize:24,fontWeight:700,textAlign:'center',lineHeight:1.5}}>{viewingPulse.content}</p>
+        <p style={{color:'var(--text-primary)',fontSize:24,fontWeight:700,textAlign:'center',lineHeight:1.5}}>{viewingPulse.content}</p>
       </div>
       <div style={{position:'absolute',top:60,left:0,bottom:80,width:'40%'}} onClick={goPrev}/>
       <div style={{position:'absolute',top:60,right:0,bottom:80,width:'40%'}} onClick={goNext}/>
       <div style={{padding:'0 16px 40px',display:'flex',gap:10}}>
-        <button onClick={()=>onUserClick(viewingPulse.author)} style={{flex:1,background:'rgba(255,255,255,0.15)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:24,padding:'12px',color:'#fff',fontWeight:700,cursor:'pointer'}}>View Profile</button>
+        <button onClick={()=>onUserClick(viewingPulse.author)} style={{flex:1,background:'var(--bg-card-8)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:24,padding:'12px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>View Profile</button>
       </div>
     </div>
   )}
@@ -1614,14 +1648,14 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   if(viewingGroupRef) viewingGroupRef.current = null
 
   if(showCreatePulse) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:pulseBg,color:'#fff',display:'flex',flexDirection:'column'}}>
+    <div className="screen-in" style={{minHeight:'100vh',background:pulseBg,color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Pulse</span>
-        <button onClick={createPulse} disabled={saving||!pulseText.trim()} style={{background:'rgba(255,255,255,0.2)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:20,padding:'8px 20px',color:'#fff',fontWeight:700,cursor:'pointer'}}>{saving?'Posting...':'Share'}</button>
+        <button onClick={createPulse} disabled={saving||!pulseText.trim()} style={{background:'rgba(255,255,255,0.2)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Posting...':'Share'}</button>
       </div>
       <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
-        <textarea value={pulseText} onChange={e=>setPulseText(e.target.value)} placeholder="What's your pulse?" autoFocus style={{background:'transparent',border:'none',color:'#fff',fontSize:24,fontWeight:700,textAlign:'center',outline:'none',resize:'none',width:'100%',lineHeight:1.5,fontFamily:'sans-serif'}} rows={4}/>
+        <textarea value={pulseText} onChange={e=>setPulseText(e.target.value)} placeholder="What's your pulse?" autoFocus style={{background:'transparent',border:'none',color:'var(--text-primary)',fontSize:24,fontWeight:700,textAlign:'center',outline:'none',resize:'none',width:'100%',lineHeight:1.5,fontFamily:'sans-serif'}} rows={4}/>
       </div>
       <div style={{padding:'16px',display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
         {COLORS.map(c=><div key={c} onClick={()=>setPulseBg(c)} style={{width:32,height:32,borderRadius:'50%',background:c,border:pulseBg===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
@@ -1630,25 +1664,25 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   )
 
   if(showCreateGroup) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>✕</button>
+    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
-        <button onClick={createGroup} disabled={saving||!groupName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'#fff',fontWeight:700,cursor:'pointer'}}>{saving?'Creating...':'Create'}</button>
+        <button onClick={createGroup} disabled={saving||!groupName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Creating...':'Create'}</button>
       </div>
       <div style={{padding:16}}>
-        <div style={{width:72,height:72,borderRadius:20,background:pulseBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,fontWeight:800,color:'#fff',margin:'16px auto 24px'}}>{groupName[0]||'G'}</div>
+        <div style={{width:72,height:72,borderRadius:20,background:pulseBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,fontWeight:800,color:'var(--text-primary)',margin:'16px auto 24px'}}>{groupName[0]||'G'}</div>
         <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:24}}>
           {COLORS.map(c=><div key={c} onClick={()=>setPulseBg(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:pulseBg===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
         </div>
-        <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+        <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
         <div style={{position:'relative',marginBottom:12}}>
-          <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'#555',fontSize:15}}>@</span>
-          <input value={groupTag} onChange={e=>setGroupTag(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} placeholder="group_tag (unique)" style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px 12px 28px',color:'#fff',fontSize:15,outline:'none',boxSizing:'border-box'}}/>
+          <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'var(--text-secondary)',fontSize:15}}>@</span>
+          <input value={groupTag} onChange={e=>setGroupTag(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} placeholder="group_tag (unique)" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px 12px 28px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box'}}/>
         </div>
-        <textarea value={groupDesc} onChange={e=>setGroupDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
+        <textarea value={groupDesc} onChange={e=>setGroupDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
         <div style={{marginBottom:8}}>
-          <p style={{color:'#888',fontSize:13,marginBottom:8}}>Who can join?</p>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
           <div style={{display:'flex',gap:8}}>
             <button onClick={()=>setJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='open'?'#5B9CF6':'rgba(255,255,255,0.1)'),background:joinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:joinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer'}}>🌐 Anyone</button>
             <button onClick={()=>setJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='request'?'#845EF7':'rgba(255,255,255,0.1)'),background:joinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:joinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer'}}>🔒 Request</button>
@@ -1668,32 +1702,32 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         </div>
       </div>
       <div style={{padding:'0 16px 12px'}}>
-        <input value={groupSearch} onChange={e=>searchGroups(e.target.value)} placeholder="🔍 Search group by @tag..." style={{width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:24,padding:'10px 16px',color:'#fff',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
-        {searchedGroups.length>0&&<div style={{marginTop:8,borderRadius:12,overflow:'hidden',border:'1px solid rgba(255,255,255,0.08)'}}>
+        <input value={groupSearch} onChange={e=>searchGroups(e.target.value)} placeholder="🔍 Search group by @tag..." style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:24,padding:'10px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+        {searchedGroups.length>0&&<div style={{marginTop:8,borderRadius:12,overflow:'hidden',border:'1px solid var(--bg-card-6)'}}>
           {searchedGroups.map(g=>{
             const isMember = g.group_members?.some(m=>m.user_id===currentUser.id)
             return(
-              <div key={g.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid rgba(255,255,255,0.05)',background:'rgba(255,255,255,0.03)'}}>
-                <div style={{width:42,height:42,borderRadius:12,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'#fff',flexShrink:0}}>{g.name[0]}</div>
+              <div key={g.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid var(--bg-card-4)',background:'rgba(255,255,255,0.03)'}}>
+                <div style={{width:42,height:42,borderRadius:12,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'var(--text-primary)',flexShrink:0}}>{g.name[0]}</div>
                 <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:15,color:'#fff'}}>{g.name}</div>
-                  <div style={{color:'#555',fontSize:12}}>@{g.tag} · {g.group_members?.length||0} members · {g.join_mode==='open'?'🌐 Open':'🔒 Request'}</div>
+                  <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>{g.name}</div>
+                  <div style={{color:'var(--text-secondary)',fontSize:12}}>@{g.tag} · {g.group_members?.length||0} members · {g.join_mode==='open'?'🌐 Open':'🔒 Request'}</div>
                 </div>
-                <button onClick={()=>joinGroupByTag(g)} style={{background:isMember?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 14px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>{isMember?'Open':'Join'}</button>
+                <button onClick={()=>joinGroupByTag(g)} style={{background:isMember?'rgba(255,255,255,0.07)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 14px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>{isMember?'Open':'Join'}</button>
               </div>
             )
           })}
         </div>}
-        {groupSearch&&searchedGroups.length===0&&<p style={{color:'#444',fontSize:13,padding:'8px 4px'}}>No groups found for "@{groupSearch}"</p>}
+        {groupSearch&&searchedGroups.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:13,padding:'8px 4px'}}>No groups found for "@{groupSearch}"</p>}
       </div>
 
       {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).length>0&&<>
-        <p style={{padding:'0 16px 8px',color:'#555',fontSize:13,fontWeight:600}}>MY GROUPS</p>
+        <p style={{padding:'0 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>MY GROUPS</p>
         <div style={{display:'flex',gap:12,padding:'0 16px 16px',overflowX:'auto',scrollbarWidth:'none'}}>
           {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).map(g=>(
             <div key={g.id} onClick={()=>setViewingGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
               <div style={{position:'relative'}}>
-                <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'#fff',border:'2px solid #5B9CF6',overflow:'hidden'}}>
+                <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'var(--text-primary)',border:'2px solid #5B9CF6',overflow:'hidden'}}>
                 {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:g.name[0]}
               </div>
                 {unreadGroups[g.id]&&<span style={{position:'absolute',top:-2,right:-2,width:14,height:14,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
@@ -1704,28 +1738,28 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         </div>
       </>}
 
-      <p style={{padding:'0 16px 8px',color:'#555',fontSize:13,fontWeight:600}}>PULSES</p>
+      <p style={{padding:'0 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>PULSES</p>
       <div style={{display:'flex',gap:12,padding:'0 16px 20px',overflowX:'auto',scrollbarWidth:'none'}}>
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
-          <div onClick={()=>setShowCreatePulse(true)} style={{width:64,height:64,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'2px dashed #5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#5B9CF6',cursor:'pointer'}}>＋</div>
+          <div onClick={()=>setShowCreatePulse(true)} style={{width:64,height:64,borderRadius:'50%',background:'var(--bg-card)',border:'2px dashed #5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#5B9CF6',cursor:'pointer'}}>＋</div>
           <span style={{color:'#ccc',fontSize:11}}>Add Pulse</span>
         </div>
         {(Array.isArray(myPulse)?myPulse:[]).map(mp=>(
           <div key={mp.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0,position:'relative'}}>
-            <div onClick={()=>setViewingPulse({...mp,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}})} style={{width:64,height:64,borderRadius:'50%',background:mp.bg_color||'#5B9CF6',border:'3px solid #00C9A7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,color:'#fff',cursor:'pointer'}}>⚡</div>
-            <button onClick={async(e)=>{e.stopPropagation();await supabase.from('pulses').delete().eq('id',mp.id);setMyPulse(prev=>prev.filter(p=>p.id!==mp.id))}} style={{position:'absolute',top:-4,right:-4,width:20,height:20,borderRadius:'50%',background:'#FF4757',border:'none',color:'#fff',fontSize:11,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+            <div onClick={()=>setViewingPulse({...mp,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}})} style={{width:64,height:64,borderRadius:'50%',background:mp.bg_color||'#5B9CF6',border:'3px solid #00C9A7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,color:'var(--text-primary)',cursor:'pointer'}}>⚡</div>
+            <button onClick={async(e)=>{e.stopPropagation();await supabase.from('pulses').delete().eq('id',mp.id);setMyPulse(prev=>prev.filter(p=>p.id!==mp.id))}} style={{position:'absolute',top:-4,right:-4,width:20,height:20,borderRadius:'50%',background:'#FF4757',border:'none',color:'var(--text-primary)',fontSize:11,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
             <span style={{color:'#ccc',fontSize:11}}>My Pulse</span>
           </div>
         ))}
         {pulses.map(p=>(
           <div key={p.id} onClick={()=>setViewingPulse(p)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
             <div style={{width:64,height:64,borderRadius:'50%',background:p.bg_color||'#5B9CF6',border:'3px solid #845EF7',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-              {p.author?.avatar_url?<img src={p.author.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span style={{color:'#fff',fontWeight:800,fontSize:20}}>{p.author?.display_name?.[0]}</span>}
+              {p.author?.avatar_url?<img src={p.author.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span style={{color:'var(--text-primary)',fontWeight:800,fontSize:20}}>{p.author?.display_name?.[0]}</span>}
             </div>
             <span style={{color:'#ccc',fontSize:11,maxWidth:64,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.author?.display_name}</span>
           </div>
         ))}
-        {pulses.length===0&&<p style={{color:'#444',fontSize:14,padding:'20px 0'}}>No pulses yet</p>}
+        {pulses.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0'}}>No pulses yet</p>}
       </div>
     </div>
   )
@@ -1803,18 +1837,18 @@ function XChordAI({ currentUser, onClose }) {
   }
 
   return (
-    <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'#090B10',color:'#fff',display:'flex',flexDirection:'column'}}>
-      <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
-        <button onClick={onClose} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
+    <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
+        <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
         <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:38,height:38,objectFit:'contain'}}/>
         <div onClick={()=>setShowAbout(true)} style={{cursor:'pointer'}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <div style={{fontWeight:800,fontSize:16,background:AI_GRADIENT,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>xChord AI</div>
-            {deepThink&&<span style={{fontSize:10,background:AI_GRADIENT,color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>DEEP THINK</span>}
+            {deepThink&&<span style={{fontSize:10,background:AI_GRADIENT,color:'var(--text-primary)',borderRadius:6,padding:'1px 6px',fontWeight:700}}>DEEP THINK</span>}
           </div>
           <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
         </div>
-        <button onClick={()=>setDeepThink(d=>!d)} title="Toggle deep thinking mode" style={{marginLeft:'auto',background:deepThink?AI_GRADIENT:'rgba(255,255,255,0.07)',border:'none',borderRadius:14,padding:'6px 12px',color:'#fff',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
+        <button onClick={()=>setDeepThink(d=>!d)} title="Toggle deep thinking mode" style={{marginLeft:'auto',background:deepThink?AI_GRADIENT:'rgba(255,255,255,0.07)',border:'none',borderRadius:14,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
           🧠 {deepThink?'Deep':'Fast'}
         </button>
         <button onClick={clearHistory} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 10px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>🗑</button>
@@ -1824,14 +1858,14 @@ function XChordAI({ currentUser, onClose }) {
         {messages.map((msg,i)=>(
           <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
             {msg.role==='assistant'&&<img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}}/>}
-            <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?AI_GRADIENT:'rgba(255,255,255,0.08)',color:'#fff',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
+            <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?AI_GRADIENT:'rgba(255,255,255,0.08)',color:'var(--text-primary)',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
               {msg.content}
             </div>
           </div>
         ))}
         {loading&&<div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
           <img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}}/>
-          <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'rgba(255,255,255,0.08)',color:'#888',fontSize:15}}>{deepThink?'Thinking deeply...':'Thinking...'}</div>
+          <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'var(--bg-card-6)',color:'var(--text-tertiary)',fontSize:15}}>{deepThink?'Thinking deeply...':'Thinking...'}</div>
         </div>}
         <div ref={bottomRef}/>
       </div>
@@ -1840,26 +1874,26 @@ function XChordAI({ currentUser, onClose }) {
         <div className="sheet-in" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:380,background:'#12141c',borderRadius:20,padding:'28px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
           <img src="/xchord-ai-logo.png" alt="xChord AI" style={{width:160,objectFit:'contain',marginBottom:6}}/>
           <p style={{color:'#999',fontSize:13,lineHeight:1.7,marginTop:8}}>
-            xChord AI is built and maintained by <strong style={{color:'#fff'}}>XChordLabs Corp</strong>.
+            xChord AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>XChordLabs Corp</strong>.
           </p>
           <p style={{color:'#999',fontSize:13,lineHeight:1.7}}>
-            Founded by <strong style={{color:'#fff'}}>Dara Samuel</strong>, popularly known as <strong style={{color:'#fff'}}>Samzy Bankz</strong>, with support from <strong style={{color:'#fff'}}>Beauty</strong>.
+            Founded by <strong style={{color:'var(--text-primary)'}}>Dara Samuel</strong>, popularly known as <strong style={{color:'var(--text-primary)'}}>Samzy Bankz</strong>, with support from <strong style={{color:'var(--text-primary)'}}>Beauty</strong>.
           </p>
           <p style={{color:'#999',fontSize:13,lineHeight:1.7}}>
-            Logo design by <strong style={{color:'#fff'}}>Artist Bigkizz</strong>.
+            Logo design by <strong style={{color:'var(--text-primary)'}}>Artist Bigkizz</strong>.
           </p>
-          <button onClick={()=>setShowAbout(false)} style={{marginTop:14,background:AI_GRADIENT,border:'none',borderRadius:14,padding:'10px 24px',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer'}}>Close</button>
+          <button onClick={()=>setShowAbout(false)} style={{marginTop:14,background:AI_GRADIENT,border:'none',borderRadius:14,padding:'10px 24px',color:'var(--text-primary)',fontWeight:700,fontSize:14,cursor:'pointer'}}>Close</button>
         </div>
       </div>}
 
       {showImgGen&&<div className="backdrop-in" style={{position:'fixed',inset:0,zIndex:10,background:'rgba(0,0,0,0.85)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:12}}>
         <div className="sheet-in" style={{width:'100%',maxWidth:400,background:'#1a1d26',borderRadius:20,padding:20,display:'flex',flexDirection:'column',gap:12}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontWeight:700,fontSize:17,color:'#fff'}}>🎨 Image Generator</span>
-            <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'#888',fontSize:22,cursor:'pointer'}}>✕</button>
+            <span style={{fontWeight:700,fontSize:17,color:'var(--text-primary)'}}>🎨 Image Generator</span>
+            <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'var(--text-tertiary)',fontSize:22,cursor:'pointer'}}>✕</button>
           </div>
-          <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none'}}/>
-          <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:AI_GRADIENT,border:'none',borderRadius:12,padding:'12px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
+          <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+          <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:AI_GRADIENT,border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
           {genImg&&<img src={genImg} style={{width:'100%',borderRadius:12,marginTop:4}} alt="generated"/>}
           {genImg&&<button onClick={()=>{
             const a=document.createElement('a')
@@ -1868,12 +1902,12 @@ function XChordAI({ currentUser, onClose }) {
             document.body.appendChild(a)
             a.click()
             document.body.removeChild(a)
-          }} style={{background:'rgba(255,255,255,0.07)',border:'none',borderRadius:12,padding:'10px',color:'#fff',fontSize:13,cursor:'pointer'}}>💾 Save Image</button>}
+          }} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'10px',color:'var(--text-primary)',fontSize:13,cursor:'pointer'}}>💾 Save Image</button>}
         </div>
       </div>}
-      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',display:'flex',gap:10,alignItems:'center'}}>
-        <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',fontSize:18,flexShrink:0}}>🎨</button>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask xChord AI anything..." style={{flex:1,background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:26,padding:'12px 18px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center'}}>
+        <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',fontSize:18,flexShrink:0}}>🎨</button>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask xChord AI anything..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:26,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
         <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'rgba(255,255,255,0.06)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
       </div>
     </div>
@@ -1940,22 +1974,22 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   }
 
   if(showForm) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowForm(false)} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowForm(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Ad</span>
-        <button onClick={createAd} disabled={saving} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 18px',color:'#fff',fontWeight:700,cursor:'pointer'}}>{saving?'Saving...':'Create'}</button>
+        <button onClick={createAd} disabled={saving} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 18px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Saving...':'Create'}</button>
       </div>
       <div style={{padding:20,display:'flex',flexDirection:'column',gap:12}}>
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>setAdType('post')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='post'?'#F7B731':'rgba(255,255,255,0.1)'),background:adType==='post'?'rgba(247,183,49,0.15)':'transparent',color:adType==='post'?'#F7B731':'#888',fontWeight:700,cursor:'pointer'}}>📝 Feed Post</button>
           <button onClick={()=>setAdType('reel')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='reel'?'#F7B731':'rgba(255,255,255,0.1)'),background:adType==='reel'?'rgba(247,183,49,0.15)':'transparent',color:adType==='reel'?'#F7B731':'#888',fontWeight:700,cursor:'pointer'}}>🎬 Reel Video</button>
         </div>
-        <input value={advertiserName} onChange={e=>setAdvertiserName(e.target.value)} placeholder="Advertiser/Brand name" style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none'}}/>
-        <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Ad text/caption" rows={3} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
-        <input value={linkUrl} onChange={e=>setLinkUrl(e.target.value)} placeholder="Link URL (optional)" style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none'}}/>
-        <div onClick={()=>fileRef.current?.click()} style={{height:120,background:'rgba(255,255,255,0.05)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:6}}>
-          {mediaFile?<span style={{color:'#00C9A7',fontSize:13}}>{mediaFile.name}</span>:<><span style={{fontSize:28}}>{adType==='reel'?'📹':'🖼️'}</span><span style={{color:'#555',fontSize:13}}>Tap to select {adType==='reel'?'video':'image'} (optional)</span></>}
+        <input value={advertiserName} onChange={e=>setAdvertiserName(e.target.value)} placeholder="Advertiser/Brand name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Ad text/caption" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+        <input value={linkUrl} onChange={e=>setLinkUrl(e.target.value)} placeholder="Link URL (optional)" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <div onClick={()=>fileRef.current?.click()} style={{height:120,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:6}}>
+          {mediaFile?<span style={{color:'#00C9A7',fontSize:13}}>{mediaFile.name}</span>:<><span style={{fontSize:28}}>{adType==='reel'?'📹':'🖼️'}</span><span style={{color:'var(--text-secondary)',fontSize:13}}>Tap to select {adType==='reel'?'video':'image'} (optional)</span></>}
         </div>
         <input ref={fileRef} type="file" accept={adType==='reel'?'video/*':'image/*'} onChange={e=>setMediaFile(e.target.files[0])} style={{display:'none'}}/>
       </div>
@@ -1963,13 +1997,13 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   )
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={onBack} style={{background:'none',border:'none',color:'#fff',fontSize:24,cursor:'pointer'}}>‹</button>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Ad Manager</span>
-        <button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>
+        <button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>
       </div>
-      {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>📢</p><p style={{color:'#555',marginTop:8}}>No ads yet</p></div>}
+      {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>📢</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No ads yet</p></div>}
       {ads.map(ad=>(
         <div key={ad.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
@@ -1981,11 +2015,11 @@ function AdminPanel({ currentUser, supabase, onBack }) {
               <span style={{color:ad.active?'#00C9A7':'#555',fontSize:12}}>{ad.active?'● Active':'○ Inactive'}</span>
             </div>
             <div style={{display:'flex',gap:8}}>
-              <button onClick={()=>toggleActive(ad)} style={{background:'rgba(255,255,255,0.07)',border:'none',borderRadius:10,padding:'6px 12px',color:'#fff',fontSize:12,cursor:'pointer'}}>{ad.active?'Pause':'Activate'}</button>
+              <button onClick={()=>toggleActive(ad)} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,cursor:'pointer'}}>{ad.active?'Pause':'Activate'}</button>
               <button onClick={()=>deleteAd(ad)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,cursor:'pointer'}}>Delete</button>
             </div>
           </div>
-          {ad.content&&<p style={{color:'#aaa',fontSize:13,margin:0}}>{ad.content}</p>}
+          {ad.content&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:0}}>{ad.content}</p>}
         </div>
       ))}
     </div>
@@ -2106,7 +2140,7 @@ function XchordAppInner({ currentUser }) {
   const [showSettings, setShowSettings] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const color = currentUser?.avatar_color||'#5B9CF6'
-  const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
+  const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
   const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
 
   useEffect(()=>{
@@ -2654,9 +2688,9 @@ function XchordAppInner({ currentUser }) {
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser}/>
   if(viewingPost) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setViewingPost(null)} style={{background:'none',border:'none',color:'#fff',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setViewingPost(null)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Post</span>
       </div>
       <PostCard post={viewingPost} currentUser={currentUser} supabase={supabase} onUserClick={u=>{setViewingPost(null);handleUserClick(u)}} onDelete={null} autoExpandComments/>
@@ -2664,8 +2698,8 @@ function XchordAppInner({ currentUser }) {
   )
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',maxWidth:600,margin:'0 auto',color:'#fff',fontFamily:'sans-serif'}}>
-      {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+    <div style={{minHeight:'100vh',background:'var(--bg-app)',maxWidth:600,margin:'0 auto',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
+      {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
@@ -2675,25 +2709,25 @@ function XchordAppInner({ currentUser }) {
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           
-          {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'#fff',fontSize:12,fontWeight:700}}>📢 Ads</button>}
-<button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'#666',fontSize:22}}>⚙️</button>
+          {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700}}>📢 Ads</button>}
+<button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:22}}>⚙️</button>
         </div>
       </div>}
 
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>
-          <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)',position:'sticky',top:58,zIndex:5,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)'}}>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(12px)'}}>
             {[{id:'foryou',label:'For You'},{id:'following',label:'Following'},{id:'global',label:'Global'}].map(t=>(
               <button key={t.id} onClick={()=>setFeedTab(t.id)} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:feedTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:feedTab===t.id?'#fff':'#555',fontWeight:feedTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
             ))}
           </div>
-          {loading&&<div style={{padding:'50px',textAlign:'center',color:'#444'}}>Loading...</div>}
-          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'#666',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Xchord! 🎵'}</p></div>}
+          {loading&&<div style={{padding:'50px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</div>}
+          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Xchord! 🎵'}</p></div>}
           {posts.map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
-              {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'#888',fontSize:13,cursor:'pointer'}}>
+              {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
                 <span style={{fontSize:14}}>🔁</span>
-                <span><strong style={{color:'#aaa'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
+                <span><strong style={{color:'var(--text-subtle)'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
               </div>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
@@ -2705,27 +2739,27 @@ function XchordAppInner({ currentUser }) {
 
         {tab==='messages'&&<>
           {dmView==='list'&&<>
-            <div style={{padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{padding:'16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
               <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
             </div>
             {/* xChord AI — always pinned first */}
             <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
-              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',background:'rgba(168,85,247,0.04)'}}>
+              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',background:'rgba(168,85,247,0.04)'}}>
               <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}}/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
                   <span style={{fontWeight:700,fontSize:15}}>xChord AI</span>
-                  <span style={{fontSize:10,background:'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)',color:'#fff',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+                  <span style={{fontSize:10,background:'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)',color:'var(--text-primary)',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
                 </div>
-                <p style={{color:'#555',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
+                <p style={{color:'var(--text-secondary)',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
               </div>
-              <span style={{color:'#444',fontSize:20}}>›</span>
+              <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
             </div>
             {conversations.map(conv=>(
               <div key={conv.id}
                 onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
-                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
                 <div style={{position:'relative',flexShrink:0}}>
                   <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
                   {conv.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
@@ -2739,36 +2773,36 @@ function XchordAppInner({ currentUser }) {
                     {conv.last ? (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content : 'Tap to chat'}
                   </p>
                 </div>
-                <span style={{color:'#444',fontSize:20}}>›</span>
+                <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
               </div>
             ))}
           </>}
 
           {dmView==='new'&&<>
-            <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12}}>
-              <button onClick={()=>setDmView('list')} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
+            <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+              <button onClick={()=>setDmView('list')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
               <span style={{fontWeight:700,fontSize:17}}>New Message</span>
             </div>
-            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)'}}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)'}}>
               <input autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search name or username..." style={{...inp}}/>
             </div>
             {!searchQ&&allPeople.map(u=>(
-              <div key={u.id} onClick={()=>openDMWithUser(u)} style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer'}}>
+              <div key={u.id} onClick={()=>openDMWithUser(u)} style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer'}}>
                 <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||getColor(u.id)} size={46}/>
-                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div><div style={{color:'#555',fontSize:13}}>@{u.username}</div></div>
+                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div><div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div></div>
                 <span style={{color:'#5B9CF6',fontSize:22}}>›</span>
               </div>
             ))}
-            {searchQ&&!searchResults.length&&<p style={{padding:'30px',textAlign:'center',color:'#444',fontSize:14}}>No users found</p>}
+            {searchQ&&!searchResults.length&&<p style={{padding:'30px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>No users found</p>}
             {searchQ&&searchResults.map(u=>(
               <div key={u.id}
                 onClick={()=>openDMWithUser(u)}
                 onTouchEnd={(e)=>{ e.preventDefault(); openDMWithUser(u) }}
-                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid rgba(255,255,255,0.04)',color:'#fff',cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none'}}>
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none'}}>
                 <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||getColor(u.id)} size={46}/>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,fontSize:16}}>{u.display_name}</div>
-                  <div style={{color:'#555',fontSize:13}}>@{u.username}</div>
+                  <div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div>
                 </div>
                 <span style={{color:'#5B9CF6',fontSize:22}}>›</span>
               </div>
@@ -2776,10 +2810,10 @@ function XchordAppInner({ currentUser }) {
           </>}
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<XChordAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
-          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'#090B10',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
-            <div style={{padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.07)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)',flexShrink:0}}>
-              <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'#888',cursor:'pointer',fontSize:24}}>‹</button>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(12px)',flexShrink:0}}>
+              <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
               <div onClick={()=>setViewingUser(selectedConv.other)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
                 <div>
@@ -2791,11 +2825,11 @@ function XchordAppInner({ currentUser }) {
             <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70,overflowY:'auto',height:0}}>
               {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
-                <p style={{color:'#444',fontSize:14}}>Say hello! 👋</p>
+                <p style={{color:'var(--text-quaternary)',fontSize:14}}>Say hello! 👋</p>
               </div>}
               {selectedDMMsg&&<div onClick={()=>setSelectedDMMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
                 <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
-                  <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 16px'}}/>
+                  <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 16px'}}/>
                   <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
                     {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>{
                       const mine = selectedDMMsg.message_reactions?.find(r=>r.user_id===currentUser.id)
@@ -2805,8 +2839,8 @@ function XchordAppInner({ currentUser }) {
                       )
                     })}
                   </div>
-                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
-                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#fff',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
+                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
                   {selectedDMMsg.sender_id===currentUser.id&&<>
                     <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
                     <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
@@ -2821,15 +2855,15 @@ function XchordAppInner({ currentUser }) {
                   style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
                   {!own&&<div onClick={()=>setViewingUser(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
                   <div style={{maxWidth:'75%'}}>
-                    {msg.reply_to&&<div style={{background:'rgba(255,255,255,0.05)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'#888'}}>↩ {msg.reply_to}</div>}
+                    {msg.reply_to&&<div style={{background:'var(--bg-card-4)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'var(--text-tertiary)'}}>↩ {msg.reply_to}</div>}
                     {editingDMMsg===msg.id?(
                       <div style={{display:'flex',gap:6}}>
-                        <input value={editDMText} onChange={e=>setEditDMText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveDMEdit()} style={{flex:1,background:'rgba(255,255,255,0.1)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'#fff',fontSize:14,outline:'none'}}/>
-                        <button onClick={saveDMEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✓</button>
-                        <button onClick={()=>setEditingDMMsg(null)} style={{background:'rgba(255,255,255,0.1)',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✕</button>
+                        <input value={editDMText} onChange={e=>setEditDMText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveDMEdit()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+                        <button onClick={saveDMEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✓</button>
+                        <button onClick={()=>setEditingDMMsg(null)} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
                       </div>
                     ):(
-                      <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'#fff',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
+                      <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.09)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
                         {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
                         <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'#444',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
                           <span>{timeAgo(msg.created_at)}</span>
@@ -2848,14 +2882,14 @@ function XchordAppInner({ currentUser }) {
               })}
               <div ref={bottomRef}/>
             </div>
-            <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'#090B10',borderTop:'1px solid rgba(255,255,255,0.07)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+            <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
               {dmReplyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                <span style={{color:'#888',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{dmReplyTo}</span></span>
-                <button onClick={()=>setDmReplyTo(null)} style={{background:'none',border:'none',color:'#555',cursor:'pointer',fontSize:18}}>✕</button>
+                <span style={{color:'var(--text-tertiary)',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{dmReplyTo}</span></span>
+                <button onClick={()=>setDmReplyTo(null)} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:18}}>✕</button>
               </div>}
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
-              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'rgba(255,255,255,0.07)',border:'none',cursor:'pointer',color:'#888',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
+              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
               <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.06)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
               </div>
@@ -2864,55 +2898,55 @@ function XchordAppInner({ currentUser }) {
         </>}
 
         {tab==='friends'&&<>
-          <div style={{display:'flex',borderBottom:'1px solid rgba(255,255,255,0.07)',position:'sticky',top:58,zIndex:5,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(12px)'}}>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(12px)'}}>
             <button onClick={()=>setFriendsSubTab('friends')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='friends'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='friends'?'#fff':'#555',fontWeight:friendsSubTab==='friends'?700:500,fontSize:14,cursor:'pointer'}}>👥 Friends</button>
             <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer'}}>🔭 Explore</button>
           </div>
           {friendsSubTab==='friends'&&<>
-            {people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>👥</p><p style={{color:'#555',marginTop:8}}>You are not following anyone yet</p><p style={{color:'#444',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
+            {people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>👥</p><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
             {people.filter(u=>followed[u.id]).map((u,i)=>(
-              <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+              <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
                 <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
                   <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||COLORS[i%COLORS.length]} size={48}/>
                 </button>
-                <button onClick={()=>handleUserClick(u)} style={{flex:1,minWidth:0,background:'none',border:'none',cursor:'pointer',textAlign:'left',padding:0,color:'#fff'}}>
+                <button onClick={()=>handleUserClick(u)} style={{flex:1,minWidth:0,background:'none',border:'none',cursor:'pointer',textAlign:'left',padding:0,color:'var(--text-primary)'}}>
                   <div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div>
-                  <div style={{color:'#555',fontSize:13}}>@{u.username}</div>
-                  {u.bio&&<div style={{color:'#666',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.bio}</div>}
+                  <div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div>
+                  {u.bio&&<div style={{color:'var(--text-muted)',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.bio}</div>}
                 </button>
-                <button onClick={()=>toggleFollow(u)} style={{background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Following</button>
+                <button onClick={()=>toggleFollow(u)} style={{background:'var(--bg-card)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Following</button>
               </div>
             ))}
           </>}
           {friendsSubTab==='explore'&&<>
-            <p style={{color:'#555',fontSize:13,padding:'12px 16px 4px'}}>People you might know</p>
+            <p style={{color:'var(--text-secondary)',fontSize:13,padding:'12px 16px 4px'}}>People you might know</p>
             {people.filter(u=>!followed[u.id]).map((u,i)=>(
-              <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid rgba(255,255,255,0.05)'}}>
+              <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
                 <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
                   <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||COLORS[i%COLORS.length]} size={48}/>
                 </button>
-                <button onClick={()=>handleUserClick(u)} style={{flex:1,minWidth:0,background:'none',border:'none',cursor:'pointer',textAlign:'left',padding:0,color:'#fff'}}>
+                <button onClick={()=>handleUserClick(u)} style={{flex:1,minWidth:0,background:'none',border:'none',cursor:'pointer',textAlign:'left',padding:0,color:'var(--text-primary)'}}>
                   <div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div>
-                  <div style={{color:'#555',fontSize:13}}>@{u.username}</div>
-                  {u.bio&&<div style={{color:'#666',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.bio}</div>}
+                  <div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div>
+                  {u.bio&&<div style={{color:'var(--text-muted)',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.bio}</div>}
                 </button>
-                <button onClick={()=>toggleFollow(u)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Follow</button>
+                <button onClick={()=>toggleFollow(u)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Follow</button>
               </div>
             ))}
-            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'#444'}}>You follow everyone on Xchord!</p>}
+            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'var(--text-quaternary)'}}>You follow everyone on Xchord!</p>}
           </>}
         </>}
 
         {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef} reelsRef={reelsRef}/>}
-        {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'#666',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
+        {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>}
       </div>
 
-      {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
+      {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
 
       <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
-        <div style={{background:'rgba(13,15,22,0.97)',backdropFilter:'blur(28px)',borderRadius:30,padding:'8px 4px',border:'1px solid rgba(255,255,255,0.1)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px rgba(0,0,0,0.7)'}}>
+        <div style={{background:'rgba(13,15,22,0.97)',backdropFilter:'blur(28px)',borderRadius:30,padding:'8px 4px',border:'1px solid var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px rgba(0,0,0,0.7)'}}>
           {TABS.map(({id,label,icon})=>{
             const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
             const showDot = id==='pulse'&&unreadGC
@@ -2920,7 +2954,7 @@ function XchordAppInner({ currentUser }) {
             <button key={id} onClick={()=>setTabWithHash(id)} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'#4a4a5a',padding:'8px 10px',borderRadius:20,minWidth:48}}>
               <span style={{fontSize:20,position:'relative'}}>
                 {icon}
-                {badgeCount>0&&<span style={{position:'absolute',top:-6,right:-10,background:'#FF4757',color:'#fff',fontSize:10,fontWeight:800,borderRadius:9,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px',border:'2px solid #090B10'}}>{badgeCount>9?'9+':badgeCount}</span>}
+                {badgeCount>0&&<span style={{position:'absolute',top:-6,right:-10,background:'#FF4757',color:'var(--text-primary)',fontSize:10,fontWeight:800,borderRadius:9,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px',border:'2px solid #090B10'}}>{badgeCount>9?'9+':badgeCount}</span>}
                 {showDot&&<span style={{position:'absolute',top:-2,right:-6,width:9,height:9,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10',animation:'pulseDot 1.5s infinite'}}/>}
               </span>
               <span style={{fontSize:9.5,fontWeight:tab===id?700:500}}>{label}</span>
@@ -2933,17 +2967,17 @@ function XchordAppInner({ currentUser }) {
 
       {showCompose&&<div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(10px)',display:'flex',alignItems:'flex-end'}} onClick={()=>setShowCompose(false)}>
         <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#0f1117',borderRadius:'24px 24px 0 0',padding:'16px 20px 40px',border:'1px solid rgba(255,255,255,0.09)'}}>
-          <div style={{width:36,height:4,borderRadius:2,background:'rgba(255,255,255,0.15)',margin:'0 auto 20px'}}/>
+          <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 20px'}}/>
           <div style={{display:'flex',gap:12}}>
             <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={42}/>
             <div style={{flex:1}}>
-              <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'#fff',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
+              <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'var(--text-primary)',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
               {composeImageUrl&&<div style={{position:'relative',marginBottom:8}}>
                 <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview"/>
-                <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'#fff',cursor:'pointer',fontSize:14}}>✕</button>
+                <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'var(--text-primary)',cursor:'pointer',fontSize:14}}>✕</button>
               </div>}
               <input ref={composeImgRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){setComposeImage(f);if(typeof window!=='undefined')setComposeImageUrl(URL.createObjectURL(f))}}} style={{display:'none'}}/>
-              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:12,borderTop:'1px solid rgba(255,255,255,0.07)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:12,borderTop:'1px solid var(--border-color)'}}>
                 <div style={{display:'flex',gap:12,alignItems:'center'}}>
                   <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',fontSize:22}}>🖼️</button>
                   <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
