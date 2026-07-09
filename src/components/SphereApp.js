@@ -2117,6 +2117,63 @@ function XchordAppInner({ currentUser }) {
     return()=>{ supabase.removeChannel(ch) }
   },[])
 
+  // Polling backup for notifications/messages — Supabase Realtime (websockets)
+  // is unreliable inside WebView-wrapped apps (background connection gets
+  // killed, auth token refresh isn't always handled). This polls on an
+  // interval instead, so notifications keep working even if the websocket dies.
+  useEffect(()=>{
+    const notifiedIds = new Set()
+    let lastPollTime = new Date().toISOString()
+
+    const poll = async () => {
+      try {
+        const pollStart = new Date().toISOString()
+
+        // New notifications (likes, comments, follows, reposts, mentions)
+        const {data:newNotifs} = await supabase.from('notifications')
+          .select('*,actor:profiles!actor_id(display_name)')
+          .eq('user_id', currentUser.id)
+          .gt('created_at', lastPollTime)
+          .order('created_at', {ascending:true})
+        if(newNotifs?.length){
+          const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your xchord',follow_accepted:'✅ accepted your follow request',mention:'📣 mentioned you'}
+          for(const n of newNotifs){
+            if(notifiedIds.has(n.id)) continue
+            notifiedIds.add(n.id)
+            if(n.actor_id === currentUser.id) continue
+            showLocalNotif('🎵 Xchord', (n.actor?.display_name||'Someone')+' '+(info[n.type]||'sent you a notification'))
+          }
+        }
+
+        // New DM messages across all of the user's conversations
+        const {data:convs} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id', currentUser.id)
+        if(convs?.length){
+          const convIds = convs.map(c=>c.conversation_id)
+          const {data:newMsgs} = await supabase.from('messages')
+            .select('*,sender:profiles!sender_id(display_name)')
+            .in('conversation_id', convIds)
+            .gt('created_at', lastPollTime)
+            .order('created_at', {ascending:true})
+          if(newMsgs?.length){
+            for(const m of newMsgs){
+              if(notifiedIds.has(m.id)) continue
+              notifiedIds.add(m.id)
+              if(m.sender_id === currentUser.id) continue
+              if(selectedConvRef.current?.id === m.conversation_id) continue
+              showLocalNotif('💬 '+(m.sender?.display_name||'Someone'), m.content?.slice(0,80)||'Sent you a message')
+            }
+          }
+        }
+
+        if(newNotifs?.length || convs?.length) loadUnreadCounts()
+        lastPollTime = pollStart
+      } catch(e) { console.log('Notification poll error:', e.message) }
+    }
+
+    const interval = setInterval(poll, 25000)
+    return () => clearInterval(interval)
+  },[])
+
   useEffect(()=>{
     const presenceChannel = supabase.channel('online_users')
       .on('presence',{event:'sync'},()=>{
