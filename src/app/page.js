@@ -7,13 +7,30 @@ export default function Home() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [fadeOut, setFadeOut] = useState(false)
+  const [failedToLoad, setFailedToLoad] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { window.location.href = '/auth'; return }
-      const { data } = await supabase.from('profiles').select('*').eq('id', session.user.id).single()
+
+      // The profile row is created by a database trigger right after signup —
+      // there can be a brief race where it hasn't landed yet. Retry a few times
+      // before giving up, instead of rendering the app with a null profile.
+      let data = null
+      for (let attempt = 0; attempt < 6; attempt++) {
+        const { data: row } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
+        if (row) { data = row; break }
+        await new Promise(r => setTimeout(r, 500))
+      }
+
+      if (!data) {
+        setFailedToLoad(true)
+        setLoading(false)
+        return
+      }
+
       setProfile(data)
       // fade out loading screen smoothly
       setFadeOut(true)
@@ -21,6 +38,15 @@ export default function Home() {
     }
     init()
   }, [])
+
+  if (failedToLoad) return (
+    <div style={{ minHeight: '100vh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
+      <img src="/xchord-logo-white.svg" alt="Xchord" width="70" height="70" style={{ objectFit: 'contain' }} />
+      <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Setting up your account</p>
+      <p style={{ color: '#888', fontSize: 14, maxWidth: 320 }}>This is taking longer than expected. Please try again in a moment.</p>
+      <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Try Again</button>
+    </div>
+  )
 
   if (loading) return (
     <div style={{
@@ -74,3 +100,4 @@ export default function Home() {
 
   return <XchordApp currentUser={profile} />
 }
+

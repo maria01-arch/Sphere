@@ -2850,5 +2850,14 @@ function XchordAppInner({ currentUser }) {
 }
 
 export default function XchordApp({ currentUser }) {
+  if (!currentUser || !currentUser.id) {
+    return (
+      <div style={{ minHeight: '100vh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
+        <img src="/xchord-logo-white.svg" alt="Xchord" width="70" height="70" style={{ objectFit: 'contain' }} />
+        <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Something went wrong loading your account</p>
+        <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Reload</button>
+      </div>
+    )
+  }
   return <ErrorBoundary><XchordAppInner currentUser={currentUser}/></ErrorBoundary>
 }
