@@ -63,12 +63,12 @@ export default function Home() {
         </div>
 
         <div style={{ textAlign: 'center' }}>
-          <div style={{
-            fontWeight: 900, fontSize: 28, letterSpacing: 6,
+          <h1 style={{
+            fontWeight: 900, fontSize: 28, letterSpacing: 6, margin: 0,
             background: 'linear-gradient(135deg,#A855F7,#06B6D4)',
             WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-          }}>XCHORD</div>
-          <div style={{ color: '#333', fontSize: 10, letterSpacing: 3, marginTop: 2 }}>SOCIAL MEDIA PLATFORM</div>
+          }}>XCHORD</h1>
+          <p style={{ color: '#333', fontSize: 10, letterSpacing: 3, marginTop: 2 }}>SOCIAL MEDIA PLATFORM</p>
         </div>
       </div>
 
