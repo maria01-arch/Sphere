@@ -183,6 +183,8 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const [msg, setMsg] = useState({text:'',ok:true})
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
+  const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+  const [testMsg, setTestMsg] = useState('')
 
   const showMsg = (text, ok=true) => { setMsg({text,ok}); setTimeout(()=>setMsg({text:'',ok:true}),3000) }
   const inp = {width:'100%',background:'rgba(255,255,255,0.07)',border:'1px solid rgba(255,255,255,0.1)',borderRadius:12,padding:'12px 16px',color:'#fff',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}
@@ -334,8 +336,6 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
     </div>
   )
   if(section==='notiftest') {
-    const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
-    const [testMsg, setTestMsg] = useState('')
     const runTest = async () => {
       setTestMsg('')
       if (typeof Notification === 'undefined') { setTestMsg('❌ This browser/app does not support the Notification API at all.'); return }
