@@ -333,6 +333,39 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       </div>
     </div>
   )
+  if(section==='notiftest') {
+    const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+    const [testMsg, setTestMsg] = useState('')
+    const runTest = async () => {
+      setTestMsg('')
+      if (typeof Notification === 'undefined') { setTestMsg('❌ This browser/app does not support the Notification API at all.'); return }
+      let perm = Notification.permission
+      if (perm === 'default') { perm = await Notification.requestPermission(); setPermState(perm) }
+      if (perm !== 'granted') { setTestMsg('❌ Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
+      try {
+        new Notification('xChord Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+        setTestMsg('✅ Test notification sent — check if it appeared.')
+      } catch(e) {
+        setTestMsg('❌ new Notification() threw an error: ' + e.message)
+      }
+    }
+    return (
+      <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
+        <Header title="Notifications"/>
+        <div style={{padding:'20px 16px'}}>
+          <div style={{background:'rgba(255,255,255,0.04)',border:'1px solid rgba(255,255,255,0.08)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'#aaa'}}>
+            <div>Browser permission status: <strong style={{color: permState==='granted'?'#00C9A7':'#FF4757'}}>{permState}</strong></div>
+          </div>
+          <button onClick={runTest} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
+            Send Test Notification
+          </button>
+          {testMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'rgba(255,255,255,0.05)',color:'#ccc',fontSize:13,lineHeight:1.5}}>{testMsg}</div>}
+          <p style={{color:'#555',fontSize:12,marginTop:20,lineHeight:1.6}}>This sends a notification directly from this screen, bypassing chat/likes/comments entirely — useful for checking whether notifications work in this browser or app at all.</p>
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{minHeight:'100vh',background:'#090B10',color:'#fff'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(9,11,16,0.95)',backdropFilter:'blur(16px)',borderBottom:'1px solid rgba(255,255,255,0.07)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
@@ -340,7 +373,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <span style={{fontWeight:700,fontSize:17}}>Settings</span>
       </div>
       <div style={{padding:'12px 0'}}>
-        {[{icon:'🖼️',label:'Profile Picture',id:'avatar'},{icon:'👤',label:'Edit Profile',id:'profile'},{icon:'🔒',label:'Change Password',id:'password'},{icon:'📍',label:'Location',id:'location'},{icon:'🌐',label:'Language',id:'language'},{icon:'🏅',label:'Get Verified Badge',id:'verify'}].map(s=>(
+        {[{icon:'🖼️',label:'Profile Picture',id:'avatar'},{icon:'👤',label:'Edit Profile',id:'profile'},{icon:'🔒',label:'Change Password',id:'password'},{icon:'📍',label:'Location',id:'location'},{icon:'🌐',label:'Language',id:'language'},{icon:'🏅',label:'Get Verified Badge',id:'verify'},{icon:'🔔',label:'Notifications',id:'notiftest'}].map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#fff',borderBottom:'1px solid rgba(255,255,255,0.05)',textAlign:'left',fontSize:15}}>
             <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'#444'}}>›</span>
           </button>
