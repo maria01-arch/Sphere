@@ -343,10 +343,15 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       if (perm === 'default') { perm = await Notification.requestPermission(); setPermState(perm) }
       if (perm !== 'granted') { setTestMsg('❌ Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
       try {
-        new Notification('xChord Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+        if('serviceWorker' in navigator){
+          const reg = await navigator.serviceWorker.ready
+          await reg.showNotification('xChord Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+        } else {
+          new Notification('xChord Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+        }
         setTestMsg('✅ Test notification sent — check if it appeared.')
       } catch(e) {
-        setTestMsg('❌ new Notification() threw an error: ' + e.message)
+        setTestMsg('❌ showNotification() threw an error: ' + e.message)
       }
     }
     return (
@@ -2613,8 +2618,15 @@ function XchordAppInner({ currentUser }) {
     try {
       if(typeof Notification === 'undefined') return
       if(Notification.permission !== 'granted') return
-      setTimeout(()=>{
-        try { new Notification(title, {body, icon:'/icon-192.png', tag:Date.now().toString()}) }
+      setTimeout(async ()=>{
+        try {
+          if('serviceWorker' in navigator){
+            const reg = await navigator.serviceWorker.ready
+            reg.showNotification(title, {body, icon:'/icon-192.png', tag:Date.now().toString()})
+          } else {
+            new Notification(title, {body, icon:'/icon-192.png', tag:Date.now().toString()})
+          }
+        }
         catch(e){ console.log('Notif error:',e.message) }
       }, 100)
     } catch(e){ console.log('showLocalNotif error:',e) }
