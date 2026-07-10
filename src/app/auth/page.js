@@ -118,7 +118,7 @@ export default function AuthPage() {
         const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true })
         if (!upErr) {
           const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl }).eq('id', userId)
+          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl + '?v=' + Date.now() }).eq('id', userId)
         }
       } catch { /* non-fatal — account already created */ }
     }
@@ -184,7 +184,7 @@ export default function AuthPage() {
   }
 
   const handleVerifyOtp = async () => {
-    if (!otpCode.trim() || otpCode.trim().length < 6) { setError('Enter the 6-digit code from your email'); return }
+    if (!otpCode.trim() || otpCode.trim().length < 6) { setError('Enter the code from your email'); return }
     setError(''); setLoading(true)
     try {
       const { data, error } = await supabase.auth.verifyOtp({
@@ -429,9 +429,9 @@ export default function AuthPage() {
 
           {step === 7 && <>
             <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              We sent a 6-digit code to <strong style={{ color: '#fff' }}>{pendingEmail}</strong>. Enter it below to finish creating your account.
+              We sent a verification code to <strong style={{ color: '#fff' }}>{pendingEmail}</strong>. Enter it below to finish creating your account.
             </p>
-            <input style={{ ...inp, fontSize: 24, letterSpacing: 8, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={6} placeholder="000000" value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()} />
+            <input style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={10} placeholder="0000000000" value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()} />
             {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
             {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
             <button onClick={handleVerifyOtp} disabled={loading} style={primaryBtn}>
