@@ -62,7 +62,7 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
 }
 
 // ── USER PROFILE ───────────────────────────────────────────────────────────
-function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
+function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpenPost, sendPush }) {
   const [posts, setPosts] = useState([])
   const [isFollowing, setIsFollowing] = useState(false)
   const [showBigAvatar, setShowBigAvatar] = useState(false)
@@ -132,7 +132,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage }) {
         {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
         {!loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>No posts yet</p>}
         {posts.map(post=>(
-          <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null}/>
+          <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null} onOpenPost={onOpenPost} sendPush={sendPush}/>
         ))}
       </div>
     </div>
@@ -579,7 +579,36 @@ function AdsenseCard() {
 }
 
 
-function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
+function CommentThread({ comment, depth, onUserClick, onReply }) {
+  const hasChildren = comment.children && comment.children.length > 0
+  return (
+    <div style={{position:'relative',marginLeft:depth>0?18:0}}>
+      {depth>0&&<div style={{position:'absolute',left:-14,top:0,bottom:hasChildren?14:20,width:2,background:'var(--border-color-2)'}}/>}
+      {depth>0&&<div style={{position:'absolute',left:-14,top:20,width:14,height:2,background:'var(--border-color-2)'}}/>}
+      <div style={{display:'flex',gap:10,marginBottom:8,alignItems:'flex-start'}}>
+        <Avatar url={comment.author?.avatar_url} name={comment.author?.display_name} color={comment.author?.avatar_color||'#5B9CF6'} size={depth>0?26:32}/>
+        <div style={{flex:1,background:'var(--bg-card-4)',borderRadius:12,padding:'8px 12px',minWidth:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
+            <span onClick={()=>onUserClick(comment.author)} style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',cursor:'pointer'}}>{comment.author?.display_name}</span>
+            <span style={{color:'var(--text-secondary)',fontSize:11}}>{timeAgo(comment.created_at)}</span>
+          </div>
+          {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}>{comment.content}</p>}
+          {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt=""/>}
+          <span onClick={()=>onReply(comment)} style={{display:'inline-block',marginTop:6,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}>↩ Reply</span>
+        </div>
+      </div>
+      {hasChildren&&(
+        <div>
+          {comment.children.map(child=>(
+            <CommentThread key={child.id} comment={child} depth={depth+1} onUserClick={onUserClick} onReply={onReply}/>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
   const [likes, setLikes] = useState(post.likes_count||0)
@@ -590,15 +619,25 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
   const [showComments, setShowComments] = useState(false)
   const [commentsList, setCommentsList] = useState([])
   const [loadingComments, setLoadingComments] = useState(false)
+  const [replyingTo, setReplyingTo] = useState(null) // comment object being replied to, or null = replying to post
+  const [replyImage, setReplyImage] = useState(null)
+  const [replyImagePreview, setReplyImagePreview] = useState('')
+  const [uploadingReply, setUploadingReply] = useState(false)
+  const replyImageRef = useRef(null)
 
-  const loadComments = async() => {
-    if(showComments){setShowComments(false);return}
+  const loadComments = async(forceOpen) => {
+    if(showComments && !forceOpen){setShowComments(false);return}
     setLoadingComments(true)
     const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
     setCommentsList(data||[])
     setLoadingComments(false)
     setShowComments(true)
   }
+
+  useEffect(() => {
+    if (autoExpandComments) loadComments(true)
+  }, [autoExpandComments])
+
   const a = post.author||{}
   const color = a.avatar_color||getColor(a.id)
   const isOwn = a.id === currentUser.id
@@ -611,7 +650,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
       if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
       else if (post.user_id !== currentUser.id) {
         await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
-        sendPush(post.user_id, '❤️ New Like', (currentUser.display_name||'Someone')+' liked your post')
+        sendPush&&sendPush(post.user_id, '❤️ New Like', (currentUser.display_name||'Someone')+' liked your post')
       }
     } else {
       await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
@@ -631,17 +670,65 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
   }
 
   const submitReply = async () => {
-    if (!replyText.trim()) return
-    const {error} = await supabase.from('comments').insert({post_id:post.id,user_id:currentUser.id,content:replyText.trim()})
+    if (!replyText.trim() && !replyImage) return
+    setUploadingReply(true)
+    let imageUrl = null
+    if (replyImage) {
+      const ext = replyImage.name.split('.').pop()
+      const path = `comments/${currentUser.id}_${Date.now()}.${ext}`
+      const { error: upErr } = await supabase.storage.from('avatars').upload(path, replyImage, {upsert:false, contentType: replyImage.type})
+      if (!upErr) {
+        const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+        imageUrl = urlData.publicUrl
+      }
+    }
+    const { error } = await supabase.from('comments').insert({
+      post_id: post.id,
+      user_id: currentUser.id,
+      content: replyText.trim(),
+      reply_to_comment_id: replyingTo?.id || null,
+      image_url: imageUrl
+    })
+    setUploadingReply(false)
     if (!error) {
       setComments(c=>c+1)
       setReplyText('')
+      setReplyImage(null)
+      setReplyImagePreview('')
       setShowReply(false)
+      setReplyingTo(null)
+      loadComments(true) // refresh thread so the new reply appears immediately
       if (post.user_id !== currentUser.id) {
         await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
-        sendPush(post.user_id, '💬 New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+        sendPush&&sendPush(post.user_id, '💬 New Comment', (currentUser.display_name||'Someone')+' commented on your post')
       }
     }
+  }
+
+  const pickReplyImage = (file) => {
+    if (!file) return
+    setReplyImage(file)
+    setReplyImagePreview(URL.createObjectURL(file))
+  }
+
+  const startReply = (comment) => {
+    setReplyingTo(comment)
+    setShowReply(true)
+  }
+
+  // Build a nested tree from the flat comments list using reply_to_comment_id
+  const buildCommentTree = (list) => {
+    const byId = {}
+    list.forEach(c => { byId[c.id] = { ...c, children: [] } })
+    const roots = []
+    list.forEach(c => {
+      if (c.reply_to_comment_id && byId[c.reply_to_comment_id]) {
+        byId[c.reply_to_comment_id].children.push(byId[c.id])
+      } else {
+        roots.push(byId[c.id])
+      }
+    })
+    return roots
   }
 
   return (
@@ -661,8 +748,8 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
             </div>
             {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:13,padding:'2px 6px'}}>🗑️</button>}
           </div>
-          {post.content&&<p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
-          {post.image_url&&<img src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover'}} alt="post"/>}
+          {post.content&&<p onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
+          {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post"/>}
           <div style={{display:'flex'}}>
             <button onClick={loadComments} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showComments?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
               <span style={{fontSize:16}}>💬</span><span>{comments}</span>
@@ -681,30 +768,37 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete }) {
             <div className="sheet-in" style={{marginTop:12,borderTop:'1px solid var(--border-color)',paddingTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
                 <span style={{color:'var(--text-tertiary)',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
-                <button onClick={()=>setShowReply(!showReply)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
+                <button onClick={()=>{setReplyingTo(null);setShowReply(!showReply)}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
               </div>
               {loadingComments&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>Loading...</p>}
-              {commentsList.map((cm,i)=>(
-                <div key={cm.id} style={{display:'flex',gap:10,marginBottom:12,alignItems:'flex-start'}}>
-                  <Avatar url={cm.author?.avatar_url} name={cm.author?.display_name} color={cm.author?.avatar_color||'#5B9CF6'} size={32}/>
-                  <div style={{flex:1,background:'var(--bg-card-4)',borderRadius:12,padding:'8px 12px'}}>
-                    <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
-                      <span onClick={()=>onUserClick(cm.author)} style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',cursor:'pointer'}}>{cm.author?.display_name}</span>
-                      <span style={{color:'var(--text-secondary)',fontSize:11}}>{timeAgo(cm.created_at)}</span>
-                    </div>
-                    <p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0}}>{cm.content}</p>
-                  </div>
-                </div>
+              {buildCommentTree(commentsList).map(cm=>(
+                <CommentThread key={cm.id} comment={cm} depth={0} onUserClick={onUserClick} onReply={startReply}/>
               ))}
               {!loadingComments&&commentsList.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>No comments yet</p>}
             </div>
           )}
           {showReply&&(
-            <div style={{marginTop:10,display:'flex',gap:8,alignItems:'center'}}>
-              <Avatar url={currentUser.avatar_url} name={currentUser.display_name} color={currentUser.avatar_color||'#5B9CF6'} size={28}/>
-              <input value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply()} placeholder="Write a reply..." autoFocus
-                style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
-              <button onClick={submitReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',cursor:'pointer',fontWeight:700}}>→</button>
+            <div style={{marginTop:10}}>
+              {replyingTo&&(
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg-card-4)',borderRadius:10,padding:'6px 10px',marginBottom:8,fontSize:12,color:'var(--text-tertiary)'}}>
+                  <span>Replying to <strong style={{color:'var(--text-primary)'}}>{replyingTo.author?.display_name}</strong></span>
+                  <span onClick={()=>setReplyingTo(null)} style={{cursor:'pointer',color:'var(--text-secondary)',fontSize:16,lineHeight:1}}>✕</span>
+                </div>
+              )}
+              {replyImagePreview&&(
+                <div style={{position:'relative',display:'inline-block',marginBottom:8}}>
+                  <img src={replyImagePreview} style={{maxHeight:120,borderRadius:10,display:'block'}} alt=""/>
+                  <span onClick={()=>{setReplyImage(null);setReplyImagePreview('')}} style={{position:'absolute',top:-8,right:-8,background:'#FF4757',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:13,cursor:'pointer'}}>✕</span>
+                </div>
+              )}
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <Avatar url={currentUser.avatar_url} name={currentUser.display_name} color={currentUser.avatar_color||'#5B9CF6'} size={28}/>
+                <input value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply()} placeholder={replyingTo?'Write a reply...':'Write a comment...'} autoFocus
+                  style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+                <input ref={replyImageRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>pickReplyImage(e.target.files?.[0])}/>
+                <button onClick={()=>replyImageRef.current?.click()} style={{background:'var(--bg-card-2)',border:'none',borderRadius:'50%',width:34,height:34,color:'var(--text-tertiary)',cursor:'pointer',fontSize:15,flexShrink:0}}>📷</button>
+                <button onClick={submitReply} disabled={uploadingReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',cursor:'pointer',fontWeight:700,flexShrink:0,opacity:uploadingReply?0.6:1}}>{uploadingReply?'...':'→'}</button>
+              </div>
             </div>
           )}
         </div>
@@ -2140,7 +2234,9 @@ function XchordAppInner({ currentUser }) {
   const openPost = async(postId) => {
     const {data} = await supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').eq('id',postId).single()
     if(data) setViewingPost({...data,user_liked:data.likes?.some(l=>l.user_id===currentUser.id),user_reposted:data.reposts?.some(r=>r.user_id===currentUser.id),likes_count:data.likes?.length||0,reposts_count:data.reposts?.length||0,comments_count:data.comments?.length||0})
+    setHideNav(true)
   }
+  const closePost = () => { setViewingPost(null); setHideNav(false) }
   const [showMyProfile, setShowMyProfile] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
@@ -2160,8 +2256,8 @@ function XchordAppInner({ currentUser }) {
   const viewingGroupRef = useRef(null)
   const reelsRef = useRef(null)
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current,viewingReels:reelsRef.current}
-  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav])
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current,viewingReels:reelsRef.current,viewingPost}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost])
 
   // Global listener for push notifications regardless of tab
   useEffect(()=>{
@@ -2308,6 +2404,7 @@ function XchordAppInner({ currentUser }) {
       window.history.pushState({xchord:true},'',window.location.href)
       const s = stateRef.current
       // Priority order: deepest screen first
+      if(s.viewingPost){setViewingPost(null);setHideNav(false);return}
       if(s.viewingUser){setViewingUser(null);return}
       if(s.showMyProfile){setShowMyProfile(false);return}
       if(s.showSettings){setShowSettings(false);return}
@@ -2691,14 +2788,14 @@ function XchordAppInner({ currentUser }) {
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
-  if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser}/>
+  if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div className="screen-in-safe" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setViewingPost(null)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+        <button onClick={closePost} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Post</span>
       </div>
-      <PostCard post={viewingPost} currentUser={currentUser} supabase={supabase} onUserClick={u=>{setViewingPost(null);handleUserClick(u)}} onDelete={null} autoExpandComments/>
+      <PostCard post={viewingPost} currentUser={currentUser} supabase={supabase} onUserClick={u=>{closePost();handleUserClick(u)}} onDelete={null} autoExpandComments sendPush={sendPush}/>
     </div>
   )
 
@@ -2734,7 +2831,7 @@ function XchordAppInner({ currentUser }) {
                 <span style={{fontSize:14}}>🔁</span>
                 <span><strong style={{color:'var(--text-subtle)'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
               </div>}
-              <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost}/>
+              <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
               {(i+1)%7===0&&<AdsenseCard/>}
               {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTabWithHash('pulse');setPendingReelId(reelId)}}/>}
