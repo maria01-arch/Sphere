@@ -67,6 +67,19 @@ export default function RootLayout({ children }) {
           crossOrigin="anonymous"
           strategy="afterInteractive"
         />
+        <Script
+          src="https://cdn.onesignal.com/sdks/web/v16/OneSignalSDK.page.js"
+          defer
+          strategy="afterInteractive"
+        />
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `window.OneSignalDeferred = window.OneSignalDeferred || [];
+              OneSignalDeferred.push(async function(OneSignal) {
+                await OneSignal.init({ appId: "${process.env.NEXT_PUBLIC_ONESIGNAL_APP_ID || ''}" });
+              });`
+          }}
+        />
       </head>
       <body>{children}</body>
     </html>

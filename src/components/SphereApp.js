@@ -642,66 +642,84 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
   const color = a.avatar_color||getColor(a.id)
   const isOwn = a.id === currentUser.id
 
+  const likeInFlight = useRef(false)
+  const repostInFlight = useRef(false)
+  const replyInFlight = useRef(false)
+
   const toggleLike = async () => {
-    const next = !liked
-    setLiked(next); setLikes(l=>next?l+1:l-1)
-    if (next) {
-      const {error} = await supabase.from('likes').insert({post_id:post.id,user_id:currentUser.id})
-      if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
-      else if (post.user_id !== currentUser.id) {
-        await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
-        sendPush&&sendPush(post.user_id, '❤️ New Like', (currentUser.display_name||'Someone')+' liked your post')
+    if (likeInFlight.current) return
+    likeInFlight.current = true
+    try {
+      const next = !liked
+      setLiked(next); setLikes(l=>next?l+1:l-1)
+      if (next) {
+        const {error} = await supabase.from('likes').insert({post_id:post.id,user_id:currentUser.id})
+        if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
+        else if (post.user_id !== currentUser.id) {
+          await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
+          sendPush&&sendPush(post.user_id, '❤️ New Like', (currentUser.display_name||'Someone')+' liked your post')
+        }
+      } else {
+        await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
       }
-    } else {
-      await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
-    }
+    } finally { likeInFlight.current = false }
   }
 
   const toggleRepost = async () => {
-    const next = !reposted
-    setReposted(next); setReposts(r=>next?r+1:r-1)
-    if (next) {
-      const {error} = await supabase.from('reposts').insert({post_id:post.id,user_id:currentUser.id})
-      if (error) { setReposted(!next); setReposts(r=>next?r-1:r+1) }
-      else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'repost',post_id:post.id})
-    } else {
-      await supabase.from('reposts').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
-    }
+    if (repostInFlight.current) return
+    repostInFlight.current = true
+    try {
+      const next = !reposted
+      setReposted(next); setReposts(r=>next?r+1:r-1)
+      if (next) {
+        const {error} = await supabase.from('reposts').insert({post_id:post.id,user_id:currentUser.id})
+        if (error) { setReposted(!next); setReposts(r=>next?r-1:r+1) }
+        else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'repost',post_id:post.id})
+      } else {
+        await supabase.from('reposts').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
+      }
+    } finally { repostInFlight.current = false }
   }
 
   const submitReply = async () => {
+    if (replyInFlight.current) return
     if (!replyText.trim() && !replyImage) return
+    replyInFlight.current = true
     setUploadingReply(true)
-    let imageUrl = null
-    if (replyImage) {
-      const ext = replyImage.name.split('.').pop()
-      const path = `comments/${currentUser.id}_${Date.now()}.${ext}`
-      const { error: upErr } = await supabase.storage.from('avatars').upload(path, replyImage, {upsert:false, contentType: replyImage.type})
-      if (!upErr) {
-        const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-        imageUrl = urlData.publicUrl
+    try {
+      let imageUrl = null
+      if (replyImage) {
+        const ext = replyImage.name.split('.').pop()
+        const path = `comments/${currentUser.id}_${Date.now()}.${ext}`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(path, replyImage, {upsert:false, contentType: replyImage.type})
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+          imageUrl = urlData.publicUrl
+        }
       }
-    }
-    const { error } = await supabase.from('comments').insert({
-      post_id: post.id,
-      user_id: currentUser.id,
-      content: replyText.trim(),
-      reply_to_comment_id: replyingTo?.id || null,
-      image_url: imageUrl
-    })
-    setUploadingReply(false)
-    if (!error) {
-      setComments(c=>c+1)
-      setReplyText('')
-      setReplyImage(null)
-      setReplyImagePreview('')
-      setShowReply(false)
-      setReplyingTo(null)
-      loadComments(true) // refresh thread so the new reply appears immediately
-      if (post.user_id !== currentUser.id) {
-        await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
-        sendPush&&sendPush(post.user_id, '💬 New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+      const { error } = await supabase.from('comments').insert({
+        post_id: post.id,
+        user_id: currentUser.id,
+        content: replyText.trim(),
+        reply_to_comment_id: replyingTo?.id || null,
+        image_url: imageUrl
+      })
+      if (!error) {
+        setComments(c=>c+1)
+        setReplyText('')
+        setReplyImage(null)
+        setReplyImagePreview('')
+        setShowReply(false)
+        setReplyingTo(null)
+        loadComments(true) // refresh thread so the new reply appears immediately
+        if (post.user_id !== currentUser.id) {
+          await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
+          sendPush&&sendPush(post.user_id, '💬 New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+        }
       }
+    } finally {
+      setUploadingReply(false)
+      replyInFlight.current = false
     }
   }
 
@@ -2242,7 +2260,14 @@ function XchordAppInner({ currentUser }) {
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const color = currentUser?.avatar_color||'#5B9CF6'
   const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
-  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
+  const handleSignOut = async() => {
+    try {
+      window.OneSignalDeferred = window.OneSignalDeferred || []
+      window.OneSignalDeferred.push(async function(OneSignal) { await OneSignal.logout() })
+    } catch(e) {}
+    await supabase.auth.signOut()
+    window.location.href='/auth'
+  }
 
   useEffect(()=>{
     supabase.from('ads').select('*').eq('active',true).eq('type','post').order('created_at',{ascending:false}).then(({data})=>setAds(data||[]))
@@ -2364,36 +2389,17 @@ function XchordAppInner({ currentUser }) {
   },[])
 
   useEffect(()=>{
-    const setupPush = async() => {
+    const setupOneSignal = async() => {
       try {
-        if(!('Notification' in window)) { console.log('No Notification API'); return }
-        // Request permission immediately for WebView apps
-        if(Notification.permission === 'default') {
-          await Notification.requestPermission()
-        }
-        if(!('serviceWorker' in navigator)) { console.log('No SW'); return }
-        if(!('PushManager' in window)) { console.log('No PushManager'); return }
-        const reg = await navigator.serviceWorker.register('/sw.js')
-        await navigator.serviceWorker.ready
-        let permission = Notification.permission
-        if(permission === 'default') permission = await Notification.requestPermission()
-        if(permission !== 'granted') { console.log('Permission:',permission); return }
-        let sub = await reg.pushManager.getSubscription()
-        if(!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: 'BPiikDJR1kYnVVizNObctiIofznuYwl0P6tGmViKwqy11Lzq5JJmMQ-tAwc12yx6tHWYrRrVOmNCUhguqjyP5Cs'
-          })
-        }
-        const {error} = await supabase.from('push_subscriptions').upsert({
-          user_id:currentUser.id,
-          subscription:JSON.parse(JSON.stringify(sub))
-        },{onConflict:'user_id'})
-        if(error) console.log('Sub save error:',error.message)
-        else console.log('Push ready!')
-      } catch(e) { console.log('Push setup error:',e.message) }
+        window.OneSignalDeferred = window.OneSignalDeferred || []
+        window.OneSignalDeferred.push(async function(OneSignal) {
+          // Associate this browser/device with the logged-in Xchord user so
+          // notifications can be targeted by external_id from the backend.
+          await OneSignal.login(currentUser.id)
+        })
+      } catch(e) { console.log('OneSignal setup error:',e.message) }
     }
-    setupPush()
+    setupOneSignal()
   },[])
 
   useEffect(()=>{
@@ -2770,13 +2776,10 @@ function XchordAppInner({ currentUser }) {
 
   const sendPush = async(userId, title, body) => {
     try {
-      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
-      if(data?.subscription) {
-        const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
-        if(!res.ok) {
-          const err = await res.json().catch(()=>({}))
-          console.error('Push send failed:', res.status, err.error||'unknown error')
-        }
+      const res = await fetch('/api/onesignal-push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,title,body})})
+      if(!res.ok) {
+        const err = await res.json().catch(()=>({}))
+        console.error('Push send failed:', res.status, err.error||'unknown error')
       }
     } catch(e) { console.log('Push send error',e) }
   }
