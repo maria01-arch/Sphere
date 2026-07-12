@@ -2293,9 +2293,8 @@ function XchordAppInner({ currentUser }) {
   useEffect(()=>{
     const ch = supabase.channel('global_notifs_'+currentUser.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+currentUser.id},async(payload)=>{
-        const {data:actor} = await supabase.from('profiles').select('display_name').eq('id',payload.new.actor_id).single()
-        const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your xchord',follow_accepted:'✅ accepted your follow request'}
-        showLocalNotif('🎵 Xchord', (actor?.display_name||'Someone')+' '+(info[payload.new.type]||'sent you a notification'))
+        // Push notifications are now handled server-side via OneSignal (see sendPush).
+        // This listener just keeps the in-app unread badge count fresh.
         loadUnreadCounts()
       })
       .subscribe()
@@ -2307,10 +2306,7 @@ function XchordAppInner({ currentUser }) {
         supabase.channel('dm_notif_'+conversation_id)
           .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conversation_id},async(payload)=>{
             if(payload.new.sender_id === currentUser.id) return
-            // don't show notification if already inside this conversation (handled by the chat-specific channel)
-            if(selectedConvRef.current?.id === conversation_id) return
-            const {data:sender} = await supabase.from('profiles').select('display_name').eq('id',payload.new.sender_id).single()
-            showLocalNotif('💬 '+(sender?.display_name||'Someone'), payload.new.content?.slice(0,80)||'Sent you a message')
+            // Push notifications now handled server-side via OneSignal (see sendPush).
             loadUnreadCounts()
           })
           .subscribe()
@@ -2339,12 +2335,9 @@ function XchordAppInner({ currentUser }) {
           .gt('created_at', lastPollTime)
           .order('created_at', {ascending:true})
         if(newNotifs?.length){
-          const info = {like:'❤️ liked your post',comment:'💬 commented on your post',follow:'👤 started following you',repost:'🔁 reposted your xchord',follow_accepted:'✅ accepted your follow request',mention:'📣 mentioned you'}
           for(const n of newNotifs){
             if(notifiedIds.has(n.id)) continue
             notifiedIds.add(n.id)
-            if(n.actor_id === currentUser.id) continue
-            showLocalNotif('🎵 Xchord', (n.actor?.display_name||'Someone')+' '+(info[n.type]||'sent you a notification'))
           }
         }
 
@@ -2361,9 +2354,6 @@ function XchordAppInner({ currentUser }) {
             for(const m of newMsgs){
               if(notifiedIds.has(m.id)) continue
               notifiedIds.add(m.id)
-              if(m.sender_id === currentUser.id) continue
-              if(selectedConvRef.current?.id === m.conversation_id) continue
-              showLocalNotif('💬 '+(m.sender?.display_name||'Someone'), m.content?.slice(0,80)||'Sent you a message')
             }
           }
         }
@@ -2596,7 +2586,6 @@ function XchordAppInner({ currentUser }) {
           return exists ? filtered : [...filtered,data]
         })
         if(data.sender_id !== currentUser.id) {
-          showLocalNotif('💬 New Message', (data.sender?.display_name||'Someone')+': '+data.content?.slice(0,60))
           supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',data.id).then(()=>{})
         }
       }
