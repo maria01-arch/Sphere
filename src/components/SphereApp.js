@@ -53,7 +53,7 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
   return (
     <div style={{position:'relative',flexShrink:0,display:'inline-block'}}>
       {url
-        ? <img src={url} alt={name} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',boxShadow:`0 0 0 2px #090B10`}}/>
+        ? <img src={url} alt={name} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',boxShadow:`0 0 0 2px #090B10`}} loading="lazy"/>
         : <div style={{width:size,height:size,borderRadius:'50%',background:`linear-gradient(135deg,${color}88,${color})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.36,fontWeight:800,color:'var(--text-primary)',boxShadow:`0 0 0 2px #090B10`}}>{i}</div>
       }
       {online&&<div style={{position:'absolute',bottom:1,right:1,width:size*0.27,height:size*0.27,borderRadius:'50%',background:'#00C9A7',border:'2px solid #090B10'}}/>}
@@ -77,7 +77,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
     // fetch full fresh profile so badges and counts are always accurate
     supabase.from('profiles').select('*').eq('id',user.id).single()
       .then(({data})=>{ if(data){ setProfile(data); setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0) } })
-    supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',user.id).order('created_at',{ascending:false})
+    supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',user.id).order('created_at',{ascending:false}).limit(50)
       .then(({data}) => { setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,user_liked:p.likes?.some(l=>l.user_id===currentUser.id)}))); setLoading(false) })
     supabase.from('follows').select('id').eq('follower_id',currentUser.id).eq('following_id',user.id).maybeSingle()
       .then(({data}) => setIsFollowing(!!data))
@@ -101,7 +101,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
         <span style={{fontWeight:700,fontSize:17}}>{profile?.display_name}</span>
       </div>
       <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
-      {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt=""/></div>}
+      {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt="" loading="lazy"/></div>}
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
         <div onClick={()=>setShowBigAvatar(true)} style={{cursor:'pointer'}}>
           <Avatar url={profile?.avatar_url} name={profile?.display_name} color={color} size={72}/>
@@ -443,7 +443,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
   const color = currentUser?.avatar_color||'#5B9CF6'
 
   useEffect(() => {
-    supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',currentUser.id).order('created_at',{ascending:false})
+    supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(50)
       .then(({data})=>{
         setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
         setLoading(false)
@@ -546,7 +546,7 @@ function AdCard({ ad }) {
             <span style={{background:'rgba(247,183,49,0.15)',border:'1px solid rgba(247,183,49,0.3)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
           </div>
           {ad.content&&<p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:10}}>{ad.content}</p>}
-          {ad.image_url&&<img src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover'}} alt="ad"/>}
+          {ad.image_url&&<img src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover'}} alt="ad" loading="lazy"/>}
           {ad.link_url&&<div style={{marginTop:10,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 14px',display:'inline-block',color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More →</div>}
         </div>
       </div>
@@ -593,7 +593,7 @@ function CommentThread({ comment, depth, onUserClick, onReply }) {
             <span style={{color:'var(--text-secondary)',fontSize:11}}>{timeAgo(comment.created_at)}</span>
           </div>
           {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}>{comment.content}</p>}
-          {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt=""/>}
+          {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt="" loading="lazy"/>}
           <span onClick={()=>onReply(comment)} style={{display:'inline-block',marginTop:6,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}>↩ Reply</span>
         </div>
       </div>
@@ -767,7 +767,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
             {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:13,padding:'2px 6px'}}>🗑️</button>}
           </div>
           {post.content&&<p onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
-          {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post"/>}
+          {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
           <div style={{display:'flex'}}>
             <button onClick={loadComments} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showComments?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
               <span style={{fontSize:16}}>💬</span><span>{comments}</span>
@@ -805,7 +805,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
               )}
               {replyImagePreview&&(
                 <div style={{position:'relative',display:'inline-block',marginBottom:8}}>
-                  <img src={replyImagePreview} style={{maxHeight:120,borderRadius:10,display:'block'}} alt=""/>
+                  <img src={replyImagePreview} style={{maxHeight:120,borderRadius:10,display:'block'}} alt="" loading="lazy"/>
                   <span onClick={()=>{setReplyImage(null);setReplyImagePreview('')}} style={{position:'absolute',top:-8,right:-8,background:'#FF4757',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:13,cursor:'pointer'}}>✕</span>
                 </div>
               )}
@@ -860,7 +860,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
         const goesToPost = ['mention','like','comment','repost'].includes(n.type) && n.post_id
         return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
           <div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
-            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span>{info.emoji}</span>}
+            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span>{info.emoji}</span>}
           </div>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Xchord'} </span>
@@ -981,14 +981,18 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
 
   const gcInputRef = useRef(null)
+  const gcSendInFlight = useRef(false)
   const sendMsg = async () => {
+    if(gcSendInFlight.current) return
     if(!msgText.trim()) return
+    gcSendInFlight.current = true
     const text=msgText.trim(); const reply=replyTo
     setMsgText(''); setReplyTo(null)
     if(gcInputRef.current) gcInputRef.current.style.height='auto'
     const tempId = 'temp_'+Date.now()
     const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
+    try {
     const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('id,created_at').single()
     if(inserted){
       const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
@@ -1013,6 +1017,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     } else {
       console.error('GC insert error:', error)
     }
+    } finally { gcSendInFlight.current = false }
   }
 
   const sendImage = async (file) => {
@@ -1194,7 +1199,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       <div style={{padding:20}}>
         <div style={{textAlign:'center',marginBottom:24}}>
           <div onClick={()=>isCreator&&avatarRef.current?.click()} style={{width:88,height:88,borderRadius:24,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,fontWeight:800,color:'var(--text-primary)',margin:'0 auto 8px',cursor:isCreator?'pointer':'default',overflow:'hidden',position:'relative'}}>
-            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:editName[0]||'G'}
+            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:editName[0]||'G'}
             {isCreator&&<div style={{position:'absolute',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.5)',padding:'4px',textAlign:'center',fontSize:11,color:'var(--text-primary)'}}>Edit</div>}
           </div>
           {isCreator&&<input ref={avatarRef} type="file" accept="image/*" onChange={e=>uploadGroupAvatar(e.target.files[0])} style={{display:'none'}}/>}
@@ -1232,12 +1237,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
   return (
     <div className="screen-in-safe full-screen-height" style={{background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-      {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
+      {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
       <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
           <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',overflow:'hidden'}}>
-            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:group.name[0]}
+            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:group.name[0]}
           </div>
           <div>
             <div style={{fontWeight:700,fontSize:16}}>{group.name}</div>
@@ -1292,7 +1297,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                   </div>
                 ):(
                   <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                    {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
+                    {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
                     <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
                   </div>
                 )}
@@ -1844,7 +1849,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
             <div key={g.id} onClick={()=>setViewingGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
               <div style={{position:'relative'}}>
                 <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'var(--text-primary)',border:'2px solid #5B9CF6',overflow:'hidden'}}>
-                {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:g.name[0]}
+                {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:g.name[0]}
               </div>
                 {unreadGroups[g.id]&&<span style={{position:'absolute',top:-2,right:-2,width:14,height:14,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
               </div>
@@ -1870,7 +1875,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         {pulses.map(p=>(
           <div key={p.id} onClick={()=>setViewingPulse(p)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
             <div style={{width:64,height:64,borderRadius:'50%',background:p.bg_color||'#5B9CF6',border:'3px solid #845EF7',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-              {p.author?.avatar_url?<img src={p.author.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>:<span style={{color:'var(--text-primary)',fontWeight:800,fontSize:20}}>{p.author?.display_name?.[0]}</span>}
+              {p.author?.avatar_url?<img src={p.author.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span style={{color:'var(--text-primary)',fontWeight:800,fontSize:20}}>{p.author?.display_name?.[0]}</span>}
             </div>
             <span style={{color:'var(--text-subtle)',fontSize:11,maxWidth:64,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.author?.display_name}</span>
           </div>
@@ -1956,7 +1961,7 @@ function XChordAI({ currentUser, onClose }) {
     <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
         <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
-        <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:38,height:38,objectFit:'contain'}}/>
+        <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:38,height:38,objectFit:'contain'}} loading="lazy"/>
         <div onClick={()=>setShowAbout(true)} style={{cursor:'pointer'}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
             <div style={{fontWeight:800,fontSize:16,background:AI_GRADIENT,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>xChord AI</div>
@@ -1973,14 +1978,14 @@ function XChordAI({ currentUser, onClose }) {
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
         {messages.map((msg,i)=>(
           <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
-            {msg.role==='assistant'&&<img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}}/>}
+            {msg.role==='assistant'&&<img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}} loading="lazy"/>}
             <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?AI_GRADIENT:'var(--bg-card-6)',color:'var(--text-primary)',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
               {msg.content}
             </div>
           </div>
         ))}
         {loading&&<div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
-          <img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}}/>
+          <img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}} loading="lazy"/>
           <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'var(--bg-card-6)',color:'var(--text-tertiary)',fontSize:15}}>{deepThink?'Thinking deeply...':'Thinking...'}</div>
         </div>}
         <div ref={bottomRef}/>
@@ -1988,7 +1993,7 @@ function XChordAI({ currentUser, onClose }) {
 
       {showAbout&&<div className="backdrop-in" onClick={()=>setShowAbout(false)} style={{position:'fixed',inset:0,zIndex:20,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
         <div className="sheet-in" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:380,background:'#12141c',borderRadius:20,padding:'28px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-          <img src="/xchord-ai-logo.png" alt="xChord AI" style={{width:160,objectFit:'contain',marginBottom:6}}/>
+          <img src="/xchord-ai-logo.png" alt="xChord AI" style={{width:160,objectFit:'contain',marginBottom:6}} loading="lazy"/>
           <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7,marginTop:8}}>
             xChord AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>XChordLabs Corp</strong>.
           </p>
@@ -2010,7 +2015,7 @@ function XChordAI({ currentUser, onClose }) {
           </div>
           <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
           <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:AI_GRADIENT,border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
-          {genImg&&<img src={genImg} style={{width:'100%',borderRadius:12,marginTop:4}} alt="generated"/>}
+          {genImg&&<img src={genImg} style={{width:'100%',borderRadius:12,marginTop:4}} alt="generated" loading="lazy"/>}
           {genImg&&<button onClick={()=>{
             const a=document.createElement('a')
             a.href=genImg
@@ -2577,7 +2582,10 @@ function XchordAppInner({ currentUser }) {
       if(data) setMessages(data)
     }
     fetchMessages()
-    const pollInterval = setInterval(fetchMessages, 3000)
+    // Realtime subscription below handles live updates — this poll is just a
+    // safety net in case a realtime connection silently drops, not the
+    // primary sync mechanism, so it doesn't need to run every few seconds.
+    const pollInterval = setInterval(fetchMessages, 30000)
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
@@ -2681,18 +2689,23 @@ function XchordAppInner({ currentUser }) {
   }
 
   const dmInputRef = useRef(null)
+  const dmSendInFlight = useRef(false)
   const sendMsg = async() => {
+    if(dmSendInFlight.current) return
     if(!msgText.trim()||!selectedConv?.id) return
+    dmSendInFlight.current = true
     const content=msgText.trim(); const reply=dmReplyTo
     setMsgText(''); setDmReplyTo(null)
     if(dmInputRef.current) dmInputRef.current.style.height='auto'
     const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
-    await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
-    if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
-      sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), content.slice(0,100))
-    }
-    loadConvos()
+    try {
+      await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
+      if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+        sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), content.slice(0,100))
+      }
+      loadConvos()
+    } finally { dmSendInFlight.current = false }
   }
 
   const toggleFollow = async(user) => {
@@ -2809,7 +2822,7 @@ function XchordAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <img src={theme==='light'?'/xchord-logo.svg':'/xchord-logo-white.svg'} alt="Xchord" width="36" height="36" style={{objectFit:'contain'}}/>
+          <img src={theme==='light'?'/xchord-logo.svg':'/xchord-logo-white.svg'} alt="Xchord" width="36" height="36" style={{objectFit:'contain'}} loading="lazy"/>
           <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>XCHORD</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
@@ -2851,7 +2864,7 @@ function XchordAppInner({ currentUser }) {
             {/* xChord AI — always pinned first */}
             <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
               style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',background:'rgba(168,85,247,0.04)'}}>
-              <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}}/>
+              <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}} loading="lazy"/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
                   <span style={{fontWeight:700,fontSize:15}}>xChord AI</span>
@@ -2916,7 +2929,7 @@ function XchordAppInner({ currentUser }) {
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<XChordAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-            {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt=""/></div>}
+            {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
             <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(12px)',flexShrink:0}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
               <div onClick={()=>setViewingUser(selectedConv.other)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
@@ -2969,7 +2982,7 @@ function XchordAppInner({ currentUser }) {
                       </div>
                     ):(
                       <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                        {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
+                        {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
                         <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
                           <span>{timeAgo(msg.created_at)}</span>
                           {own&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
@@ -3078,7 +3091,7 @@ function XchordAppInner({ currentUser }) {
             <div style={{flex:1}}>
               <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'var(--text-primary)',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
               {composeImageUrl&&<div style={{position:'relative',marginBottom:8}}>
-                <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview"/>
+                <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview" loading="lazy"/>
                 <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'var(--text-primary)',cursor:'pointer',fontSize:14}}>✕</button>
               </div>}
               <input ref={composeImgRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){setComposeImage(f);if(typeof window!=='undefined')setComposeImageUrl(URL.createObjectURL(f))}}} style={{display:'none'}}/>
@@ -3101,7 +3114,7 @@ export default function XchordApp({ currentUser }) {
   if (!currentUser || !currentUser.id) {
     return (
       <div style={{ minHeight: '100vh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
-        <img src="/xchord-logo-white.svg" alt="Xchord" width="70" height="70" style={{ objectFit: 'contain' }} />
+        <img src="/xchord-logo-white.svg" alt="Xchord" width="70" height="70" style={{ objectFit: 'contain' }}  loading="lazy"/>
         <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Something went wrong loading your account</p>
         <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Reload</button>
       </div>
