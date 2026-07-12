@@ -2265,14 +2265,7 @@ function XchordAppInner({ currentUser }) {
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const color = currentUser?.avatar_color||'#5B9CF6'
   const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
-  const handleSignOut = async() => {
-    try {
-      window.OneSignalDeferred = window.OneSignalDeferred || []
-      window.OneSignalDeferred.push(async function(OneSignal) { await OneSignal.logout() })
-    } catch(e) {}
-    await supabase.auth.signOut()
-    window.location.href='/auth'
-  }
+  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
 
   useEffect(()=>{
     supabase.from('ads').select('*').eq('active',true).eq('type','post').order('created_at',{ascending:false}).then(({data})=>setAds(data||[]))
@@ -2293,7 +2286,7 @@ function XchordAppInner({ currentUser }) {
   useEffect(()=>{
     const ch = supabase.channel('global_notifs_'+currentUser.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+currentUser.id},async(payload)=>{
-        // Push notifications are now handled server-side via OneSignal (see sendPush).
+        // Push notifications are handled server-side via sendPush (VAPID/web-push).
         // This listener just keeps the in-app unread badge count fresh.
         loadUnreadCounts()
       })
@@ -2306,7 +2299,7 @@ function XchordAppInner({ currentUser }) {
         supabase.channel('dm_notif_'+conversation_id)
           .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conversation_id},async(payload)=>{
             if(payload.new.sender_id === currentUser.id) return
-            // Push notifications now handled server-side via OneSignal (see sendPush).
+            // Push notifications handled server-side via sendPush (VAPID/web-push).
             loadUnreadCounts()
           })
           .subscribe()
@@ -2384,25 +2377,35 @@ function XchordAppInner({ currentUser }) {
   },[])
 
   useEffect(()=>{
-    const setupOneSignal = async() => {
+    const setupPush = async() => {
       try {
-        window.OneSignalDeferred = window.OneSignalDeferred || []
-        window.OneSignalDeferred.push(async function(OneSignal) {
-          // Associate this browser/device with the logged-in Xchord user so
-          // notifications can be targeted by external_id from the backend.
-          await OneSignal.login(currentUser.id)
-          // login() alone does not prompt for permission or create a push
-          // subscription — that has to be requested explicitly.
-          if (Notification.permission === 'default') {
-            await OneSignal.Notifications.requestPermission()
-          }
-          if (Notification.permission === 'granted' && !OneSignal.User.PushSubscription.optedIn) {
-            await OneSignal.User.PushSubscription.optIn()
-          }
-        })
-      } catch(e) { console.log('OneSignal setup error:',e.message) }
+        if(!('Notification' in window)) { console.log('No Notification API'); return }
+        if(Notification.permission === 'default') {
+          await Notification.requestPermission()
+        }
+        if(!('serviceWorker' in navigator)) { console.log('No SW'); return }
+        if(!('PushManager' in window)) { console.log('No PushManager'); return }
+        const reg = await navigator.serviceWorker.register('/sw.js')
+        await navigator.serviceWorker.ready
+        let permission = Notification.permission
+        if(permission === 'default') permission = await Notification.requestPermission()
+        if(permission !== 'granted') { console.log('Permission:',permission); return }
+        let sub = await reg.pushManager.getSubscription()
+        if(!sub) {
+          sub = await reg.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: 'BPiikDJR1kYnVVizNObctiIofznuYwl0P6tGmViKwqy11Lzq5JJmMQ-tAwc12yx6tHWYrRrVOmNCUhguqjyP5Cs'
+          })
+        }
+        const {error} = await supabase.from('push_subscriptions').upsert({
+          user_id:currentUser.id,
+          subscription:JSON.parse(JSON.stringify(sub))
+        },{onConflict:'user_id'})
+        if(error) console.log('Sub save error:',error.message)
+        else console.log('Push ready!')
+      } catch(e) { console.log('Push setup error:',e.message) }
     }
-    setupOneSignal()
+    setupPush()
   },[])
 
   useEffect(()=>{
@@ -2786,10 +2789,13 @@ function XchordAppInner({ currentUser }) {
 
   const sendPush = async(userId, title, body) => {
     try {
-      const res = await fetch('/api/onesignal-push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({userId,title,body})})
-      if(!res.ok) {
-        const err = await res.json().catch(()=>({}))
-        console.error('Push send failed:', res.status, err.error||'unknown error')
+      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
+      if(data?.subscription) {
+        const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+        if(!res.ok) {
+          const err = await res.json().catch(()=>({}))
+          console.error('Push send failed:', res.status, err.error||'unknown error')
+        }
       }
     } catch(e) { console.log('Push send error',e) }
   }
