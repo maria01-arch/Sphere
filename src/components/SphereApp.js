@@ -2391,6 +2391,14 @@ function XchordAppInner({ currentUser }) {
           // Associate this browser/device with the logged-in Xchord user so
           // notifications can be targeted by external_id from the backend.
           await OneSignal.login(currentUser.id)
+          // login() alone does not prompt for permission or create a push
+          // subscription — that has to be requested explicitly.
+          if (Notification.permission === 'default') {
+            await OneSignal.Notifications.requestPermission()
+          }
+          if (Notification.permission === 'granted' && !OneSignal.User.PushSubscription.optedIn) {
+            await OneSignal.User.PushSubscription.optIn()
+          }
         })
       } catch(e) { console.log('OneSignal setup error:',e.message) }
     }
