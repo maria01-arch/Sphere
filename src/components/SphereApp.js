@@ -65,14 +65,16 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
 // Reply text is stored as a flattened "Sender Name: quoted text" string today.
 // We split on the first ": " to render it WhatsApp-style (bold name + dimmed
 // quote) without needing a schema migration. Older messages with no ": " just
-// render as a plain quoted line.
-function ReplyQuoteInline({ text, own }) {
+// render as a plain quoted line. If replyToId is present (new messages only —
+// requires the reply_to_id column) the quote becomes tappable and jumps to
+// the original message.
+function ReplyQuoteInline({ text, own, onJump }) {
   if(!text) return null
   const idx = text.indexOf(': ')
   const name = idx>-1 ? text.slice(0,idx) : null
   const quoted = idx>-1 ? text.slice(idx+2) : text
   return (
-    <div style={{borderLeft:'3px solid '+(own?'rgba(255,255,255,0.6)':'#5B9CF6'),background:own?'rgba(0,0,0,0.16)':'rgba(91,156,246,0.08)',borderRadius:8,padding:'5px 10px',marginBottom:6}}>
+    <div onClick={onJump?(e)=>{e.stopPropagation();onJump()}:undefined} style={{borderLeft:'3px solid '+(own?'rgba(255,255,255,0.6)':'#5B9CF6'),background:own?'rgba(0,0,0,0.16)':'rgba(91,156,246,0.08)',borderRadius:8,padding:'5px 10px',marginBottom:6,cursor:onJump?'pointer':'default'}}>
       {name&&<div style={{fontWeight:700,fontSize:12,color:own?'rgba(255,255,255,0.95)':'#5B9CF6',marginBottom:1}}>{name}</div>}
       <div style={{fontSize:12.5,color:own?'rgba(255,255,255,0.7)':'var(--text-tertiary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quoted}</div>
     </div>
@@ -97,6 +99,16 @@ function ReplyComposerBar({ text, onCancel }) {
   )
 }
 
+// A sticker renders as bare media (no bubble chrome), WhatsApp/Telegram-style.
+// sticker_url ending in a video extension plays as a silent looping clip.
+const VIDEO_EXT = /\.(mp4|webm|mov)$/i
+function StickerMedia({ url, size=132 }) {
+  if(VIDEO_EXT.test(url)) {
+    return <video src={url} autoPlay loop muted playsInline style={{width:size,height:size,objectFit:'contain',display:'block'}}/>
+  }
+  return <img src={url} alt="sticker" loading="lazy" style={{width:size,height:size,objectFit:'contain',display:'block'}}/>
+}
+
 // Single message row: avatar (for others) + bubble + reactions.
 // Bubble corners are uniform/rounded (no tail) — pill-style like Beeper.
 // Reply quotes render *inside* the bubble — WhatsApp-style — via ReplyQuoteInline.
@@ -106,13 +118,15 @@ function MessageBubble({
   onLongPress, onPressEnd,
   reactions, onToggleReaction, currentUserId,
   isEditing, editValue, onEditChange, onSaveEdit, onCancelEdit,
-  showReadTicks=false
+  showReadTicks=false,
+  onJumpToReply, highlighted=false, rowId
 }) {
+  const isSticker = msg.is_sticker && msg.sticker_url
   return (
-    <div
+    <div id={rowId}
       onTouchStart={onLongPress} onTouchEnd={onPressEnd} onTouchMove={onPressEnd}
       onMouseDown={onLongPress} onMouseUp={onPressEnd}
-      style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
+      style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none',transition:'background-color 0.3s ease',backgroundColor:highlighted?'rgba(91,156,246,0.14)':'transparent',borderRadius:14}}>
       {!own&&showSenderInfo&&<div onClick={onAvatarClick} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
       <div style={{maxWidth:'75%'}}>
         {!own&&showSenderInfo&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
@@ -122,9 +136,18 @@ function MessageBubble({
             <button onClick={onSaveEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✓</button>
             <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
           </div>
+        ):isSticker?(
+          <div>
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
+            <StickerMedia url={msg.sticker_url}/>
+            <div style={{fontSize:10,color:'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
+              <span>{timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+            </div>
+          </div>
         ):(
           <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own}/>}
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:msg.content}
             <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
               <span>{timeAgo(msg.created_at)}</span>
@@ -138,6 +161,81 @@ function MessageBubble({
             return <span key={emoji} onClick={()=>onToggleReaction(emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'var(--bg-card-2)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
           })}
         </div>}
+      </div>
+    </div>
+  )
+}
+
+// ── STICKER TRAY (shared by DM + GroupChat) ─────────────────────────────────
+// Sticker packs are shared/public (anyone can browse & send from any pack,
+// like Telegram) but a user can only add stickers to their own pack (created
+// automatically on first open). Media is uploaded to the existing 'avatars'
+// storage bucket under a stickers/ prefix — no new bucket needed.
+function StickerTray({ currentUser, supabase, onSelect, onClose }) {
+  const [packs, setPacks] = useState([])
+  const [activePack, setActivePack] = useState(null)
+  const [stickers, setStickers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+
+  useEffect(()=>{ loadPacks() },[])
+
+  const loadPacks = async () => {
+    setLoading(true)
+    let myPack = (await supabase.from('sticker_packs').select('id,name,owner_id').eq('owner_id',currentUser.id).limit(1).maybeSingle()).data
+    if(!myPack){
+      const {data:created} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:'My Stickers'}).select('id,name,owner_id').single()
+      myPack = created
+    }
+    const {data:allPacks} = await supabase.from('sticker_packs').select('id,name,owner_id').order('created_at',{ascending:true}).limit(50)
+    const list = allPacks?.length ? allPacks : (myPack?[myPack]:[])
+    setPacks(list)
+    setActivePack(prev=>prev||list[0]?.id||null)
+    setLoading(false)
+  }
+
+  useEffect(()=>{ if(activePack) loadStickers(activePack) },[activePack])
+  const loadStickers = async (packId) => {
+    const {data} = await supabase.from('stickers').select('id,media_url').eq('pack_id',packId).order('created_at',{ascending:true})
+    setStickers(data||[])
+  }
+
+  const handleUpload = async (file) => {
+    if(!file) return
+    const myPack = packs.find(p=>p.owner_id===currentUser.id)
+    if(!myPack) return
+    setUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = 'stickers/'+currentUser.id+'_'+Date.now()+'.'+ext
+    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
+    if(error){ alert('Sticker upload failed: '+error.message); setUploading(false); return }
+    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    const {data:inserted} = await supabase.from('stickers').insert({pack_id:myPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
+    if(inserted){
+      setActivePack(myPack.id)
+      setStickers(prev=>[...prev,inserted])
+    }
+    setUploading(false)
+  }
+
+  return (
+    <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:160,height:280,display:'flex',flexDirection:'column',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
+        {packs.map(p=>(
+          <button key={p.id} onClick={()=>setActivePack(p.id)} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:activePack===p.id?'rgba(91,156,246,0.2)':'var(--bg-card)',color:activePack===p.id?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{p.name}</button>
+        ))}
+        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',fontSize:18,cursor:'pointer',flexShrink:0}}>✕</button>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,alignContent:'start'}}>
+        <input ref={fileRef} type="file" accept="image/*,video/webm,video/mp4" onChange={e=>handleUpload(e.target.files[0])} style={{display:'none'}}/>
+        <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{aspectRatio:'1',borderRadius:12,border:'2px dashed var(--border-color-2)',background:'none',color:'var(--text-tertiary)',fontSize:26,cursor:'pointer'}}>{uploading?'⏳':'+'}</button>
+        {stickers.map(s=>(
+          <button key={s.id} onClick={()=>onSelect(s.media_url)} style={{aspectRatio:'1',borderRadius:12,border:'none',background:'var(--bg-card)',padding:4,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+            <StickerMedia url={s.media_url} size={'100%'}/>
+          </button>
+        ))}
+        {!loading&&stickers.length===0&&<p style={{gridColumn:'span 3',color:'var(--text-quaternary)',fontSize:12,alignSelf:'center'}}>No stickers here yet — tap + to add your own image or short video clip.</p>}
       </div>
     </div>
   )
@@ -969,6 +1067,16 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [editingMsg, setEditingMsg] = useState(null)
   const [editText, setEditText] = useState('')
   const [replyTo, setReplyTo] = useState(null)
+  const [replyToId, setReplyToId] = useState(null)
+  const [highlightMsgId, setHighlightMsgId] = useState(null)
+  const highlightTimer = useRef(null)
+  const scrollToMessage = (id) => {
+    if(!id) return
+    document.getElementById('gcmsg-'+id)?.scrollIntoView({behavior:'smooth',block:'center'})
+    setHighlightMsgId(id)
+    clearTimeout(highlightTimer.current)
+    highlightTimer.current = setTimeout(()=>setHighlightMsgId(null),1200)
+  }
   const longPressTimer = useRef(null)
   const [fullscreenImg, setFullscreenImg] = useState(null)
   const gcChannelRef = useRef(null)
@@ -983,6 +1091,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
   const [editName, setEditName] = useState(group.name)
   const [sendingImg, setSendingImg] = useState(false)
+  const [showStickerTray, setShowStickerTray] = useState(false)
   const imgRef = useRef(null)
   const [editDesc, setEditDesc] = useState(group.description||'')
   const [editJoinMode, setEditJoinMode] = useState(group.join_mode||'open')
@@ -1009,6 +1118,9 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   useEffect(()=>{
     const ch = supabase.channel('gc:'+group.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
+        let alreadyHave = false
+        setMessages(prev=>{ alreadyHave = prev.some(m=>m.id===payload.new.id); return prev })
+        if(alreadyHave) return // broadcast already delivered this one — skip the extra round trip
         const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>{
           const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
@@ -1068,21 +1180,21 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     if(gcSendInFlight.current) return
     if(!msgText.trim()) return
     gcSendInFlight.current = true
-    const text=msgText.trim(); const reply=replyTo
-    setMsgText(''); setReplyTo(null)
+    const text=msgText.trim(); const reply=replyTo; const replyId=replyToId
+    setMsgText(''); setReplyTo(null); setReplyToId(null)
     if(gcInputRef.current) gcInputRef.current.style.height='auto'
     const tempId = 'temp_'+Date.now()
-    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
     try {
-    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('id,created_at').single()
+    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
     if(inserted){
       const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
       setMessages(prev=>prev.map(m=>m.id===tempId?confirmed:m))
       // broadcast full message to other members
       gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
         id:inserted.id, group_id:group.id, sender_id:currentUser.id,
-        content:text, reply_to:reply, created_at:inserted.created_at,
+        content:text, reply_to:reply, reply_to_id:replyId, created_at:inserted.created_at,
         sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
         group_message_reactions:[]
       }})
@@ -1113,8 +1225,29 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     const url = urlData.publicUrl
     const tempMsg = {id:'temp_img_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'📷 [image]',image_url:url,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
     setMessages(prev=>[...prev,tempMsg])
-    await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'📷',image_url:url})
+    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'📷',image_url:url}).select('id,created_at').single()
+    if(inserted){
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'📷', image_url:url, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+    }
     setSendingImg(false)
+  }
+
+  const sendSticker = async (stickerUrl) => {
+    setShowStickerTray(false)
+    const tempMsg = {id:'temp_stk_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    setMessages(prev=>[...prev,tempMsg])
+    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
+    if(inserted){
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', is_sticker:true, sticker_url:stickerUrl, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+    }
   }
 
   const promoteToAdmin = async (member) => {
@@ -1352,7 +1485,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                 )
               })}
             </div>
-            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setReplyToId(selectedMsg.id);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
             {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
             {selectedMsg.sender_id===currentUser.id&&<>
               <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
@@ -1364,6 +1497,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           const own = msg.sender_id===currentUser.id
           return(
             <MessageBubble key={msg.id}
+              rowId={'gcmsg-'+msg.id}
               msg={msg} own={own} showSenderInfo currentUserId={currentUser.id}
               onAvatarClick={()=>onUserClick(msg.sender)}
               onImageClick={setFullscreenImg}
@@ -1373,6 +1507,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
               isEditing={editingMsg===msg.id}
               editValue={editText} onEditChange={e=>setEditText(e.target.value)}
               onSaveEdit={saveEditGCMsg} onCancelEdit={()=>setEditingMsg(null)}
+              onJumpToReply={scrollToMessage} highlighted={highlightMsgId===msg.id}
             />
           )
         })}
@@ -1381,10 +1516,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
-        <ReplyComposerBar text={replyTo} onCancel={()=>setReplyTo(null)}/>
+        <ReplyComposerBar text={replyTo} onCancel={()=>{setReplyTo(null);setReplyToId(null)}}/>
+        {showStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendSticker} onClose={()=>setShowStickerTray(false)}/>}
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
+          <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',fontSize:18,flexShrink:0}}>😊</button>
         <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
         </div>
@@ -2249,6 +2386,16 @@ function XchordAppInner({ currentUser }) {
   const [editingDMMsg, setEditingDMMsg] = useState(null)
   const [editDMText, setEditDMText] = useState('')
   const [dmReplyTo, setDmReplyTo] = useState(null)
+  const [dmReplyToId, setDmReplyToId] = useState(null)
+  const [dmHighlightMsgId, setDmHighlightMsgId] = useState(null)
+  const dmHighlightTimer = useRef(null)
+  const scrollToDMMessage = (id) => {
+    if(!id) return
+    document.getElementById('dmmsg-'+id)?.scrollIntoView({behavior:'smooth',block:'center'})
+    setDmHighlightMsgId(id)
+    clearTimeout(dmHighlightTimer.current)
+    dmHighlightTimer.current = setTimeout(()=>setDmHighlightMsgId(null),1200)
+  }
   const dmLongPressTimer = useRef(null)
   const selectedConvRef = useRef(null)
   useEffect(()=>{ selectedConvRef.current = selectedConv },[selectedConv])
@@ -2264,6 +2411,7 @@ function XchordAppInner({ currentUser }) {
     dmChannelRef.current?.send({type:'broadcast',event:'typing',payload:{user_id:currentUser.id}})
   }
   const [sendingDMImg, setSendingDMImg] = useState(false)
+  const [showDMStickerTray, setShowDMStickerTray] = useState(false)
   const [fullscreenImg, setFullscreenImg] = useState(null)
   const [unreadDM, setUnreadDM] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
@@ -2650,6 +2798,12 @@ function XchordAppInner({ currentUser }) {
     // primary sync mechanism, so it doesn't need to run every few seconds.
     const pollInterval = setInterval(fetchMessages, 30000)
     const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
+      let alreadyHave = false
+      setMessages(prev=>{ alreadyHave = prev.some(m=>m.id===payload.new.id); return prev })
+      if(alreadyHave) { // broadcast already delivered this one — just mark it read, skip the extra round trip
+        if(payload.new.sender_id !== currentUser.id) supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',payload.new.id).then(()=>{})
+        return
+      }
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
         setMessages(prev=>{
@@ -2667,6 +2821,17 @@ function XchordAppInner({ currentUser }) {
     }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
       if(data) setMessages(data)
+    }).on('broadcast',{event:'new_message'},async(payload)=>{
+      // Delivered instantly by the sender — no DB round trip needed on this end.
+      const msg = payload.payload
+      if(!msg?.id) return
+      setMessages(prev=>{
+        const filtered = prev.filter(m=>!(m.id.toString().startsWith('tmp')&&m.content===msg.content&&m.sender_id===msg.sender_id))
+        return filtered.some(m=>m.id===msg.id) ? filtered : [...filtered,{...msg,message_reactions:msg.message_reactions||[]}]
+      })
+      if(msg.sender_id !== currentUser.id) {
+        supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',msg.id).then(()=>{})
+      }
     }).on('broadcast',{event:'typing'},(payload)=>{
       if(payload.payload?.user_id===currentUser.id) return
       setOtherTyping(true)
@@ -2756,13 +2921,24 @@ function XchordAppInner({ currentUser }) {
     if(dmSendInFlight.current) return
     if(!msgText.trim()||!selectedConv?.id) return
     dmSendInFlight.current = true
-    const content=msgText.trim(); const reply=dmReplyTo
-    setMsgText(''); setDmReplyTo(null)
+    const content=msgText.trim(); const reply=dmReplyTo; const replyId=dmReplyToId
+    setMsgText(''); setDmReplyTo(null); setDmReplyToId(null)
     if(dmInputRef.current) dmInputRef.current.style.height='auto'
-    const tmp={id:'tmp'+Date.now(),sender_id:currentUser.id,content,reply_to:reply,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    const tempId = 'tmp'+Date.now()
+    const tmp={id:tempId,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     try {
-      await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply})
+      const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+      if(inserted){
+        setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+        // broadcast the full message straight to the other side — no waiting
+        // on postgres replication lag for it to feel instant on their end.
+        dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+          id:inserted.id, sender_id:currentUser.id, content, reply_to:reply, reply_to_id:replyId, created_at:inserted.created_at,
+          sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+          message_reactions:[]
+        }})
+      }
       if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
         sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), content.slice(0,100))
       }
@@ -2825,10 +3001,36 @@ function XchordAppInner({ currentUser }) {
     if(error){alert('Upload failed: '+error.message);setSendingDMImg(false);return}
     const {data:urlData}=supabase.storage.from('avatars').getPublicUrl(path)
     const url=urlData.publicUrl
-    const tmp={id:'tmp_img'+Date.now(),sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    const tempId = 'tmp_img'+Date.now()
+    const tmp={id:tempId,sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
-    await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url})
+    const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+      dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, sender_id:currentUser.id, content:'📷', image_url:url, created_at:inserted.created_at,
+        sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+        message_reactions:[]
+      }})
+    }
     setSendingDMImg(false)
+  }
+
+  const sendDMSticker = async(stickerUrl)=>{
+    if(!selectedConv?.id) return
+    setShowDMStickerTray(false)
+    const tempId = 'tmp_stk'+Date.now()
+    const tmp={id:tempId,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+      dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, sender_id:currentUser.id, content:'', is_sticker:true, sticker_url:stickerUrl, created_at:inserted.created_at,
+        sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+        message_reactions:[]
+      }})
+    }
   }
 
   const showLocalNotif = (title, body) => {
@@ -2950,9 +3152,9 @@ function XchordAppInner({ currentUser }) {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
                     <span style={{fontWeight:conv.unread?800:700,fontSize:15}}>{conv.other?.display_name}</span>
-                    {conv.last&&<span style={{color:conv.unread?'#5B9CF6':'#444',fontSize:12,fontWeight:conv.unread?700:400}}>{timeAgo(conv.last.created_at)}</span>}
+                    {conv.last&&<span style={{color:conv.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:conv.unread?700:400}}>{timeAgo(conv.last.created_at)}</span>}
                   </div>
-                  <p style={{color:conv.unread?'#ddd':'#555',fontWeight:conv.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
+                  <p style={{color:conv.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:conv.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
                     {conv.last ? (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content : 'Tap to chat'}
                   </p>
                 </div>
@@ -3022,7 +3224,7 @@ function XchordAppInner({ currentUser }) {
                       )
                     })}
                   </div>
-                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setDmReplyToId(selectedDMMsg.id);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
                   {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
                   {selectedDMMsg.sender_id===currentUser.id&&<>
                     <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
@@ -3034,6 +3236,7 @@ function XchordAppInner({ currentUser }) {
                 const own = msg.sender_id===currentUser.id
                 return(
                   <MessageBubble key={msg.id}
+                    rowId={'dmmsg-'+msg.id}
                     msg={msg} own={own} currentUserId={currentUser.id}
                     onAvatarClick={()=>setViewingUser(msg.sender)}
                     onImageClick={setFullscreenImg}
@@ -3044,16 +3247,19 @@ function XchordAppInner({ currentUser }) {
                     editValue={editDMText} onEditChange={e=>setEditDMText(e.target.value)}
                     onSaveEdit={saveDMEdit} onCancelEdit={()=>setEditingDMMsg(null)}
                     showReadTicks
+                    onJumpToReply={scrollToDMMessage} highlighted={dmHighlightMsgId===msg.id}
                   />
                 )
               })}
               <div ref={bottomRef}/>
             </div>
             <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
-              <ReplyComposerBar text={dmReplyTo} onCancel={()=>setDmReplyTo(null)}/>
+              <ReplyComposerBar text={dmReplyTo} onCancel={()=>{setDmReplyTo(null);setDmReplyToId(null)}}/>
+              {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onClose={()=>setShowDMStickerTray(false)}/>}
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
+              <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',fontSize:18,flexShrink:0}}>😊</button>
               <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
               </div>
