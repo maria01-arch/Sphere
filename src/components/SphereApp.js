@@ -32,6 +32,20 @@ function timeAgo(ts) {
   return `${Math.floor(d/86400)}d`
 }
 
+// True when a Supabase/Postgrest error means a column or table referenced in
+// the query doesn't exist yet — i.e. supabase_migration_reply_and_stickers.sql
+// hasn't been run on this project. Used to fall back gracefully instead of
+// failing sends silently.
+function isMissingColumnError(error) {
+  if(!error) return false
+  const code = error.code||''
+  const msg = (error.message||'').toLowerCase()
+  return code==='42703' || code==='PGRST204' || code==='42P01' ||
+    (msg.includes('column') && msg.includes('does not exist')) ||
+    (msg.includes('could not find') && msg.includes('column')) ||
+    msg.includes('relation') && msg.includes('does not exist')
+}
+
 function TextWithMentions({ text, supabase, onUserClick }) {
   if(!text) return null
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
@@ -140,18 +154,18 @@ function MessageBubble({
           <div>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             <StickerMedia url={msg.sticker_url}/>
-            <div style={{fontSize:10,color:'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
-              <span>{timeAgo(msg.created_at)}</span>
-              {showReadTicks&&own&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+            <div style={{fontSize:10,color:msg._failed?'#F87171':'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
+              <span>{msg._failed?'⚠ Failed to send':timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
             </div>
           </div>
         ):(
-          <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
+          <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:msg.content}
-            <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
-              <span>{timeAgo(msg.created_at)}</span>
-              {showReadTicks&&own&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.45)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+              <span>{msg._failed?'⚠ Failed to send':timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
             </div>
           </div>
         )}
@@ -177,15 +191,23 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   const [stickers, setStickers] = useState([])
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
+  const [setupError, setSetupError] = useState(null)
   const fileRef = useRef(null)
 
   useEffect(()=>{ loadPacks() },[])
 
   const loadPacks = async () => {
     setLoading(true)
-    let myPack = (await supabase.from('sticker_packs').select('id,name,owner_id').eq('owner_id',currentUser.id).limit(1).maybeSingle()).data
+    setSetupError(null)
+    let {data:myPack, error:myPackErr} = await supabase.from('sticker_packs').select('id,name,owner_id').eq('owner_id',currentUser.id).limit(1).maybeSingle()
+    if(myPackErr && isMissingColumnError(myPackErr)) {
+      setSetupError("Stickers aren't set up yet — ask your dev to run supabase_migration_reply_and_stickers.sql in Supabase.")
+      setLoading(false)
+      return
+    }
     if(!myPack){
-      const {data:created} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:'My Stickers'}).select('id,name,owner_id').single()
+      const {data:created, error:createErr} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:'My Stickers'}).select('id,name,owner_id').single()
+      if(createErr) { console.error('Failed to create sticker pack:', createErr); setSetupError('Could not set up your sticker pack: '+createErr.message); setLoading(false); return }
       myPack = created
     }
     const {data:allPacks} = await supabase.from('sticker_packs').select('id,name,owner_id').order('created_at',{ascending:true}).limit(50)
@@ -204,17 +226,19 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   const handleUpload = async (file) => {
     if(!file) return
     const myPack = packs.find(p=>p.owner_id===currentUser.id)
-    if(!myPack) return
+    if(!myPack) { alert("Couldn't find your sticker pack — try reopening the sticker tray."); return }
     setUploading(true)
     const ext = file.name.split('.').pop()
     const path = 'stickers/'+currentUser.id+'_'+Date.now()+'.'+ext
     const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
     if(error){ alert('Sticker upload failed: '+error.message); setUploading(false); return }
     const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
-    const {data:inserted} = await supabase.from('stickers').insert({pack_id:myPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
+    const {data:inserted, error:insertErr} = await supabase.from('stickers').insert({pack_id:myPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
     if(inserted){
       setActivePack(myPack.id)
       setStickers(prev=>[...prev,inserted])
+    } else {
+      alert('Could not save sticker: '+(insertErr?.message||'unknown error'))
     }
     setUploading(false)
   }
@@ -228,7 +252,10 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
         <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',fontSize:18,cursor:'pointer',flexShrink:0}}>✕</button>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,alignContent:'start'}}>
-        <input ref={fileRef} type="file" accept="image/*,video/webm,video/mp4" onChange={e=>handleUpload(e.target.files[0])} style={{display:'none'}}/>
+        {setupError?(
+          <p style={{gridColumn:'span 4',color:'#F87171',fontSize:13,lineHeight:1.5}}>{setupError}</p>
+        ):(<>
+        <input ref={fileRef} type="file" accept="image/*,video/webm,video/mp4" onChange={e=>{handleUpload(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
         <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{aspectRatio:'1',borderRadius:12,border:'2px dashed var(--border-color-2)',background:'none',color:'var(--text-tertiary)',fontSize:26,cursor:'pointer'}}>{uploading?'⏳':'+'}</button>
         {stickers.map(s=>(
           <button key={s.id} onClick={()=>onSelect(s.media_url)} style={{aspectRatio:'1',borderRadius:12,border:'none',background:'var(--bg-card)',padding:4,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
@@ -236,6 +263,7 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
           </button>
         ))}
         {!loading&&stickers.length===0&&<p style={{gridColumn:'span 3',color:'var(--text-quaternary)',fontSize:12,alignSelf:'center'}}>No stickers here yet — tap + to add your own image or short video clip.</p>}
+        </>)}
       </div>
     </div>
   )
@@ -1187,7 +1215,11 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
     try {
-    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+    let {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+    if(error && isMissingColumnError(error)) {
+      console.warn('reply_to_id column missing, retrying without it — run supabase_migration_reply_and_stickers.sql', error)
+      ;({data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('id,created_at').single())
+    }
     if(inserted){
       const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
       setMessages(prev=>prev.map(m=>m.id===tempId?confirmed:m))
@@ -1210,6 +1242,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       }, 1500)
     } else {
       console.error('GC insert error:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
     }
     } finally { gcSendInFlight.current = false }
   }
@@ -1238,15 +1271,22 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
   const sendSticker = async (stickerUrl) => {
     setShowStickerTray(false)
-    const tempMsg = {id:'temp_stk_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    const tempId = 'temp_stk_'+Date.now()
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
     setMessages(prev=>[...prev,tempMsg])
-    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
+    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
     if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,id:inserted.id,created_at:inserted.created_at}:m))
       gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
         id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', is_sticker:true, sticker_url:stickerUrl, created_at:inserted.created_at,
         sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
         group_message_reactions:[]
       }})
+    } else {
+      console.error('Sticker send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Stickers need one-time setup — run supabase_migration_reply_and_stickers.sql in Supabase first.')
+      else alert('Sticker failed to send: '+(error?.message||'unknown error'))
     }
   }
 
@@ -2790,7 +2830,13 @@ function XchordAppInner({ currentUser }) {
     }
     const fetchMessages = async() => {
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
-      if(data) setMessages(data)
+      // Preserve any not-yet-confirmed optimistic bubble for *this* conversation
+      // instead of wiping it — a slow insert shouldn't make a just-sent message
+      // vanish before its confirmation (or failure) comes back.
+      if(data) setMessages(prev=>{
+        const pending = prev.filter(m=>m.id.toString().startsWith('tmp')&&m.conversation_id===selectedConv.id)
+        return [...data,...pending]
+      })
     }
     fetchMessages()
     // Realtime subscription below handles live updates — this poll is just a
@@ -2820,7 +2866,10 @@ function XchordAppInner({ currentUser }) {
       setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,read_at:payload.new.read_at}:m))
     }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
       const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
-      if(data) setMessages(data)
+      if(data) setMessages(prev=>{
+        const pending = prev.filter(m=>m.id.toString().startsWith('tmp')&&m.conversation_id===selectedConv.id)
+        return [...data,...pending]
+      })
     }).on('broadcast',{event:'new_message'},async(payload)=>{
       // Delivered instantly by the sender — no DB round trip needed on this end.
       const msg = payload.payload
@@ -2925,10 +2974,16 @@ function XchordAppInner({ currentUser }) {
     setMsgText(''); setDmReplyTo(null); setDmReplyToId(null)
     if(dmInputRef.current) dmInputRef.current.style.height='auto'
     const tempId = 'tmp'+Date.now()
-    const tmp={id:tempId,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     try {
-      const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+      let {data:inserted, error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+      if(error && isMissingColumnError(error)) {
+        // reply_to_id column doesn't exist yet (migration not run) — fall back
+        // so the core chat still works instead of failing every send.
+        console.warn('reply_to_id column missing, retrying without it — run supabase_migration_reply_and_stickers.sql', error)
+        ;({data:inserted, error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply}).select('id,created_at').single())
+      }
       if(inserted){
         setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
         // broadcast the full message straight to the other side — no waiting
@@ -2938,6 +2993,9 @@ function XchordAppInner({ currentUser }) {
           sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
           message_reactions:[]
         }})
+      } else {
+        console.error('Message send failed:', error)
+        setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
       }
       if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
         sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), content.slice(0,100))
@@ -2945,6 +3003,7 @@ function XchordAppInner({ currentUser }) {
       loadConvos()
     } finally { dmSendInFlight.current = false }
   }
+
 
   const toggleFollow = async(user) => {
     const isF = !!followed[user.id]
@@ -3002,7 +3061,7 @@ function XchordAppInner({ currentUser }) {
     const {data:urlData}=supabase.storage.from('avatars').getPublicUrl(path)
     const url=urlData.publicUrl
     const tempId = 'tmp_img'+Date.now()
-    const tmp={id:tempId,sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
     const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url}).select('id,created_at').single()
     if(inserted){
@@ -3020,9 +3079,9 @@ function XchordAppInner({ currentUser }) {
     if(!selectedConv?.id) return
     setShowDMStickerTray(false)
     const tempId = 'tmp_stk'+Date.now()
-    const tmp={id:tempId,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
-    const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
+    const {data:inserted,error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
     if(inserted){
       setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
       dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
@@ -3030,6 +3089,11 @@ function XchordAppInner({ currentUser }) {
         sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
         message_reactions:[]
       }})
+    } else {
+      console.error('Sticker send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Stickers need one-time setup — run supabase_migration_reply_and_stickers.sql in Supabase first.')
+      else alert('Sticker failed to send: '+(error?.message||'unknown error'))
     }
   }
 
