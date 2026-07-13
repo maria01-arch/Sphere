@@ -61,6 +61,88 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
   )
 }
 
+// ── CHAT BUBBLE (shared by DM + GroupChat) ──────────────────────────────────
+// Reply text is stored as a flattened "Sender Name: quoted text" string today.
+// We split on the first ": " to render it WhatsApp-style (bold name + dimmed
+// quote) without needing a schema migration. Older messages with no ": " just
+// render as a plain quoted line.
+function ReplyQuoteInline({ text, own }) {
+  if(!text) return null
+  const idx = text.indexOf(': ')
+  const name = idx>-1 ? text.slice(0,idx) : null
+  const quoted = idx>-1 ? text.slice(idx+2) : text
+  return (
+    <div style={{borderLeft:'3px solid '+(own?'rgba(255,255,255,0.6)':'#5B9CF6'),background:own?'rgba(0,0,0,0.16)':'rgba(91,156,246,0.08)',borderRadius:8,padding:'5px 10px',marginBottom:6}}>
+      {name&&<div style={{fontWeight:700,fontSize:12,color:own?'rgba(255,255,255,0.95)':'#5B9CF6',marginBottom:1}}>{name}</div>}
+      <div style={{fontSize:12.5,color:own?'rgba(255,255,255,0.7)':'var(--text-tertiary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quoted}</div>
+    </div>
+  )
+}
+
+// The quote-reply preview shown above the composer while replying.
+function ReplyComposerBar({ text, onCancel }) {
+  if(!text) return null
+  const idx = text.indexOf(': ')
+  const name = idx>-1 ? text.slice(0,idx) : null
+  const quoted = idx>-1 ? text.slice(idx+2) : text
+  return (
+    <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:8,borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+      <div style={{width:3,alignSelf:'stretch',background:'#5B9CF6',borderRadius:2,minHeight:28}}/>
+      <div style={{flex:1,minWidth:0}}>
+        {name&&<div style={{color:'#5B9CF6',fontSize:12,fontWeight:700}}>{name}</div>}
+        <div style={{color:'var(--text-tertiary)',fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quoted}</div>
+      </div>
+      <button onClick={onCancel} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:18,flexShrink:0}}>✕</button>
+    </div>
+  )
+}
+
+// Single message row: avatar (for others) + bubble + reactions.
+// Bubble corners are uniform/rounded (no tail) — pill-style like Beeper.
+// Reply quotes render *inside* the bubble — WhatsApp-style — via ReplyQuoteInline.
+function MessageBubble({
+  msg, own, showSenderInfo=false,
+  onAvatarClick, onImageClick,
+  onLongPress, onPressEnd,
+  reactions, onToggleReaction, currentUserId,
+  isEditing, editValue, onEditChange, onSaveEdit, onCancelEdit,
+  showReadTicks=false
+}) {
+  return (
+    <div
+      onTouchStart={onLongPress} onTouchEnd={onPressEnd} onTouchMove={onPressEnd}
+      onMouseDown={onLongPress} onMouseUp={onPressEnd}
+      style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
+      {!own&&showSenderInfo&&<div onClick={onAvatarClick} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
+      <div style={{maxWidth:'75%'}}>
+        {!own&&showSenderInfo&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
+        {isEditing?(
+          <div style={{display:'flex',gap:6}}>
+            <input value={editValue} onChange={onEditChange} onKeyDown={e=>e.key==='Enter'&&onSaveEdit()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+            <button onClick={onSaveEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✓</button>
+            <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
+          </div>
+        ):(
+          <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own}/>}
+            {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:msg.content}
+            <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+              <span>{timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+            </div>
+          </div>
+        )}
+        {reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
+          {Object.entries(reactions.reduce((acc,r)=>{acc[r.emoji]=(acc[r.emoji]||0)+1;return acc},{})).map(([emoji,count])=>{
+            const mine = reactions.some(r=>r.emoji===emoji&&r.user_id===currentUserId)
+            return <span key={emoji} onClick={()=>onToggleReaction(emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'var(--bg-card-2)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
+          })}
+        </div>}
+      </div>
+    </div>
+  )
+}
+
 // ── USER PROFILE ───────────────────────────────────────────────────────────
 function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpenPost, sendPush }) {
   const [posts, setPosts] = useState([])
@@ -1281,34 +1363,17 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         {messages.map(msg=>{
           const own = msg.sender_id===currentUser.id
           return(
-            <div key={msg.id}
-              onTouchStart={()=>handleLongPress(msg)} onTouchEnd={handlePressEnd} onTouchMove={handlePressEnd}
-              onMouseDown={()=>handleLongPress(msg)} onMouseUp={handlePressEnd}
-              style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
-              {!own&&<div onClick={()=>onUserClick(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
-              <div style={{maxWidth:'75%'}}>
-                {!own&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
-                {msg.reply_to&&<div style={{background:'var(--bg-card-4)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'var(--text-tertiary)'}}>↩ {msg.reply_to}</div>}
-                {editingMsg===msg.id?(
-                  <div style={{display:'flex',gap:6}}>
-                    <input value={editText} onChange={e=>setEditText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveEditGCMsg()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
-                    <button onClick={saveEditGCMsg} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✓</button>
-                    <button onClick={()=>setEditingMsg(null)} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
-                  </div>
-                ):(
-                  <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                    {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
-                    <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0'}}>{timeAgo(msg.created_at)}</div>
-                  </div>
-                )}
-                {msg.group_message_reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
-                  {Object.entries(msg.group_message_reactions.reduce((acc,r)=>{acc[r.emoji]=(acc[r.emoji]||0)+1;return acc},{})).map(([emoji,count])=>{
-                    const mine = msg.group_message_reactions.some(r=>r.emoji===emoji&&r.user_id===currentUser.id)
-                    return <span key={emoji} onClick={()=>toggleGroupReaction(msg,emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'var(--bg-card-2)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
-                  })}
-                </div>}
-              </div>
-            </div>
+            <MessageBubble key={msg.id}
+              msg={msg} own={own} showSenderInfo currentUserId={currentUser.id}
+              onAvatarClick={()=>onUserClick(msg.sender)}
+              onImageClick={setFullscreenImg}
+              onLongPress={()=>handleLongPress(msg)} onPressEnd={handlePressEnd}
+              reactions={msg.group_message_reactions}
+              onToggleReaction={(emoji)=>toggleGroupReaction(msg,emoji)}
+              isEditing={editingMsg===msg.id}
+              editValue={editText} onEditChange={e=>setEditText(e.target.value)}
+              onSaveEdit={saveEditGCMsg} onCancelEdit={()=>setEditingMsg(null)}
+            />
           )
         })}
         <div ref={bottomRef}/>
@@ -1316,10 +1381,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
-        {replyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-          <span style={{color:'var(--text-tertiary)',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{replyTo}</span></span>
-          <button onClick={()=>setReplyTo(null)} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:18}}>✕</button>
-        </div>}
+        <ReplyComposerBar text={replyTo} onCancel={()=>setReplyTo(null)}/>
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
@@ -2970,44 +3032,25 @@ function XchordAppInner({ currentUser }) {
               </div>}
               {messages.map(msg=>{
                 const own = msg.sender_id===currentUser.id
-                return(<div key={msg.id}
-                  onTouchStart={()=>handleDMLongPress(msg)} onTouchEnd={handleDMPressEnd} onTouchMove={handleDMPressEnd}
-                  onMouseDown={()=>handleDMLongPress(msg)} onMouseUp={handleDMPressEnd}
-                  style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none'}}>
-                  {!own&&<div onClick={()=>setViewingUser(msg.sender)} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
-                  <div style={{maxWidth:'75%'}}>
-                    {msg.reply_to&&<div style={{background:'var(--bg-card-4)',borderLeft:'3px solid #5B9CF6',borderRadius:8,padding:'6px 10px',marginBottom:4,fontSize:12,color:'var(--text-tertiary)'}}>↩ {msg.reply_to}</div>}
-                    {editingDMMsg===msg.id?(
-                      <div style={{display:'flex',gap:6}}>
-                        <input value={editDMText} onChange={e=>setEditDMText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&saveDMEdit()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
-                        <button onClick={saveDMEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✓</button>
-                        <button onClick={()=>setEditingDMMsg(null)} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
-                      </div>
-                    ):(
-                      <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:own?'20px 20px 5px 20px':'20px 20px 20px 5px',background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden'}}>
-                        {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:4,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>setFullscreenImg(msg.image_url)}/>:msg.content}
-                        <div style={{fontSize:10,color:own?'rgba(255,255,255,0.45)':'var(--text-quaternary)',marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
-                          <span>{timeAgo(msg.created_at)}</span>
-                          {own&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
-                        </div>
-                      </div>
-                    )}
-                    {msg.message_reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
-                      {Object.entries(msg.message_reactions.reduce((acc,r)=>{acc[r.emoji]=(acc[r.emoji]||0)+1;return acc},{})).map(([emoji,count])=>{
-                        const mine = msg.message_reactions.some(r=>r.emoji===emoji&&r.user_id===currentUser.id)
-                        return <span key={emoji} onClick={()=>toggleDMReaction(msg,emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'var(--bg-card-2)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
-                      })}
-                    </div>}
-                  </div>
-                </div>)
+                return(
+                  <MessageBubble key={msg.id}
+                    msg={msg} own={own} currentUserId={currentUser.id}
+                    onAvatarClick={()=>setViewingUser(msg.sender)}
+                    onImageClick={setFullscreenImg}
+                    onLongPress={()=>handleDMLongPress(msg)} onPressEnd={handleDMPressEnd}
+                    reactions={msg.message_reactions}
+                    onToggleReaction={(emoji)=>toggleDMReaction(msg,emoji)}
+                    isEditing={editingDMMsg===msg.id}
+                    editValue={editDMText} onEditChange={e=>setEditDMText(e.target.value)}
+                    onSaveEdit={saveDMEdit} onCancelEdit={()=>setEditingDMMsg(null)}
+                    showReadTicks
+                  />
+                )
               })}
               <div ref={bottomRef}/>
             </div>
             <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
-              {dmReplyTo&&<div style={{padding:'8px 14px',display:'flex',justifyContent:'space-between',alignItems:'center',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
-                <span style={{color:'var(--text-tertiary)',fontSize:12}}>↩ <span style={{color:'#5B9CF6'}}>{dmReplyTo}</span></span>
-                <button onClick={()=>setDmReplyTo(null)} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:18}}>✕</button>
-              </div>}
+              <ReplyComposerBar text={dmReplyTo} onCancel={()=>setDmReplyTo(null)}/>
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
