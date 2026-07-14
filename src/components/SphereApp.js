@@ -46,6 +46,17 @@ function isMissingColumnError(error) {
     msg.includes('relation') && msg.includes('does not exist')
 }
 
+// Reaction picker emoji set — shown as a scrollable grid in the message
+// action sheet (both DM and group chat).
+const QUICK_REACTIONS = [
+  '👍','❤️','😂','😮','😢','🔥','👏','💯','🙏','😍',
+  '😊','😁','😅','🤣','🥹','😉','😘','😎','🤩','🥳',
+  '😇','🙃','😴','😭','😡','🤬','🤯','🥵','🥶','😱',
+  '🤔','🤨','😐','🙄','😬','🤫','🤗','🤝','👌','✌️',
+  '🤞','👀','💪','🫶','💔','⭐','✨','🎉','🎊',
+  '🥰','😆','🤤','😷','🤢','🤮','👋','🖤','💙','💚'
+]
+
 function TextWithMentions({ text, supabase, onUserClick }) {
   if(!text) return null
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
@@ -136,10 +147,15 @@ function MessageBubble({
   onJumpToReply, highlighted=false, rowId
 }) {
   const isSticker = msg.is_sticker && msg.sticker_url
+  // Long-press handlers live on the bubble/sticker element itself, not the
+  // full-width row — otherwise tapping empty space next to a bubble (the
+  // rest of the flex row) would also trigger the action sheet.
+  const pressHandlers = isEditing ? {} : {
+    onTouchStart:onLongPress, onTouchEnd:onPressEnd, onTouchMove:onPressEnd,
+    onMouseDown:onLongPress, onMouseUp:onPressEnd
+  }
   return (
     <div id={rowId}
-      onTouchStart={onLongPress} onTouchEnd={onPressEnd} onTouchMove={onPressEnd}
-      onMouseDown={onLongPress} onMouseUp={onPressEnd}
       style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none',transition:'background-color 0.3s ease',backgroundColor:highlighted?'rgba(91,156,246,0.14)':'transparent',borderRadius:14}}>
       {!own&&showSenderInfo&&<div onClick={onAvatarClick} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
       <div style={{maxWidth:'75%'}}>
@@ -151,7 +167,7 @@ function MessageBubble({
             <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
           </div>
         ):isSticker?(
-          <div>
+          <div {...pressHandlers}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             <StickerMedia url={msg.sticker_url}/>
             <div style={{fontSize:10,color:msg._failed?'#F87171':'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
@@ -160,10 +176,10 @@ function MessageBubble({
             </div>
           </div>
         ):(
-          <div style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
+          <div {...pressHandlers} style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:own?'#fff':'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:msg.content}
-            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.45)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
               <span>{msg._failed?'⚠ Failed to send':timeAgo(msg.created_at)}</span>
               {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
             </div>
@@ -185,6 +201,133 @@ function MessageBubble({
 // like Telegram) but a user can only add stickers to their own pack (created
 // automatically on first open). Media is uploaded to the existing 'avatars'
 // storage bucket under a stickers/ prefix — no new bucket needed.
+// Lets the user pick a start point and a clip length (max 10s) out of a
+// longer video before it becomes a sticker, previewing the loop live, then
+// re-encodes just that window to webm via canvas + MediaRecorder (silent —
+// stickers autoplay muted anyway, so no audio track is captured).
+const STICKER_MAX_SECONDS = 10
+function VideoTrimModal({ file, onCancel, onConfirm }) {
+  const videoRef = useRef(null)
+  const [url] = useState(()=>URL.createObjectURL(file))
+  const [duration, setDuration] = useState(0)
+  const [start, setStart] = useState(0)
+  const [length, setLength] = useState(STICKER_MAX_SECONDS)
+  const [ready, setReady] = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(()=>()=>URL.revokeObjectURL(url),[url])
+
+  const onLoadedMeta = () => {
+    const d = videoRef.current.duration || 0
+    setDuration(d)
+    setLength(Math.min(STICKER_MAX_SECONDS, d))
+    setReady(true)
+  }
+
+  // keep the preview looping over just [start, start+length]
+  useEffect(()=>{
+    const v = videoRef.current
+    if(!v || !ready) return
+    v.currentTime = start
+    v.play().catch(()=>{})
+    const onTime = () => { if(v.currentTime >= start+length) v.currentTime = start }
+    v.addEventListener('timeupdate', onTime)
+    return ()=>v.removeEventListener('timeupdate', onTime)
+  },[start,length,ready])
+
+  const changeStart = (v) => {
+    const s = Math.max(0, Math.min(v, duration-0.2))
+    const maxLen = Math.min(STICKER_MAX_SECONDS, duration-s)
+    setStart(s)
+    setLength(prev=>Math.min(prev, maxLen))
+  }
+  const changeLength = (v) => {
+    const maxLen = Math.min(STICKER_MAX_SECONDS, duration-start)
+    setLength(Math.max(0.5, Math.min(v, maxLen)))
+  }
+
+  const confirm = async () => {
+    setProcessing(true)
+    setError(null)
+    try {
+      const blob = await trimVideoToBlob(videoRef.current, start, start+length)
+      onConfirm(blob)
+    } catch(e) {
+      console.error('Video trim failed:', e)
+      setError("Couldn't process that clip — try a shorter or smaller video.")
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:700,background:'rgba(0,0,0,0.92)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:20,gap:16}}>
+      <video ref={videoRef} src={url} muted playsInline onLoadedMetadata={onLoadedMeta} style={{maxWidth:'100%',maxHeight:'55vh',borderRadius:16,background:'#000'}}/>
+      {ready?(
+        <div style={{width:'100%',maxWidth:420,display:'flex',flexDirection:'column',gap:14}}>
+          <div>
+            <div style={{color:'var(--text-secondary,#aaa)',fontSize:12,marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+              <span>Start</span><span>{start.toFixed(1)}s</span>
+            </div>
+            <input type="range" min={0} max={Math.max(0,duration-0.5)} step={0.1} value={start} onChange={e=>changeStart(parseFloat(e.target.value))} style={{width:'100%'}}/>
+          </div>
+          <div>
+            <div style={{color:'var(--text-secondary,#aaa)',fontSize:12,marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+              <span>Length (max {STICKER_MAX_SECONDS}s)</span><span>{length.toFixed(1)}s</span>
+            </div>
+            <input type="range" min={0.5} max={Math.min(STICKER_MAX_SECONDS,duration)} step={0.1} value={length} onChange={e=>changeLength(parseFloat(e.target.value))} style={{width:'100%'}}/>
+          </div>
+          {error&&<p style={{color:'#F87171',fontSize:13}}>{error}</p>}
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={onCancel} disabled={processing} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card,#222)',color:'var(--text-primary,#fff)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+            <button onClick={confirm} disabled={processing} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',fontWeight:700,cursor:'pointer'}}>{processing?'Processing…':'Use this clip'}</button>
+          </div>
+        </div>
+      ):<p style={{color:'#aaa',fontSize:13}}>Loading video…</p>}
+    </div>
+  )
+}
+
+function trimVideoToBlob(videoEl, start, end) {
+  return new Promise((resolve, reject) => {
+    const maxDim = 480
+    const scale = Math.min(1, maxDim/Math.max(videoEl.videoWidth||maxDim, videoEl.videoHeight||maxDim))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round((videoEl.videoWidth||maxDim)*scale))
+    canvas.height = Math.max(1, Math.round((videoEl.videoHeight||maxDim)*scale))
+    const ctx = canvas.getContext('2d')
+    const stream = canvas.captureStream(30)
+    const mimeType = (typeof MediaRecorder!=='undefined' && MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) ? 'video/webm;codecs=vp9' : 'video/webm'
+    let recorder
+    try { recorder = new MediaRecorder(stream, {mimeType}) } catch(e) { reject(e); return }
+    const chunks = []
+    recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data) }
+    recorder.onerror = reject
+    recorder.onstop = () => resolve(new Blob(chunks,{type:'video/webm'}))
+
+    let rafId
+    const stopAll = () => {
+      videoEl.pause()
+      if(rafId) cancelAnimationFrame(rafId)
+      if(recorder.state!=='inactive') recorder.stop()
+    }
+    const draw = () => {
+      if(videoEl.currentTime >= end || videoEl.paused || videoEl.ended) { stopAll(); return }
+      ctx.drawImage(videoEl,0,0,canvas.width,canvas.height)
+      rafId = requestAnimationFrame(draw)
+    }
+    videoEl.pause()
+    videoEl.currentTime = start
+    videoEl.onseeked = () => {
+      videoEl.onseeked = null
+      recorder.start()
+      videoEl.play().then(()=>{ rafId = requestAnimationFrame(draw) }).catch(reject)
+    }
+    // safety timeout in case seeking/events never fire
+    setTimeout(()=>{ if(recorder.state==='inactive'&&chunks.length===0) reject(new Error('Trim timed out')) }, (end-start)*1000 + 5000)
+  })
+}
+
 function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   const [packs, setPacks] = useState([])
   const [activePack, setActivePack] = useState(null)
@@ -192,7 +335,14 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [setupError, setSetupError] = useState(null)
+  const [trimFile, setTrimFile] = useState(null)
   const fileRef = useRef(null)
+
+  const pickFile = (file) => {
+    if(!file) return
+    if(file.type.startsWith('video/')) setTrimFile(file) // adjust start/length first
+    else handleUpload(file) // images upload as-is
+  }
 
   useEffect(()=>{ loadPacks() },[])
 
@@ -255,7 +405,7 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
         {setupError?(
           <p style={{gridColumn:'span 4',color:'#F87171',fontSize:13,lineHeight:1.5}}>{setupError}</p>
         ):(<>
-        <input ref={fileRef} type="file" accept="image/*,video/webm,video/mp4" onChange={e=>{handleUpload(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
+        <input ref={fileRef} type="file" accept="image/*,video/webm,video/mp4,video/quicktime" onChange={e=>{pickFile(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
         <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{aspectRatio:'1',borderRadius:12,border:'2px dashed var(--border-color-2)',background:'none',color:'var(--text-tertiary)',fontSize:26,cursor:'pointer'}}>{uploading?'⏳':'+'}</button>
         {stickers.map(s=>(
           <button key={s.id} onClick={()=>onSelect(s.media_url)} style={{aspectRatio:'1',borderRadius:12,border:'none',background:'var(--bg-card)',padding:4,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
@@ -265,6 +415,13 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
         {!loading&&stickers.length===0&&<p style={{gridColumn:'span 3',color:'var(--text-quaternary)',fontSize:12,alignSelf:'center'}}>No stickers here yet — tap + to add your own image or short video clip.</p>}
         </>)}
       </div>
+      {trimFile&&<VideoTrimModal file={trimFile}
+        onCancel={()=>setTrimFile(null)}
+        onConfirm={(blob)=>{
+          setTrimFile(null)
+          handleUpload(new File([blob],'sticker_'+Date.now()+'.webm',{type:'video/webm'}))
+        }}
+      />}
     </div>
   )
 }
@@ -1507,7 +1664,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'var(--text-muted)',fontSize:22,cursor:'pointer'}}>⚙️</button>
       </div>
 
-      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,paddingBottom:80,overflowY:'auto',height:0}}>
+      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,overflowY:'auto',height:0}}>
         {loading&&<p style={{textAlign:'center',color:'var(--text-quaternary)',marginTop:40}}>Loading...</p>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
@@ -1516,8 +1673,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         {selectedMsg&&<div onClick={()=>setSelectedMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
           <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
             <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 16px'}}/>
-            <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
-              {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>{
+            <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:8,marginBottom:16,padding:'0 12px',maxHeight:170,overflowY:'auto'}}>
+              {QUICK_REACTIONS.map(e=>{
                 const mine = selectedMsg.group_message_reactions?.find(r=>r.user_id===currentUser.id)
                 const isMineActive = mine?.emoji===e
                 return (
@@ -1525,8 +1682,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                 )
               })}
             </div>
-            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setReplyToId(selectedMsg.id);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
-            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
+            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setReplyToId(selectedMsg.id);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
             {selectedMsg.sender_id===currentUser.id&&<>
               <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
               <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
@@ -1554,7 +1711,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div ref={bottomRef}/>
       </div>
 
-      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
         <ReplyComposerBar text={replyTo} onCancel={()=>{setReplyTo(null);setReplyToId(null)}}/>
         {showStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendSticker} onClose={()=>setShowStickerTray(false)}/>}
@@ -3271,7 +3428,7 @@ function XchordAppInner({ currentUser }) {
                 </div>
               </div>
             </div>
-            <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingBottom:70,overflowY:'auto',height:0}}>
+            <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,overflowY:'auto',height:0}}>
               {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
                 <p style={{color:'var(--text-quaternary)',fontSize:14}}>Say hello! 👋</p>
@@ -3279,8 +3436,8 @@ function XchordAppInner({ currentUser }) {
               {selectedDMMsg&&<div onClick={()=>setSelectedDMMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
                 <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
                   <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 16px'}}/>
-                  <div style={{display:'flex',justifyContent:'center',gap:8,marginBottom:16,padding:'0 8px'}}>
-                    {['👍','❤️','😂','😮','😢','🔥','👏','💯'].map(e=>{
+                  <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:8,marginBottom:16,padding:'0 12px',maxHeight:170,overflowY:'auto'}}>
+                    {QUICK_REACTIONS.map(e=>{
                       const mine = selectedDMMsg.message_reactions?.find(r=>r.user_id===currentUser.id)
                       const isMineActive = mine?.emoji===e
                       return (
@@ -3288,8 +3445,8 @@ function XchordAppInner({ currentUser }) {
                       )
                     })}
                   </div>
-                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setDmReplyToId(selectedDMMsg.id);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
-                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'var(--text-primary)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
+                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setDmReplyToId(selectedDMMsg.id);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
+                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
                   {selectedDMMsg.sender_id===currentUser.id&&<>
                     <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
                     <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
@@ -3317,7 +3474,7 @@ function XchordAppInner({ currentUser }) {
               })}
               <div ref={bottomRef}/>
             </div>
-            <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:150,paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+            <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
               <ReplyComposerBar text={dmReplyTo} onCancel={()=>{setDmReplyTo(null);setDmReplyToId(null)}}/>
               {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onClose={()=>setShowDMStickerTray(false)}/>}
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
