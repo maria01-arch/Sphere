@@ -127,11 +127,25 @@ function ReplyComposerBar({ text, onCancel }) {
 // A sticker renders as bare media (no bubble chrome), WhatsApp/Telegram-style.
 // sticker_url ending in a video extension plays as a silent looping clip.
 const VIDEO_EXT = /\.(mp4|webm|mov)$/i
+// preventDefault on contextmenu + the touch-callout/drag/select CSS below
+// stop the browser's native "save/share image" popup from firing on a long
+// press. Without this, that native popup and the app's own long-press timer
+// (which opens the reaction sheet) fight over the same gesture and the page
+// stops responding until the user dismisses the native menu — which reads
+// as the whole app freezing.
+const NO_CALLOUT_STYLE = {
+  WebkitTouchCallout:'none', WebkitUserSelect:'none', userSelect:'none',
+  WebkitUserDrag:'none', KhtmlUserSelect:'none', MozUserSelect:'none', msUserSelect:'none'
+}
 function StickerMedia({ url, size=132 }) {
+  const blockContextMenu = (e)=>e.preventDefault()
   if(VIDEO_EXT.test(url)) {
-    return <video src={url} autoPlay loop muted playsInline style={{width:size,height:size,objectFit:'contain',display:'block'}}/>
+    return <video src={url} autoPlay loop muted playsInline disablePictureInPicture controlsList="nodownload noplaybackrate"
+      onContextMenu={blockContextMenu} draggable={false}
+      style={{width:size,height:size,objectFit:'contain',display:'block',...NO_CALLOUT_STYLE}}/>
   }
-  return <img src={url} alt="sticker" loading="lazy" style={{width:size,height:size,objectFit:'contain',display:'block'}}/>
+  return <img src={url} alt="sticker" loading="lazy" draggable={false} onContextMenu={blockContextMenu}
+    style={{width:size,height:size,objectFit:'contain',display:'block',...NO_CALLOUT_STYLE,pointerEvents:'auto'}}/>
 }
 
 // Single message row: avatar (for others) + bubble + reactions.
@@ -167,7 +181,7 @@ function MessageBubble({
             <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
           </div>
         ):isSticker?(
-          <div {...pressHandlers}>
+          <div {...pressHandlers} onContextMenu={e=>e.preventDefault()} style={{WebkitTouchCallout:'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             <StickerMedia url={msg.sticker_url}/>
             <div style={{fontSize:10,color:msg._failed?'#F87171':'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
@@ -328,6 +342,44 @@ function trimVideoToBlob(videoEl, start, end) {
   })
 }
 
+// Save-step shown after picking (and, for video, trimming) a sticker: lets
+// the user drop it into an existing pack of theirs, or type a custom new
+// pack name to create on the spot. Defaults to their first/only pack so the
+// common case (one pack) is just tap-to-save.
+function StickerSaveModal({ packs, defaultPackId, onCancel, onConfirm, saving }) {
+  const [choice, setChoice] = useState(defaultPackId||'__new__')
+  const [newName, setNewName] = useState('')
+  const confirm = () => {
+    if(choice==='__new__'){
+      if(!newName.trim()) return
+      onConfirm({newPackName:newName.trim()})
+    } else {
+      onConfirm({packId:choice})
+    }
+  }
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:701,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{width:'100%',maxWidth:420,background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 20px calc(20px + env(safe-area-inset-bottom,0px))',display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>Save sticker to...</div>
+        {packs.map(p=>(
+          <label key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:12,background:choice===p.id?'rgba(91,156,246,0.15)':'var(--bg-card)',cursor:'pointer'}}>
+            <input type="radio" name="pack" checked={choice===p.id} onChange={()=>setChoice(p.id)}/>
+            <span style={{color:'var(--text-primary)',fontSize:14,fontWeight:600}}>{p.name}</span>
+          </label>
+        ))}
+        <label style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:12,background:choice==='__new__'?'rgba(91,156,246,0.15)':'var(--bg-card)',cursor:'pointer'}}>
+          <input type="radio" name="pack" checked={choice==='__new__'} onChange={()=>setChoice('__new__')}/>
+          <input value={newName} onChange={e=>{setNewName(e.target.value);setChoice('__new__')}} placeholder="Custom pack name..." style={{flex:1,background:'none',border:'none',outline:'none',color:'var(--text-primary)',fontSize:14,fontWeight:600}}/>
+        </label>
+        <div style={{display:'flex',gap:10,marginTop:6}}>
+          <button onClick={onCancel} disabled={saving} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card)',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+          <button onClick={confirm} disabled={saving||(choice==='__new__'&&!newName.trim())} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',fontWeight:700,cursor:'pointer'}}>{saving?'Saving…':'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   const [packs, setPacks] = useState([])
   const [activePack, setActivePack] = useState(null)
@@ -336,34 +388,36 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   const [uploading, setUploading] = useState(false)
   const [setupError, setSetupError] = useState(null)
   const [trimFile, setTrimFile] = useState(null)
+  const [pendingUpload, setPendingUpload] = useState(null) // File ready to save, once pack is chosen
   const fileRef = useRef(null)
 
   const pickFile = (file) => {
     if(!file) return
     if(file.type.startsWith('video/')) setTrimFile(file) // adjust start/length first
-    else handleUpload(file) // images upload as-is
+    else setPendingUpload(file) // images go straight to the pack picker
   }
 
   useEffect(()=>{ loadPacks() },[])
 
+  // Only the current user's own packs — stickers used to be browsable across
+  // every user's packs, which cluttered the tray with one tab per person.
+  // Now it's just your own pack(s), defaulting to a single "My Stickers".
   const loadPacks = async () => {
     setLoading(true)
     setSetupError(null)
-    let {data:myPack, error:myPackErr} = await supabase.from('sticker_packs').select('id,name,owner_id').eq('owner_id',currentUser.id).limit(1).maybeSingle()
+    let {data:myPacks, error:myPackErr} = await supabase.from('sticker_packs').select('id,name,owner_id').eq('owner_id',currentUser.id).order('created_at',{ascending:true})
     if(myPackErr && isMissingColumnError(myPackErr)) {
       setSetupError("Stickers aren't set up yet — ask your dev to run supabase_migration_reply_and_stickers.sql in Supabase.")
       setLoading(false)
       return
     }
-    if(!myPack){
+    if(!myPacks?.length){
       const {data:created, error:createErr} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:'My Stickers'}).select('id,name,owner_id').single()
       if(createErr) { console.error('Failed to create sticker pack:', createErr); setSetupError('Could not set up your sticker pack: '+createErr.message); setLoading(false); return }
-      myPack = created
+      myPacks = [created]
     }
-    const {data:allPacks} = await supabase.from('sticker_packs').select('id,name,owner_id').order('created_at',{ascending:true}).limit(50)
-    const list = allPacks?.length ? allPacks : (myPack?[myPack]:[])
-    setPacks(list)
-    setActivePack(prev=>prev||list[0]?.id||null)
+    setPacks(myPacks)
+    setActivePack(prev=>prev||myPacks[0]?.id||null)
     setLoading(false)
   }
 
@@ -373,32 +427,40 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
     setStickers(data||[])
   }
 
-  const handleUpload = async (file) => {
+  const handleUpload = async (file, {packId, newPackName}) => {
     if(!file) return
-    const myPack = packs.find(p=>p.owner_id===currentUser.id)
-    if(!myPack) { alert("Couldn't find your sticker pack — try reopening the sticker tray."); return }
     setUploading(true)
+    let targetPack = packs.find(p=>p.id===packId)
+    if(newPackName){
+      const {data:created, error:createErr} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:newPackName}).select('id,name,owner_id').single()
+      if(createErr){ alert('Could not create pack: '+createErr.message); setUploading(false); return }
+      targetPack = created
+      setPacks(prev=>[...prev,created])
+    }
+    if(!targetPack) { alert("Couldn't find that sticker pack — try reopening the sticker tray."); setUploading(false); return }
     const ext = file.name.split('.').pop()
     const path = 'stickers/'+currentUser.id+'_'+Date.now()+'.'+ext
     const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
     if(error){ alert('Sticker upload failed: '+error.message); setUploading(false); return }
     const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
-    const {data:inserted, error:insertErr} = await supabase.from('stickers').insert({pack_id:myPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
+    const {data:inserted, error:insertErr} = await supabase.from('stickers').insert({pack_id:targetPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
     if(inserted){
-      setActivePack(myPack.id)
-      setStickers(prev=>[...prev,inserted])
+      setActivePack(targetPack.id)
+      setStickers(prev=>targetPack.id===activePack?[...prev,inserted]:prev)
     } else {
       alert('Could not save sticker: '+(insertErr?.message||'unknown error'))
     }
     setUploading(false)
+    setPendingUpload(null)
   }
 
   return (
     <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:160,height:280,display:'flex',flexDirection:'column',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
-        {packs.map(p=>(
+        {packs.length>1&&packs.map(p=>(
           <button key={p.id} onClick={()=>setActivePack(p.id)} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:activePack===p.id?'rgba(91,156,246,0.2)':'var(--bg-card)',color:activePack===p.id?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{p.name}</button>
         ))}
+        {packs.length<=1&&<span style={{color:'var(--text-secondary)',fontSize:13,fontWeight:700}}>{packs[0]?.name||'My Stickers'}</span>}
         <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',fontSize:18,cursor:'pointer',flexShrink:0}}>✕</button>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,alignContent:'start'}}>
@@ -419,8 +481,12 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
         onCancel={()=>setTrimFile(null)}
         onConfirm={(blob)=>{
           setTrimFile(null)
-          handleUpload(new File([blob],'sticker_'+Date.now()+'.webm',{type:'video/webm'}))
+          setPendingUpload(new File([blob],'sticker_'+Date.now()+'.webm',{type:'video/webm'}))
         }}
+      />}
+      {pendingUpload&&<StickerSaveModal packs={packs} defaultPackId={activePack} saving={uploading}
+        onCancel={()=>setPendingUpload(null)}
+        onConfirm={(dest)=>handleUpload(pendingUpload,dest)}
       />}
     </div>
   )
@@ -2972,7 +3038,7 @@ function XchordAppInner({ currentUser }) {
       const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
       if(!op) return null
       const {data:prof} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').eq('id',op.user_id).single()
-      const {data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const {data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
       const {count:unreadCount} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
       return {id, other:prof, last:lastMsg, unread:(unreadCount||0)>0}
     }))
@@ -3246,6 +3312,10 @@ function XchordAppInner({ currentUser }) {
         sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
         message_reactions:[]
       }})
+      if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+        sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), (currentUser.display_name||'Someone')+' sent you a sticker')
+      }
+      loadConvos()
     } else {
       console.error('Sticker send failed:', error)
       setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
@@ -3376,7 +3446,11 @@ function XchordAppInner({ currentUser }) {
                     {conv.last&&<span style={{color:conv.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:conv.unread?700:400}}>{timeAgo(conv.last.created_at)}</span>}
                   </div>
                   <p style={{color:conv.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:conv.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
-                    {conv.last ? (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content : 'Tap to chat'}
+                    {conv.last
+                      ? (conv.last.is_sticker
+                          ? (conv.last.sender_id===currentUser.id?'You sent a sticker':(conv.other?.display_name||'They')+' sent a sticker')
+                          : (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content)
+                      : 'Tap to chat'}
                   </p>
                 </div>
                 <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
