@@ -15,7 +15,7 @@ export default async function JoinPage({ params }) {
       <p style={{fontSize:48}}>😕</p>
       <p style={{fontSize:20,fontWeight:700}}>Group not found</p>
       <p style={{color:'#555'}}>@{tag} doesn't exist</p>
-      <a href="/" style={{color:'#5B9CF6',fontSize:15}}>← Back to Xchord</a>
+      <a href="/" style={{color:'#5B9CF6',fontSize:15}}>← Back to Flitters</a>
     </div>
   )
 
@@ -40,7 +40,7 @@ export default async function JoinPage({ params }) {
         <p style={{color:'#F7B731',fontWeight:700,margin:'0 0 4px'}}>🔒 Join Request Sent</p>
         <p style={{color:'#888',fontSize:13,margin:0}}>An admin needs to approve before you can join.</p>
       </div>
-      <a href="/" style={{color:'#5B9CF6',fontSize:15,marginTop:8}}>← Back to Xchord</a>
+      <a href="/" style={{color:'#5B9CF6',fontSize:15,marginTop:8}}>← Back to Flitters</a>
     </div>
   )
 }

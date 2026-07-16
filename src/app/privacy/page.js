@@ -1,4 +1,4 @@
-export const metadata = { title: 'Privacy Policy — Xchord', description: 'Xchord Privacy Policy' }
+export const metadata = { title: 'Privacy Policy — Flitters', description: 'Flitters Privacy Policy' }
 
 export default function PrivacyPolicy() {
   const s = {
@@ -16,14 +16,14 @@ export default function PrivacyPolicy() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <img src="/xchord-logo-white.svg" alt="Xchord" width={36} height={36} style={{objectFit:'contain'}}/>
-        <span style={s.logoText}>Xchord</span>
+        <img src="/flitters-mark.png" alt="Flitters" width={36} height={36} style={{objectFit:'contain'}}/>
+        <span style={s.logoText}>Flitters</span>
       </div>
       <div style={s.body}>
         <h1 style={s.h1}>Privacy Policy</h1>
         <p style={s.updated}>Last updated: July 1, 2025</p>
 
-        <p style={s.p}>Welcome to Xchord (formerly known as Sphere) ("we", "our", or "us"). This Privacy Policy explains how we collect, use, and protect your information when you use the Xchord social media platform at <strong>xchord.space</strong>.</p>
+        <p style={s.p}>Welcome to Flitters (formerly known as Sphere) ("we", "our", or "us"). This Privacy Policy explains how we collect, use, and protect your information when you use the Flitters social media platform at <strong>flitters.app</strong>.</p>
 
         <h2 style={s.h2}>1. Information We Collect</h2>
         <p style={s.p}>We collect the following types of information:</p>
@@ -37,7 +37,7 @@ export default function PrivacyPolicy() {
 
         <h2 style={s.h2}>2. How We Use Your Information</h2>
         <ul style={s.ul}>
-          <li>To operate and improve the Xchord platform</li>
+          <li>To operate and improve the Flitters platform</li>
           <li>To personalize your feed using our recommendation algorithm</li>
           <li>To send you notifications about activity on your account</li>
           <li>To show you relevant advertisements (including via Google AdSense)</li>
@@ -46,7 +46,7 @@ export default function PrivacyPolicy() {
         </ul>
 
         <h2 style={s.h2}>3. Advertising</h2>
-        <p style={s.p}>Xchord uses <strong>Google AdSense</strong> to display advertisements. Google may use cookies and device identifiers to show you personalized ads based on your browsing activity across websites. You can opt out of personalized advertising by visiting <a href="https://www.google.com/settings/ads" style={s.a} target="_blank">Google's Ad Settings</a>.</p>
+        <p style={s.p}>Flitters uses <strong>Google AdSense</strong> to display advertisements. Google may use cookies and device identifiers to show you personalized ads based on your browsing activity across websites. You can opt out of personalized advertising by visiting <a href="https://www.google.com/settings/ads" style={s.a} target="_blank">Google's Ad Settings</a>.</p>
         <p style={s.p}>We also display direct sponsored content from advertisers who purchase ad placements through our platform. These are clearly marked as "Sponsored".</p>
 
         <h2 style={s.h2}>4. Data Sharing</h2>
@@ -70,24 +70,24 @@ export default function PrivacyPolicy() {
         </ul>
 
         <h2 style={s.h2}>7. Children's Privacy</h2>
-        <p style={s.p}>Xchord is not intended for users under 13 years of age. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately.</p>
+        <p style={s.p}>Flitters is not intended for users under 13 years of age. We do not knowingly collect personal information from children under 13. If you believe a child has provided us with personal information, please contact us immediately.</p>
 
         <h2 style={s.h2}>8. Cookies</h2>
         <p style={s.p}>We use essential cookies for authentication and session management. Third-party advertising cookies may be set by Google AdSense. You can control cookies through your browser settings.</p>
 
         <h2 style={s.h2}>9. Changes to This Policy</h2>
-        <p style={s.p}>We may update this Privacy Policy from time to time. We will notify users of significant changes by posting a notice on the platform. Continued use of Xchord after changes constitutes acceptance of the updated policy.</p>
+        <p style={s.p}>We may update this Privacy Policy from time to time. We will notify users of significant changes by posting a notice on the platform. Continued use of Flitters after changes constitutes acceptance of the updated policy.</p>
 
         <h2 style={s.h2}>10. Contact Us</h2>
         <p style={s.p}>If you have questions about this Privacy Policy, please contact us at:<br/>
-          <strong>OmniXchord Labs</strong><br/>
-          Email: <a href="mailto:support@xchord.space" style={s.a}>support@xchord.space</a><br/>
-          Website: <a href="https://xchord.space" style={s.a}>xchord.space</a>
+          <strong>Flitters Labs Corp</strong><br/>
+          Email: <a href="mailto:support@flitters.app" style={s.a}>support@flitters.app</a><br/>
+          Website: <a href="https://flitters.app" style={s.a}>flitters.app</a>
         </p>
 
         <div style={{marginTop:48,padding:'20px',background:'rgba(91,156,246,0.07)',border:'1px solid rgba(91,156,246,0.15)',borderRadius:16}}>
           <p style={{...s.p,marginBottom:0,color:'#5B9CF6',fontSize:13}}>
-            By using Xchord, you agree to this Privacy Policy. This policy complies with GDPR, CCPA, and Google AdSense program requirements.
+            By using Flitters, you agree to this Privacy Policy. This policy complies with GDPR, CCPA, and Google AdSense program requirements.
           </p>
         </div>
       </div>

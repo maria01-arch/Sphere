@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useCallback } from 'react'
 
-const STORAGE_KEY = 'xchord-theme'
+const STORAGE_KEY = 'flitters-theme'
 
 export function useTheme() {
   const [theme, setThemeState] = useState('dark')

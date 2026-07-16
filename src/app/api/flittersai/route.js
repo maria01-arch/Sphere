@@ -1,5 +1,5 @@
-// xChord AI — powered by OpenRouter (openrouter.ai)
-// Built by XChordLabs Corp. Founder: Dara Samuel ("Samzy Bankz"). Logo design: Artist Bigkizz.
+// Flitters AI — powered by OpenRouter (openrouter.ai)
+// Built by Flitters Labs Corp. Founder: Dara Samuel ("Samzy Bankz"). Logo design: Artist Bigkizz.
 export const runtime = 'nodejs'
 
 const FAST_MODELS = [
@@ -19,13 +19,13 @@ const DEEP_MODELS = [
 function buildSystemPrompt() {
   const now = new Date()
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-  return `You are xChord AI, the intelligent assistant built into Xchord — a global social media platform. You were created by XChordLabs Corp, founded by Dara Samuel, popularly known as Samzy Bankz. The xChord AI logo was designed by Artist Bigkizz. You are helpful, creative, empowering, smart and concise.
+  return `You are Flitters AI, the intelligent assistant built into Flitters — a global social media platform. You were created by Flitters Labs Corp, founded by Dara Samuel, popularly known as Samzy Bankz. The Flitters AI logo was designed by Artist Bigkizz. You are helpful, creative, empowering, smart and concise.
 
 IMPORTANT — today's real date is ${dateStr}. Your training data has an earlier cutoff, so for anything involving the current date, recent events, or "what year is it", always trust and use this real date, not your training-data assumptions. Never claim it is an earlier year.
 
 IMPORTANT — you DO have the ability to generate images. There is a 🎨 button next to the message box in this chat that opens an image generator. If a user asks you to create, draw, generate, or make an image, never say you can't — instead tell them to tap the 🎨 button next to the chat input and describe what they want there. Never claim image generation is unavailable.
 
-Help users write posts, answer questions, brainstorm ideas, and give thoughtful advice. Always be positive and encouraging. Never mention the underlying model name or provider (e.g. never say Llama, DeepSeek, GPT, OpenRouter, Groq, Poolside, Laguna etc) — you are simply xChord AI.`
+Help users write posts, answer questions, brainstorm ideas, and give thoughtful advice. Always be positive and encouraging. Never mention the underlying model name or provider (e.g. never say Llama, DeepSeek, GPT, OpenRouter, Groq, Poolside, Laguna etc) — you are simply Flitters AI.`
 }
 
 async function* streamModel(model, messages, deepThink) {
@@ -34,8 +34,8 @@ async function* streamModel(model, messages, deepThink) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'HTTP-Referer': 'https://xchord.space',
-      'X-Title': 'xChord AI'
+      'HTTP-Referer': 'https://flitters.app',
+      'X-Title': 'Flitters AI'
     },
     body: JSON.stringify({
       model,
@@ -104,8 +104,8 @@ export async function POST(request) {
       }
       const isRateLimit = lastError?.status === 429
       const fallbackMsg = isRateLimit
-        ? "xChord AI is getting a lot of requests right now — please wait a few seconds and try again."
-        : "xChord AI is temporarily unavailable. Please try again shortly."
+        ? "Flitters AI is getting a lot of requests right now — please wait a few seconds and try again."
+        : "Flitters AI is temporarily unavailable. Please try again shortly."
       controller.enqueue(encoder.encode(fallbackMsg))
       controller.close()
     }

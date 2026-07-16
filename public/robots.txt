@@ -5,4 +5,4 @@ Allow: /privacy
 
 Disallow: /api/
 
-Sitemap: https://sphereapp.qzz.io/sitemap.xml
+Sitemap: https://flitters.app/sitemap.xml

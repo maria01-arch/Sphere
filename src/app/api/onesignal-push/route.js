@@ -1,4 +1,4 @@
-// Sends a push notification via OneSignal, targeting a specific Xchord user
+// Sends a push notification via OneSignal, targeting a specific Flitters user
 // by external_id (set client-side via OneSignal.login(userId) on sign-in).
 export const runtime = 'nodejs'
 
@@ -19,7 +19,7 @@ export async function POST(request) {
         include_aliases: { external_id: [userId] },
         headings: { en: title },
         contents: { en: body || '' },
-        url: url || 'https://xchord.space'
+        url: url || 'https://flitters.app'
       })
     })
 

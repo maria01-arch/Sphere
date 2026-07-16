@@ -35,8 +35,8 @@ export default function ResetPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
       <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-          <img src="/xchord-logo-white.svg" alt="Xchord" width="40" height="40" style={{ objectFit: 'contain' }} />
-          <span style={{ fontWeight: 900, fontSize: 24, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Xchord</span>
+          <img src="/flitters-mark.png" alt="Flitters" width="40" height="40" style={{ objectFit: 'contain' }} />
+          <span style={{ fontWeight: 900, fontSize: 24, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</span>
         </div>
 
         {success ? <>
@@ -45,7 +45,7 @@ export default function ResetPage() {
             <h2 style={{ fontWeight: 700, fontSize: 20, color: '#fff', marginBottom: 8 }}>Password Updated!</h2>
             <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Your password has been successfully changed.</p>
             <button onClick={() => window.location.href = '/'} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
-              Go to Xchord
+              Go to Flitters
             </button>
           </div>
         </> : !ready ? <>

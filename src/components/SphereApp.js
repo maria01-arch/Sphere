@@ -548,7 +548,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
       </div>
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         </div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
         {profile?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
@@ -785,7 +785,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <MsgBox/>
         <div style={{background:'linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,165,0,0.08))',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'20px',marginBottom:24,textAlign:'center'}}>
           <div style={{fontSize:48,marginBottom:8}}>🏅</div>
-          <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Xchord Verified Badge</h2>
+          <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Flitters Verified Badge</h2>
           <p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
           <p style={{color:'#FFD700',fontWeight:700,fontSize:18,marginTop:12}}>One-time fee: $5 USD</p>
         </div>
@@ -813,9 +813,9 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       try {
         if('serviceWorker' in navigator){
           const reg = await navigator.serviceWorker.ready
-          await reg.showNotification('xChord Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+          await reg.showNotification('Flitters Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
         } else {
-          new Notification('xChord Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+          new Notification('Flitters Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
         }
         setTestMsg('✅ Test notification sent — check if it appeared.')
       } catch(e) {
@@ -858,7 +858,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
           <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
           <span style={{color:'#222',fontSize:12}}> · </span>
-          <span style={{color:'#222',fontSize:12}}>© 2025 Xchord · fka Sphere</span>
+          <span style={{color:'#222',fontSize:12}}>© 2025 Flitters · fka Sphere</span>
         </div>
       </div>
     </div>
@@ -900,7 +900,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
       </div>
       <div style={{padding:'0 16px 20px'}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
         {currentUser?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
         {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
@@ -1190,7 +1190,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:6,justifyContent:'space-between'}}>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
               <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{a.display_name}</button>
-              {a.verified&&<span title='Xchord Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+              {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
               <span style={{color:'var(--text-secondary)',fontSize:13}}>@{a.username}</span>
               <span style={{color:'var(--text-faint)'}}>·</span>
               <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
@@ -1265,8 +1265,8 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
     like:{emoji:'❤️',text:'liked your post'},
     comment:{emoji:'💬',text:'commented on your post'},
     follow:{emoji:'👤',text:'started following you'},
-    repost:{emoji:'🔁',text:'reposted your xchord'},
-    welcome:{emoji:'🌐',text:'Welcome to Xchord!'},
+    repost:{emoji:'🔁',text:'reposted your flit'},
+    welcome:{emoji:'🌐',text:'Welcome to Flitters!'},
     follow_request:{emoji:'👤',text:'sent you a follow request'},
     follow_accepted:{emoji:'✅',text:'accepted your follow request'},
     mention:{emoji:'📌',text:'tagged you in a post'},
@@ -1294,7 +1294,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
             {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span>{info.emoji}</span>}
           </div>
           <div style={{flex:1,minWidth:0}}>
-            <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Xchord'} </span>
+            <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Flitters'} </span>
             <span style={{color:'var(--text-tertiary)',fontSize:14}}>{n.message||info.text}</span>
           </div>
           <span style={{color:'var(--text-quaternary)',fontSize:12,flexShrink:0}}>{timeAgo(n.created_at)}</span>
@@ -2348,9 +2348,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   )
 }
 
-function XChordAI({ currentUser, onClose }) {
-  const STORAGE_KEY = 'xchordai_history_'+(currentUser?.id||'guest')
-  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I\'m xChord AI. How can I help you today?'}]
+function FlittersAI({ currentUser, onClose }) {
+  const STORAGE_KEY = 'flittersai_history_'+(currentUser?.id||'guest')
+  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I\'m Flitters AI. How can I help you today?'}]
   const [messages, setMessages] = useState(()=>{
     try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? JSON.parse(saved) : defaultMsg } catch(e) { return defaultMsg }
   })
@@ -2375,7 +2375,7 @@ function XChordAI({ currentUser, onClose }) {
     setGeneratingImg(true)
     setGenImg(null)
     try {
-      const res = await fetch('/api/xchordai-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:imgPrompt})})
+      const res = await fetch('/api/flittersai-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:imgPrompt})})
       const data = await res.json()
       if(data.image) setGenImg(data.image)
       else alert(data.error||'Generation failed, try again')
@@ -2390,7 +2390,7 @@ function XChordAI({ currentUser, onClose }) {
     setInput('')
     setLoading(true)
     try {
-      const res = await fetch('/api/xchordai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
+      const res = await fetch('/api/flittersai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
       if(!res.body) throw new Error('No response stream')
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -2423,10 +2423,10 @@ function XChordAI({ currentUser, onClose }) {
     <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
         <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
-        <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:38,height:38,objectFit:'contain'}} loading="lazy"/>
+        <img src="/flitters-ai-icon.png" alt="Flitters AI" style={{width:38,height:38,objectFit:'contain'}} loading="lazy"/>
         <div onClick={()=>setShowAbout(true)} style={{cursor:'pointer'}}>
           <div style={{display:'flex',alignItems:'center',gap:6}}>
-            <div style={{fontWeight:800,fontSize:16,background:AI_GRADIENT,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>xChord AI</div>
+            <div style={{fontWeight:800,fontSize:16,background:AI_GRADIENT,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Flitters AI</div>
             {deepThink&&<span style={{fontSize:10,background:AI_GRADIENT,color:'var(--text-primary)',borderRadius:6,padding:'1px 6px',fontWeight:700}}>DEEP THINK</span>}
           </div>
           <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
@@ -2440,14 +2440,14 @@ function XChordAI({ currentUser, onClose }) {
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
         {messages.map((msg,i)=>(
           <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
-            {msg.role==='assistant'&&<img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}} loading="lazy"/>}
+            {msg.role==='assistant'&&<img src="/flitters-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}} loading="lazy"/>}
             <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?AI_GRADIENT:'var(--bg-card-6)',color:'var(--text-primary)',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
               {msg.content}
             </div>
           </div>
         ))}
         {loading&&<div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
-          <img src="/xchord-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}} loading="lazy"/>
+          <img src="/flitters-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}} loading="lazy"/>
           <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'var(--bg-card-6)',color:'var(--text-tertiary)',fontSize:15}}>{deepThink?'Thinking deeply...':'Thinking...'}</div>
         </div>}
         <div ref={bottomRef}/>
@@ -2455,9 +2455,9 @@ function XChordAI({ currentUser, onClose }) {
 
       {showAbout&&<div className="backdrop-in" onClick={()=>setShowAbout(false)} style={{position:'fixed',inset:0,zIndex:20,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
         <div className="sheet-in" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:380,background:'#12141c',borderRadius:20,padding:'28px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
-          <img src="/xchord-ai-logo.png" alt="xChord AI" style={{width:160,objectFit:'contain',marginBottom:6}} loading="lazy"/>
+          <img src="/flitters-ai-logo.png" alt="Flitters AI" style={{width:160,objectFit:'contain',marginBottom:6}} loading="lazy"/>
           <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7,marginTop:8}}>
-            xChord AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>XChordLabs Corp</strong>.
+            Flitters AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>Flitters Labs Corp</strong>.
           </p>
           <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7}}>
             Founded by <strong style={{color:'var(--text-primary)'}}>Dara Samuel</strong>, popularly known as <strong style={{color:'var(--text-primary)'}}>Samzy Bankz</strong>, with support from <strong style={{color:'var(--text-primary)'}}>Beauty</strong>.
@@ -2481,7 +2481,7 @@ function XChordAI({ currentUser, onClose }) {
           {genImg&&<button onClick={()=>{
             const a=document.createElement('a')
             a.href=genImg
-            a.download='xchord-ai-image-'+Date.now()+'.jpg'
+            a.download='flitters-ai-image-'+Date.now()+'.jpg'
             document.body.appendChild(a)
             a.click()
             document.body.removeChild(a)
@@ -2490,7 +2490,7 @@ function XChordAI({ currentUser, onClose }) {
       </div>}
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center'}}>
         <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',fontSize:18,flexShrink:0}}>🎨</button>
-        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask xChord AI anything..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:26,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask Flitters AI anything..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:26,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
         <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'var(--bg-card-3)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
       </div>
     </div>
@@ -2609,7 +2609,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   )
 }
 
-function XchordAppInner({ currentUser }) {
+function FlittersAppInner({ currentUser }) {
   const { theme } = useTheme()
   const [ads, setAds] = useState([])
   const [showAdmin, setShowAdmin] = useState(false)
@@ -2746,7 +2746,7 @@ function XchordAppInner({ currentUser }) {
   const [navVisible, setNavVisible] = useState(true)
   const [hideNav, setHideNav] = useState(false)
   const OMNICORE_ID = 'omnicore-ai'
-  const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'xChord AI',username:'xchordai',avatar_color:'#A855F7',avatar_url:'/xchord-ai-icon.png',is_ai:true}
+  const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'Flitters AI',username:'flittersai',avatar_color:'#A855F7',avatar_url:'/flitters-ai-icon.png',is_ai:true}
   const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
   const viewingGroupRef = useRef(null)
@@ -2883,10 +2883,10 @@ function XchordAppInner({ currentUser }) {
 
   useEffect(()=>{
     // Prevent back button from ever going to auth/login
-    window.history.pushState({xchord:true},'',window.location.href)
+    window.history.pushState({flitters:true},'',window.location.href)
     const handlePop = (e) => {
       // Always push a new state to stay in-app
-      window.history.pushState({xchord:true},'',window.location.href)
+      window.history.pushState({flitters:true},'',window.location.href)
       const s = stateRef.current
       // Priority order: deepest screen first
       if(s.viewingPost){setViewingPost(null);setHideNav(false);return}
@@ -3356,7 +3356,7 @@ function XchordAppInner({ currentUser }) {
   }
 
   const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
-  const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#XchordSpotlight',posts:'445K',cat:'Xchord'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
+  const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#FlittersSpotlight',posts:'445K',cat:'Flitters'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
@@ -3380,8 +3380,8 @@ function XchordAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <img src={theme==='light'?'/xchord-logo.svg':'/xchord-logo-white.svg'} alt="Xchord" width="36" height="36" style={{objectFit:'contain'}} loading="lazy"/>
-          <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>XCHORD</span>
+          <img src="/flitters-mark.png" alt="Flitters" width="36" height="36" style={{objectFit:'contain'}} loading="lazy"/>
+          <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>FLITTERS</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           
@@ -3398,7 +3398,7 @@ function XchordAppInner({ currentUser }) {
             ))}
           </div>
           {loading&&<div style={{padding:'50px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</div>}
-          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Xchord! 🎵'}</p></div>}
+          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters! 🎵'}</p></div>}
           {posts.map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
               {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
@@ -3419,13 +3419,13 @@ function XchordAppInner({ currentUser }) {
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
               <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
             </div>
-            {/* xChord AI — always pinned first */}
+            {/* Flitters AI — always pinned first */}
             <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
               style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',background:'rgba(168,85,247,0.04)'}}>
-              <img src="/xchord-ai-icon.png" alt="xChord AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}} loading="lazy"/>
+              <img src="/flitters-ai-icon.png" alt="Flitters AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}} loading="lazy"/>
               <div style={{flex:1,minWidth:0}}>
                 <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
-                  <span style={{fontWeight:700,fontSize:15}}>xChord AI</span>
+                  <span style={{fontWeight:700,fontSize:15}}>Flitters AI</span>
                   <span style={{fontSize:10,background:'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)',color:'var(--text-primary)',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
                 </div>
                 <p style={{color:'var(--text-secondary)',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
@@ -3489,7 +3489,7 @@ function XchordAppInner({ currentUser }) {
             ))}
           </>}
 
-          {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<XChordAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
+          {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
             <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(12px)',flexShrink:0}}>
@@ -3598,7 +3598,7 @@ function XchordAppInner({ currentUser }) {
                 <button onClick={()=>toggleFollow(u)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Follow</button>
               </div>
             ))}
-            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'var(--text-quaternary)'}}>You follow everyone on Xchord!</p>}
+            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'var(--text-quaternary)'}}>You follow everyone on Flitters!</p>}
           </>}
         </>}
 
@@ -3647,7 +3647,7 @@ function XchordAppInner({ currentUser }) {
                   <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',fontSize:22}}>🖼️</button>
                   <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
                 </div>
-                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Xchord it</button>
+                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Flit it</button>
               </div>
             </div>
           </div>
@@ -3657,15 +3657,15 @@ function XchordAppInner({ currentUser }) {
   )
 }
 
-export default function XchordApp({ currentUser }) {
+export default function FlittersApp({ currentUser }) {
   if (!currentUser || !currentUser.id) {
     return (
       <div style={{ minHeight: '100vh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
-        <img src="/xchord-logo-white.svg" alt="Xchord" width="70" height="70" style={{ objectFit: 'contain' }}  loading="lazy"/>
+        <img src="/flitters-mark.png" alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }}  loading="lazy"/>
         <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Something went wrong loading your account</p>
         <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Reload</button>
       </div>
     )
   }
-  return <ErrorBoundary><XchordAppInner currentUser={currentUser}/></ErrorBoundary>
+  return <ErrorBoundary><FlittersAppInner currentUser={currentUser}/></ErrorBoundary>
 }

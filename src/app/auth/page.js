@@ -11,7 +11,7 @@ const COUNTRIES = [
 ]
 
 const XLogo = ({ size = 52 }) => (
-  <img src="/xchord-logo-white.svg" alt="Xchord" width={size} height={size} style={{ objectFit: 'contain' }} />
+  <img src="/flitters-mark.png" alt="Flitters" width={size} height={size} style={{ objectFit: 'contain' }} />
 )
 
 const isEmail = (v) => v.includes('@')
@@ -75,7 +75,7 @@ export default function AuthPage() {
     if (step === 2) {
       if (!dob) return 'Please enter your date of birth'
       const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
-      if (age < 13) return 'You must be at least 13 years old to join Xchord'
+      if (age < 13) return 'You must be at least 13 years old to join Flitters'
       if (!country) return 'Please select your country'
       return ''
     }
@@ -163,7 +163,7 @@ export default function AuthPage() {
         // Phone path — no SMS provider configured yet, so we skip verification
         // entirely and use a placeholder email under the hood, same as before.
         const trimmedPhone = phone.trim()
-        const placeholderEmail = `${trimmedPhone.replace(/[^0-9]/g, '')}@phone.xchord.placeholder`
+        const placeholderEmail = `${trimmedPhone.replace(/[^0-9]/g, '')}@phone.flitters.placeholder`
         const { error: signUpError } = await supabase.auth.signUp({
           email: placeholderEmail,
           password,
@@ -215,7 +215,7 @@ export default function AuthPage() {
     try {
       const trimmed = loginContact.trim()
       const usingEmail = isEmail(trimmed)
-      const loginEmailValue = usingEmail ? trimmed : `${trimmed.replace(/[^0-9]/g, '')}@phone.xchord.placeholder`
+      const loginEmailValue = usingEmail ? trimmed : `${trimmed.replace(/[^0-9]/g, '')}@phone.flitters.placeholder`
       const { error } = await supabase.auth.signInWithPassword({ email: loginEmailValue, password: loginPassword })
       if (error) throw error
       window.location.href = '/'
@@ -281,7 +281,7 @@ export default function AuthPage() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
           <XLogo size={52} />
           <div>
-            <div style={{ fontWeight: 900, fontSize: 26, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Xchord</div>
+            <div style={{ fontWeight: 900, fontSize: 26, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</div>
             <div style={{ fontSize: 10, color: '#444', marginTop: -2 }}>formerly known as Sphere</div>
           </div>
         </div>
@@ -422,7 +422,7 @@ export default function AuthPage() {
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={acceptedPolicy} onChange={e => setAcceptedPolicy(e.target.checked)} style={{ marginTop: 3 }} />
               <span style={{ color: '#aaa', fontSize: 13, lineHeight: 1.5 }}>
-                I agree to Xchord's <a href="/privacy" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Privacy Policy</a> and Terms of Service.
+                I agree to Flitters's <a href="/privacy" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Privacy Policy</a> and Terms of Service.
               </span>
             </label>
           </>}
@@ -457,7 +457,7 @@ export default function AuthPage() {
           {step <= totalSteps && <button onClick={handleBack} style={secondaryBtn}>Back</button>}
 
           {step === 1 && <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
-            {"Already on Xchord? "}<span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign in</span>
+            {"Already on Flitters? "}<span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign in</span>
           </p>}
         </>}
 
