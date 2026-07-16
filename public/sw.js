@@ -3,7 +3,7 @@ self.addEventListener('activate', () => self.clients.claim())
 
 self.addEventListener('push', function(event) {
   const data = event.data ? event.data.json() : {}
-  const title = data.title || 'Sphere 🌐'
+  const title = data.title || 'Flitters'
   const options = {
     body: data.body || 'You have a new notification',
     icon: '/icon-192.png',

@@ -7,7 +7,7 @@ import {
   Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
   Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
   Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
-  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle
+  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2
 } from 'lucide-react'
 const supabase = createClient()
 
@@ -120,7 +120,7 @@ function ReplyComposerBar({ text, onCancel }) {
   const name = idx>-1 ? text.slice(0,idx) : null
   const quoted = idx>-1 ? text.slice(idx+2) : text
   return (
-    <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:8,borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+    <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:8,borderBottom:'1px solid var(--border-color)'}}>
       <div style={{width:3,alignSelf:'stretch',background:'#5B9CF6',borderRadius:2,minHeight:28}}/>
       <div style={{flex:1,minWidth:0}}>
         {name&&<div style={{color:'#5B9CF6',fontSize:12,fontWeight:700}}>{name}</div>}
@@ -555,7 +555,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
       </div>
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         </div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
         {profile?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
@@ -580,11 +580,27 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
 // ── SETTINGS ───────────────────────────────────────────────────────────────
 function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) {
   const [form, setForm] = useState({name:"",reason:"",idtype:"",txhash:"",paymethod:""})
+  const [idFile, setIdFile] = useState(null)
+  const [idPreview, setIdPreview] = useState('')
+  const fileRef = useRef(null)
   const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const pickFile = (file) => {
+    if(!file) return
+    setIdFile(file)
+    setIdPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
+  }
   const submit = async() => {
     if(!form.name||!form.reason||!form.idtype||!form.txhash||!form.paymethod){showMsg("Please fill all fields",false);return}
+    if(!idFile){showMsg("Please upload a photo of your ID document",false);return}
     setSaving(true)
-    const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod})
+    let idDocUrl = null
+    const ext = idFile.name.split('.').pop()
+    const path = 'verification-ids/'+currentUser.id+'_'+Date.now()+'.'+ext
+    const {error:uploadErr} = await supabase.storage.from('avatars').upload(path,idFile,{upsert:false})
+    if(uploadErr){ showMsg("ID upload failed: "+uploadErr.message,false); setSaving(false); return }
+    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    idDocUrl = urlData.publicUrl
+    const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod,id_document_url:idDocUrl})
     if(error) showMsg(error.message,false)
     else showMsg("Application submitted! We will review within 48 hours.")
     setSaving(false)
@@ -597,6 +613,15 @@ function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) 
       <option value="">Select ID type</option>
       <option>National ID</option><option>Passport</option><option>Driver License</option>
     </select>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>ID Document Photo</label>
+    <input ref={fileRef} type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={e=>pickFile(e.target.files?.[0])}/>
+    <div onClick={()=>fileRef.current?.click()} style={{...inp,height:'auto',minHeight:56,display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'10px 14px'}}>
+      {idPreview
+        ? <img src={idPreview} alt="ID preview" style={{width:44,height:44,objectFit:'cover',borderRadius:8}}/>
+        : <Upload size={20} color="#888"/>}
+      <span style={{color:idFile?'var(--text-primary)':'#888',fontSize:13}}>{idFile?idFile.name:'Tap to upload a clear photo of your ID'}</span>
+    </div>
+    <p style={{color:'var(--text-quaternary)',fontSize:11,marginTop:-8,marginBottom:14}}>Used only to confirm your identity for verification. Not shown publicly.</p>
     <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>Why do you want verification?</label>
     <textarea value={form.reason} onChange={e=>set("reason",e.target.value)} rows={3} style={{...inp,resize:"none"}} placeholder="Describe yourself and why you deserve verification"/>
     <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>Transaction Hash (TX ID)</label>
@@ -606,7 +631,7 @@ function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) 
       <option value="">Select payment method</option>
       <option>USDT TRC-20</option><option>Bitcoin BTC</option>
     </select>
-    <button onClick={submit} style={{width:"100%",background:"linear-gradient(135deg,#FFD700,#FFA500)",border:"none",borderRadius:12,padding:"14px",color:"#000",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:8}}>{saving?"Submitting...":"Submit Application"}</button>
+    <button onClick={submit} disabled={saving} style={{width:"100%",background:"linear-gradient(135deg,#FFD700,#FFA500)",border:"none",borderRadius:12,padding:"14px",color:"#000",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:8}}>{saving?"Submitting...":"Submit Application"}</button>
   </div>)
 }
 
@@ -907,7 +932,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
       </div>
       <div style={{padding:'0 16px 20px'}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
         {currentUser?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
         {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10,display:'flex',alignItems:'center',gap:4}}><MapPin size={13}/> {currentUser.location}</p>}
@@ -921,7 +946,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
         {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><FileText size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No posts yet</p></div>}
         {posts.map(post=>(
-          <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+          <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
             <p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:10}}>{post.content}</p>
             <div style={{display:'flex',gap:16,color:'var(--text-secondary)',fontSize:13,alignItems:'center'}}>
               <span style={{display:'inline-flex',alignItems:'center',gap:4}}><MessageCircle size={14}/> {post.comments_count}</span>
@@ -975,7 +1000,7 @@ function AdCard({ ad }) {
     window.open(url,'_blank')
   }
   return (
-    <div onClick={openLink} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)',cursor:ad.link_url?'pointer':'default'}}>
+    <div onClick={openLink} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',cursor:ad.link_url?'pointer':'default'}}>
       <div style={{display:'flex',gap:12}}>
         <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
         <div style={{flex:1,minWidth:0}}>
@@ -1002,7 +1027,7 @@ function AdsenseCard() {
     } catch(e){}
   },[])
   return (
-    <div ref={ref} style={{padding:'8px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+    <div ref={ref} style={{padding:'8px 16px',borderBottom:'1px solid var(--border-color)'}}>
       <div style={{display:'flex',justifyContent:'flex-end',marginBottom:4}}>
         <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:0.5}}>ADVERTISEMENT</span>
       </div>
@@ -1062,6 +1087,21 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
   const [replyImagePreview, setReplyImagePreview] = useState('')
   const [uploadingReply, setUploadingReply] = useState(false)
   const replyImageRef = useRef(null)
+  const [showShareMenu, setShowShareMenu] = useState(false)
+
+  const shareUrl = (typeof window!=='undefined'?window.location.origin:'https://flitters.app')+'/p/'+post.id
+  const shareText = (post.content||(post.author?.display_name||'Someone')+' shared a post on Flitters').slice(0,100)
+  const handleShare = async () => {
+    if(navigator.share){
+      try { await navigator.share({title:'Flitters', text:shareText, url:shareUrl}) } catch(e){ /* user cancelled — no-op */ }
+    } else {
+      setShowShareMenu(true)
+    }
+  }
+  const copyShareLink = async () => {
+    try { await navigator.clipboard.writeText(shareUrl) } catch(e){}
+    setShowShareMenu(false)
+  }
 
   const loadComments = async(forceOpen) => {
     if(showComments && !forceOpen){setShowComments(false);return}
@@ -1188,7 +1228,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
   }
 
   return (
-    <div style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
       <div style={{display:'flex',gap:12}}>
         <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',flexShrink:0}}>
           <Avatar url={a.avatar_url} name={a.display_name} color={color} size={44}/>
@@ -1197,7 +1237,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:6,justifyContent:'space-between'}}>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
               <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{a.display_name}</button>
-              {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+              {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
               <span style={{color:'var(--text-secondary)',fontSize:13}}>@{a.username}</span>
               <span style={{color:'var(--text-faint)'}}>·</span>
               <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
@@ -1216,10 +1256,22 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
             <button onClick={toggleLike} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:liked?'#FF4757':'#555',fontSize:13,padding:'6px 0'}}>
               <Heart size={16} fill={liked?'#FF4757':'none'} color={liked?'#FF4757':'currentColor'}/><span>{likes}</span>
             </button>
-            <button style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'var(--text-secondary)',fontSize:13,padding:'6px 0'}}>
+            <button onClick={handleShare} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'var(--text-secondary)',fontSize:13,padding:'6px 0'}}>
               <Share size={16}/>
             </button>
           </div>
+          {showShareMenu&&(
+            <div onClick={()=>setShowShareMenu(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+              <div onClick={e=>e.stopPropagation()} className="sheet-in" style={{width:'100%',maxWidth:600,background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px',display:'flex',flexDirection:'column',gap:6}}>
+                <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)',marginBottom:6}}>Share this post</div>
+                <button onClick={copyShareLink} style={{display:'flex',alignItems:'center',gap:12,background:'none',border:'none',padding:'12px 4px',cursor:'pointer',color:'var(--text-primary)',fontSize:15,textAlign:'left'}}><Link2 size={19}/> Copy link</button>
+                <a href={`https://wa.me/?text=${encodeURIComponent(shareText+' '+shareUrl)}`} target="_blank" rel="noopener noreferrer" onClick={()=>setShowShareMenu(false)} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 4px',cursor:'pointer',color:'#25D366',fontSize:15,textDecoration:'none',fontWeight:600}}><MessageCircle size={19}/> WhatsApp</a>
+                <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer" onClick={()=>setShowShareMenu(false)} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 4px',cursor:'pointer',color:'#1877F2',fontSize:15,textDecoration:'none',fontWeight:600}}><Share2 size={19}/> Facebook</a>
+                <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer" onClick={()=>setShowShareMenu(false)} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 4px',cursor:'pointer',color:'var(--text-primary)',fontSize:15,textDecoration:'none',fontWeight:600}}><Share2 size={19}/> X (Twitter)</a>
+                <button onClick={()=>setShowShareMenu(false)} style={{marginTop:8,background:'var(--bg-card)',border:'none',borderRadius:14,padding:'12px',color:'var(--text-secondary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+              </div>
+            </div>
+          )}
           {showComments&&(
             <div className="sheet-in" style={{marginTop:12,borderTop:'1px solid var(--border-color)',paddingTop:12}}>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
@@ -2016,7 +2068,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
               <div>
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
-                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:7,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>XV</span></span>}
+                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><img src="/flitters-logo-white.svg" alt="Verified" width={9} height={9} style={{objectFit:'contain',display:'block'}}/></span>}
                   {reel.author?.is_authentic&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'#1877F2',flexShrink:0}}><svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'><polyline points='2,6 5,9 10,3' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
                 </div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>@{reel.author?.username}</div>
@@ -2595,7 +2647,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
       </div>
       {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No ads yet</p></div>}
       {ads.map(ad=>(
-        <div key={ad.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
+        <div key={ad.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
             <div>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -2729,6 +2781,11 @@ function FlittersAppInner({ currentUser }) {
       })
       window.history.replaceState({},'',window.location.pathname)
     }
+    const pid = params.get('openpost')
+    if(pid){
+      openPost(pid)
+      window.history.replaceState({},'',window.location.pathname)
+    }
   },[])
   const [people, setPeople] = useState([])
   const [notifs, setNotifs] = useState([])
@@ -2860,21 +2917,32 @@ function FlittersAppInner({ currentUser }) {
     const setupPush = async() => {
       try {
         if(!('Notification' in window)) { console.log('No Notification API'); return }
-        if(Notification.permission === 'default') {
-          await Notification.requestPermission()
-        }
         if(!('serviceWorker' in navigator)) { console.log('No SW'); return }
         if(!('PushManager' in window)) { console.log('No PushManager'); return }
+
+        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+        if(!vapidKey) { console.log('Push setup skipped: NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set'); return }
+
+        // Clean up any other service worker registration (e.g. a leftover
+        // OneSignal worker from a previous setup) so it can't compete for
+        // the same push scope and cause duplicate/conflicting deliveries.
+        const existingRegs = await navigator.serviceWorker.getRegistrations()
+        for(const r of existingRegs){
+          const scriptUrl = r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || ''
+          if(scriptUrl && !scriptUrl.endsWith('/sw.js')) await r.unregister()
+        }
+
         const reg = await navigator.serviceWorker.register('/sw.js')
         await navigator.serviceWorker.ready
         let permission = Notification.permission
         if(permission === 'default') permission = await Notification.requestPermission()
         if(permission !== 'granted') { console.log('Permission:',permission); return }
+
         let sub = await reg.pushManager.getSubscription()
         if(!sub) {
           sub = await reg.pushManager.subscribe({
             userVisibleOnly: true,
-            applicationServerKey: 'BPiikDJR1kYnVVizNObctiIofznuYwl0P6tGmViKwqy11Lzq5JJmMQ-tAwc12yx6tHWYrRrVOmNCUhguqjyP5Cs'
+            applicationServerKey: vapidKey
           })
         }
         const {error} = await supabase.from('push_subscriptions').upsert({
@@ -3351,9 +3419,10 @@ function FlittersAppInner({ currentUser }) {
 
   const sendPush = async(userId, title, body) => {
     try {
-      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).maybeSingle()
-      if(data?.subscription) {
-        const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:data.subscription,title,body,url:'/'})})
+      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).order('created_at',{ascending:false}).limit(1)
+      const subscription = data?.[0]?.subscription
+      if(subscription) {
+        const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription,title,body,url:'/'})})
         if(!res.ok) {
           const err = await res.json().catch(()=>({}))
           console.error('Push send failed:', res.status, err.error||'unknown error')
@@ -3387,7 +3456,7 @@ function FlittersAppInner({ currentUser }) {
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
         <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <img src="/flitters-mark.png" alt="Flitters" width="36" height="36" style={{objectFit:'contain'}} loading="lazy"/>
+          <img src="/flitters-mark.png" alt="Flitters" width="36" height="36" style={{objectFit:'contain',filter:theme==='light'?'drop-shadow(0 0 1px rgba(0,0,0,0.5)) drop-shadow(0 0 1px rgba(0,0,0,0.5))':'none'}} loading="lazy"/>
           <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>FLITTERS</span>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>

@@ -123,7 +123,7 @@ export default function AuthPage() {
         }
       } catch { /* non-fatal — account already created */ }
     }
-    window.location.href = '/'
+    window.location.href = new URLSearchParams(window.location.search).get('next') || '/'
   }
 
   const handleCreateAccount = async () => {
@@ -219,7 +219,7 @@ export default function AuthPage() {
       const loginEmailValue = usingEmail ? trimmed : `${trimmed.replace(/[^0-9]/g, '')}@phone.flitters.placeholder`
       const { error } = await supabase.auth.signInWithPassword({ email: loginEmailValue, password: loginPassword })
       if (error) throw error
-      window.location.href = '/'
+      window.location.href = new URLSearchParams(window.location.search).get('next') || '/'
     } catch (e) { setError(e.message) }
     setLoading(false)
   }
