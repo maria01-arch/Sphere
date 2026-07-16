@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { Camera } from 'lucide-react'
 
 const COUNTRIES = [
   'Nigeria','United States','United Kingdom','Canada','Ghana','South Africa','Kenya','Egypt',
@@ -395,7 +396,7 @@ export default function AuthPage() {
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
                 fontSize: 28, color: '#555'
               }}>
-                {!avatarPreview && '📷'}
+                {!avatarPreview && <Camera size={26}/>}
               </div>
               <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleAvatarPick(e.target.files?.[0])} />
               <span onClick={() => fileRef.current?.click()} style={{ color: '#A855F7', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>

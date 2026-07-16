@@ -2,6 +2,13 @@
 import { useEffect, useState, useRef, useCallback } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/lib/theme'
+import {
+  X, Check, CheckCheck, MessageCircle, MessageSquare, MapPin, Award, Settings,
+  Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
+  Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
+  Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
+  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle
+} from 'lucide-react'
 const supabase = createClient()
 
 class ErrorBoundary extends (require('react').Component) {
@@ -119,7 +126,7 @@ function ReplyComposerBar({ text, onCancel }) {
         {name&&<div style={{color:'#5B9CF6',fontSize:12,fontWeight:700}}>{name}</div>}
         <div style={{color:'var(--text-tertiary)',fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quoted}</div>
       </div>
-      <button onClick={onCancel} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:18,flexShrink:0}}>✕</button>
+      <button onClick={onCancel} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',flexShrink:0,display:'flex'}}><X size={18}/></button>
     </div>
   )
 }
@@ -177,16 +184,16 @@ function MessageBubble({
         {isEditing?(
           <div style={{display:'flex',gap:6}}>
             <input value={editValue} onChange={onEditChange} onKeyDown={e=>e.key==='Enter'&&onSaveEdit()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
-            <button onClick={onSaveEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer'}}>✓</button>
-            <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer'}}>✕</button>
+            <button onClick={onSaveEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center'}}><Check size={16}/></button>
+            <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center'}}><X size={16}/></button>
           </div>
         ):isSticker?(
           <div {...pressHandlers} onContextMenu={e=>e.preventDefault()} style={{WebkitTouchCallout:'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             <StickerMedia url={msg.sticker_url}/>
             <div style={{fontSize:10,color:msg._failed?'#F87171':'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
-              <span>{msg._failed?'⚠ Failed to send':timeAgo(msg.created_at)}</span>
-              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
             </div>
           </div>
         ):(
@@ -194,8 +201,8 @@ function MessageBubble({
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:msg.content}
             <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
-              <span>{msg._failed?'⚠ Failed to send':timeAgo(msg.created_at)}</span>
-              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',fontSize:13,lineHeight:1}}>{msg.read_at?'✓✓':'✓'}</span>}
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
             </div>
           </div>
         )}
@@ -461,7 +468,7 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
           <button key={p.id} onClick={()=>setActivePack(p.id)} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:activePack===p.id?'rgba(91,156,246,0.2)':'var(--bg-card)',color:activePack===p.id?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{p.name}</button>
         ))}
         {packs.length<=1&&<span style={{color:'var(--text-secondary)',fontSize:13,fontWeight:700}}>{packs[0]?.name||'My Stickers'}</span>}
-        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',fontSize:18,cursor:'pointer',flexShrink:0}}>✕</button>
+        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',flexShrink:0,display:'flex'}}><X size={18}/></button>
       </div>
       <div style={{flex:1,overflowY:'auto',padding:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,alignContent:'start'}}>
         {setupError?(
@@ -539,7 +546,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
         </div>
         <div style={{display:'flex',gap:8}}>
           {profile?.id !== currentUser.id && <>
-            <div onClick={()=>onMessage(profile)} style={{background:'var(--bg-card-6)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none'}}>💬 Message</div>
+            <div onClick={()=>onMessage(profile)} style={{background:'var(--bg-card-6)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none',display:'inline-flex',alignItems:'center',gap:6}}><MessageCircle size={15}/> Message</div>
             <button onClick={toggleFollow} style={{background:isFollowing?'var(--bg-card)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:isFollowing?'1px solid rgba(255,255,255,0.15)':'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:700,fontSize:13}}>
               {isFollowing?'Following':'Follow'}
             </button>
@@ -552,7 +559,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
         </div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
         {profile?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
-        {profile?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:8}}>📍 {profile.location}</p>}
+        {profile?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:8,display:'flex',alignItems:'center',gap:4}}><MapPin size={13}/> {profile.location}</p>}
         <div style={{display:'flex',gap:20}}>
           <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'var(--text-secondary)'}}>Following</span></span>
           <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'var(--text-secondary)'}}>Followers</span></span>
@@ -579,7 +586,7 @@ function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) 
     setSaving(true)
     const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod})
     if(error) showMsg(error.message,false)
-    else showMsg("Application submitted! We will review within 48 hours. ✓")
+    else showMsg("Application submitted! We will review within 48 hours.")
     setSaving(false)
   }
   return(<div>
@@ -599,7 +606,7 @@ function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) 
       <option value="">Select payment method</option>
       <option>USDT TRC-20</option><option>Bitcoin BTC</option>
     </select>
-    <button onClick={submit} style={{width:"100%",background:"linear-gradient(135deg,#FFD700,#FFA500)",border:"none",borderRadius:12,padding:"14px",color:"#000",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:8}}>{saving?"Submitting...":"Submit Application 🏅"}</button>
+    <button onClick={submit} style={{width:"100%",background:"linear-gradient(135deg,#FFD700,#FFA500)",border:"none",borderRadius:12,padding:"14px",color:"#000",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:8}}>{saving?"Submitting...":"Submit Application"}</button>
   </div>)
 }
 
@@ -629,7 +636,7 @@ function ThemeToggleRow() {
       <div style={{ display: 'flex', gap: 8 }}>
         {opt('light', '☀️', 'Light')}
         {opt('dark', '🌙', 'Dark')}
-        {opt('system', '⚙️', 'System')}
+        {opt('system', <Settings size={18}/>, 'System')}
       </div>
     </div>
   )
@@ -770,7 +777,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         {LANGUAGES.map(lang=>(
           <div key={lang} onClick={()=>setLanguage(lang)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',cursor:'pointer',borderBottom:'1px solid var(--bg-card-4)',background:language===lang?'rgba(91,156,246,0.08)':'transparent'}}>
             <span style={{fontSize:15}}>{lang}</span>
-            {language===lang&&<span style={{color:'#5B9CF6',fontSize:18}}>✓</span>}
+            {language===lang&&<span style={{color:'#5B9CF6',display:'flex'}}><Check size={18}/></span>}
           </div>
         ))}
       </div>
@@ -780,11 +787,11 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
 
   if(section==='verify') return (
     <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <Header title="Get Verified ✓"/>
+      <Header title="Get Verified"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
         <div style={{background:'linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,165,0,0.08))',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'20px',marginBottom:24,textAlign:'center'}}>
-          <div style={{fontSize:48,marginBottom:8}}>🏅</div>
+          <div style={{marginBottom:8,display:'flex',justifyContent:'center',color:'#5B9CF6'}}><Award size={48}/></div>
           <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Flitters Verified Badge</h2>
           <p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
           <p style={{color:'#FFD700',fontWeight:700,fontSize:18,marginTop:12}}>One-time fee: $5 USD</p>
@@ -806,10 +813,10 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   if(section==='notiftest') {
     const runTest = async () => {
       setTestMsg('')
-      if (typeof Notification === 'undefined') { setTestMsg('❌ This browser/app does not support the Notification API at all.'); return }
+      if (typeof Notification === 'undefined') { setTestMsg('This browser/app does not support the Notification API at all.'); return }
       let perm = Notification.permission
       if (perm === 'default') { perm = await Notification.requestPermission(); setPermState(perm) }
-      if (perm !== 'granted') { setTestMsg('❌ Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
+      if (perm !== 'granted') { setTestMsg('Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
       try {
         if('serviceWorker' in navigator){
           const reg = await navigator.serviceWorker.ready
@@ -817,9 +824,9 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         } else {
           new Notification('Flitters Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
         }
-        setTestMsg('✅ Test notification sent — check if it appeared.')
+        setTestMsg('Test notification sent — check if it appeared.')
       } catch(e) {
-        setTestMsg('❌ showNotification() threw an error: ' + e.message)
+        setTestMsg('showNotification() threw an error: ' + e.message)
       }
     }
     return (
@@ -847,13 +854,13 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       </div>
       <div style={{padding:'12px 0'}}>
         <ThemeToggleRow/>
-        {[{icon:'🖼️',label:'Profile Picture',id:'avatar'},{icon:'👤',label:'Edit Profile',id:'profile'},{icon:'🔒',label:'Change Password',id:'password'},{icon:'📍',label:'Location',id:'location'},{icon:'🌐',label:'Language',id:'language'},{icon:'🏅',label:'Get Verified Badge',id:'verify'},{icon:'🔔',label:'Notifications',id:'notiftest'}].map(s=>(
+        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Award size={18}/>,label:'Get Verified Badge',id:'verify'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'}].map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
             <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
           </button>
         ))}
         <button onClick={onSignOut} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#FF4757',borderTop:'1px solid var(--border-color)',marginTop:8,fontSize:15}}>
-          <span style={{fontSize:22}}>🚪</span><span style={{fontWeight:600}}>Sign Out</span>
+          <LogOut size={20}/><span style={{fontWeight:600}}>Sign Out</span>
         </button>
         <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
           <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
@@ -893,7 +900,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>My Profile</span>
-        <button onClick={onSettings} style={{background:'none',border:'none',color:'var(--text-subtle)',cursor:'pointer',fontSize:22}}>⚙️</button>
+        <button onClick={onSettings} style={{background:'none',border:'none',color:'var(--text-subtle)',cursor:'pointer',display:'flex'}}><Settings size={22}/></button>
       </div>
       <div style={{height:110,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16}}>
@@ -903,7 +910,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><span style={{fontFamily:'serif',fontWeight:900,fontSize:9,background:'linear-gradient(135deg,#FFD700,#C9A84C)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'-0.5px',lineHeight:1}}>XV</span></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
         {currentUser?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
-        {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10}}>📍 {currentUser.location}</p>}
+        {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10,display:'flex',alignItems:'center',gap:4}}><MapPin size={13}/> {currentUser.location}</p>}
         <div style={{display:'flex',gap:20,marginBottom:16}}>
           <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'var(--text-secondary)'}}>Following</span></span>
           <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'var(--text-secondary)'}}>Followers</span></span>
@@ -912,14 +919,14 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
       <div style={{borderTop:'1px solid var(--border-color)'}}>
         <p style={{padding:'14px 16px',fontWeight:700,fontSize:15,borderBottom:'1px solid var(--border-color)'}}>My Posts</p>
         {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
-        {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📝</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No posts yet</p></div>}
+        {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><FileText size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No posts yet</p></div>}
         {posts.map(post=>(
           <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
             <p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:10}}>{post.content}</p>
             <div style={{display:'flex',gap:16,color:'var(--text-secondary)',fontSize:13,alignItems:'center'}}>
-              <span>💬 {post.comments_count}</span>
-              <span>❤️ {post.likes_count}</span>
-              <span>🔁 {post.reposts_count}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><MessageCircle size={14}/> {post.comments_count}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Heart size={14}/> {post.likes_count}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Repeat2 size={14}/> {post.reposts_count}</span>
               <span style={{marginLeft:'auto'}}>{timeAgo(post.created_at)}</span>
               <button onClick={()=>{ if(confirm('Delete this post?')) deletePost(post.id) }} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:8,padding:'4px 10px',color:'#FF4757',cursor:'pointer',fontSize:12,fontWeight:600}}>Delete</button>
             </div>
@@ -947,7 +954,7 @@ function ReelPreviewCard({ supabase, onOpen }) {
       <video src={reel.video_url} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
       <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
       <div style={{position:'absolute',top:12,left:12,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.5)',borderRadius:14,padding:'4px 10px'}}>
-        <span style={{fontSize:13}}>🎬</span>
+        <Clapperboard size={13}/>
         <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700}}>Reels</span>
       </div>
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
@@ -978,7 +985,7 @@ function AdCard({ ad }) {
           </div>
           {ad.content&&<p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:10}}>{ad.content}</p>}
           {ad.image_url&&<img src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover'}} alt="ad" loading="lazy"/>}
-          {ad.link_url&&<div style={{marginTop:10,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 14px',display:'inline-block',color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More →</div>}
+          {ad.link_url&&<div style={{marginTop:10,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 14px',display:'inline-flex',alignItems:'center',gap:4,color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More <ArrowRight size={14}/></div>}
         </div>
       </div>
     </div>
@@ -1025,7 +1032,7 @@ function CommentThread({ comment, depth, onUserClick, onReply }) {
           </div>
           {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}>{comment.content}</p>}
           {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt="" loading="lazy"/>}
-          <span onClick={()=>onReply(comment)} style={{display:'inline-block',marginTop:6,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}>↩ Reply</span>
+          <span onClick={()=>onReply(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,marginTop:6,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}><CornerUpLeft size={12}/> Reply</span>
         </div>
       </div>
       {hasChildren&&(
@@ -1088,7 +1095,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
         if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
         else if (post.user_id !== currentUser.id) {
           await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
-          sendPush&&sendPush(post.user_id, '❤️ New Like', (currentUser.display_name||'Someone')+' liked your post')
+          sendPush&&sendPush(post.user_id, 'New Like', (currentUser.display_name||'Someone')+' liked your post')
         }
       } else {
         await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
@@ -1145,7 +1152,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
         loadComments(true) // refresh thread so the new reply appears immediately
         if (post.user_id !== currentUser.id) {
           await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
-          sendPush&&sendPush(post.user_id, '💬 New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+          sendPush&&sendPush(post.user_id, 'New Comment', (currentUser.display_name||'Someone')+' commented on your post')
         }
       }
     } finally {
@@ -1195,22 +1202,22 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
               <span style={{color:'var(--text-faint)'}}>·</span>
               <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
             </div>
-            {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',fontSize:13,padding:'2px 6px'}}>🗑️</button>}
+            {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><Trash2 size={15}/></button>}
           </div>
           {post.content&&<p onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
           {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
           <div style={{display:'flex'}}>
             <button onClick={loadComments} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showComments?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
-              <span style={{fontSize:16}}>💬</span><span>{comments}</span>
+              <MessageCircle size={16}/><span>{comments}</span>
             </button>
             <button onClick={toggleRepost} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:reposted?'#00C9A7':'#555',fontSize:13,padding:'6px 0'}}>
-              <span style={{fontSize:16}}>🔁</span><span>{reposts}</span>
+              <Repeat2 size={16}/><span>{reposts}</span>
             </button>
             <button onClick={toggleLike} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:liked?'#FF4757':'#555',fontSize:13,padding:'6px 0'}}>
-              <span style={{fontSize:16}}>{liked?'❤️':'🤍'}</span><span>{likes}</span>
+              <Heart size={16} fill={liked?'#FF4757':'none'} color={liked?'#FF4757':'currentColor'}/><span>{likes}</span>
             </button>
             <button style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'var(--text-secondary)',fontSize:13,padding:'6px 0'}}>
-              <span style={{fontSize:16}}>📤</span>
+              <Share size={16}/>
             </button>
           </div>
           {showComments&&(
@@ -1231,13 +1238,13 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
               {replyingTo&&(
                 <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg-card-4)',borderRadius:10,padding:'6px 10px',marginBottom:8,fontSize:12,color:'var(--text-tertiary)'}}>
                   <span>Replying to <strong style={{color:'var(--text-primary)'}}>{replyingTo.author?.display_name}</strong></span>
-                  <span onClick={()=>setReplyingTo(null)} style={{cursor:'pointer',color:'var(--text-secondary)',fontSize:16,lineHeight:1}}>✕</span>
+                  <span onClick={()=>setReplyingTo(null)} style={{cursor:'pointer',color:'var(--text-secondary)',display:'flex'}}><X size={16}/></span>
                 </div>
               )}
               {replyImagePreview&&(
                 <div style={{position:'relative',display:'inline-block',marginBottom:8}}>
                   <img src={replyImagePreview} style={{maxHeight:120,borderRadius:10,display:'block'}} alt="" loading="lazy"/>
-                  <span onClick={()=>{setReplyImage(null);setReplyImagePreview('')}} style={{position:'absolute',top:-8,right:-8,background:'#FF4757',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:13,cursor:'pointer'}}>✕</span>
+                  <span onClick={()=>{setReplyImage(null);setReplyImagePreview('')}} style={{position:'absolute',top:-8,right:-8,background:'#FF4757',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',cursor:'pointer'}}><X size={13}/></span>
                 </div>
               )}
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
@@ -1245,8 +1252,8 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
                 <input value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply()} placeholder={replyingTo?'Write a reply...':'Write a comment...'} autoFocus
                   style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
                 <input ref={replyImageRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>pickReplyImage(e.target.files?.[0])}/>
-                <button onClick={()=>replyImageRef.current?.click()} style={{background:'var(--bg-card-2)',border:'none',borderRadius:'50%',width:34,height:34,color:'var(--text-tertiary)',cursor:'pointer',fontSize:15,flexShrink:0}}>📷</button>
-                <button onClick={submitReply} disabled={uploadingReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',cursor:'pointer',fontWeight:700,flexShrink:0,opacity:uploadingReply?0.6:1}}>{uploadingReply?'...':'→'}</button>
+                <button onClick={()=>replyImageRef.current?.click()} style={{background:'var(--bg-card-2)',border:'none',borderRadius:'50%',width:34,height:34,color:'var(--text-tertiary)',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Camera size={15}/></button>
+                <button onClick={submitReply} disabled={uploadingReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',cursor:'pointer',fontWeight:700,flexShrink:0,opacity:uploadingReply?0.6:1,display:'flex',alignItems:'center'}}>{uploadingReply?'...':<Send size={15}/>}</button>
               </div>
             </div>
           )}
@@ -1262,14 +1269,14 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
   const typeInfo = {
-    like:{emoji:'❤️',text:'liked your post'},
-    comment:{emoji:'💬',text:'commented on your post'},
-    follow:{emoji:'👤',text:'started following you'},
-    repost:{emoji:'🔁',text:'reposted your flit'},
-    welcome:{emoji:'🌐',text:'Welcome to Flitters!'},
-    follow_request:{emoji:'👤',text:'sent you a follow request'},
-    follow_accepted:{emoji:'✅',text:'accepted your follow request'},
-    mention:{emoji:'📌',text:'tagged you in a post'},
+    like:{icon:<Heart size={16} fill="#FF4757" color="#FF4757"/>,text:'liked your post'},
+    comment:{icon:<MessageCircle size={16}/>,text:'commented on your post'},
+    follow:{icon:<User size={16}/>,text:'started following you'},
+    repost:{icon:<Repeat2 size={16}/>,text:'reposted your flit'},
+    welcome:{icon:<Globe size={16}/>,text:'Welcome to Flitters!'},
+    follow_request:{icon:<User size={16}/>,text:'sent you a follow request'},
+    follow_accepted:{icon:<CheckCircle2 size={16}/>,text:'accepted your follow request'},
+    mention:{icon:<MessageSquare size={16}/>,text:'tagged you in a post'},
   }
   useEffect(()=>{
     supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data})=>{setNotifs(data||[]);setLoading(false)})
@@ -1282,16 +1289,16 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
   },[])
   return(
     <div>
-      <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'var(--text-primary)'}}>Notifications 🔔</div>
+      <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'var(--text-primary)',display:'flex',alignItems:'center',gap:8}}>Notifications <Bell size={18}/></div>
       {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
-      {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>🔔</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No notifications yet</p></div>}
+      {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Bell size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No notifications yet</p></div>}
       {notifs.map((n,i)=>{
-        const info = typeInfo[n.type]||{emoji:'🔔',text:''}
+        const info = typeInfo[n.type]||{icon:<Bell size={16}/>,text:''}
         const actor = n.actor
         const goesToPost = ['mention','like','comment','repost'].includes(n.type) && n.post_id
         return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
           <div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
-            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span>{info.emoji}</span>}
+            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span style={{color:'var(--text-secondary)',display:'flex'}}>{info.icon}</span>}
           </div>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Flitters'} </span>
@@ -1479,12 +1486,12 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     if(error){alert('Image upload failed: '+error.message);setSendingImg(false);return}
     const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
     const url = urlData.publicUrl
-    const tempMsg = {id:'temp_img_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'📷 [image]',image_url:url,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    const tempMsg = {id:'temp_img_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'[image]',image_url:url,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
     setMessages(prev=>[...prev,tempMsg])
-    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'📷',image_url:url}).select('id,created_at').single()
+    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',image_url:url}).select('id,created_at').single()
     if(inserted){
       gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
-        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'📷', image_url:url, created_at:inserted.created_at,
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', image_url:url, created_at:inserted.created_at,
         sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
         group_message_reactions:[]
       }})
@@ -1615,7 +1622,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Join Requests ({joinRequests.length})</span>
       </div>
-      {joinRequests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>📭</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No pending requests</p></div>}
+      {joinRequests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Inbox size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No pending requests</p></div>}
       {joinRequests.map(req=>(
         <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
           <Avatar url={req.profile?.avatar_url} name={req.profile?.display_name} color={req.profile?.avatar_color||'#5B9CF6'} size={46}/>
@@ -1688,25 +1695,25 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           <textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
           <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
           <div style={{display:'flex',gap:8,marginBottom:20}}>
-            <button onClick={()=>setEditJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:editJoinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:editJoinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer'}}>🌐 Anyone</button>
-            <button onClick={()=>setEditJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:editJoinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:editJoinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer'}}>🔒 Request</button>
+            <button onClick={()=>setEditJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:editJoinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:editJoinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Globe size={15}/> Anyone</button>
+            <button onClick={()=>setEditJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:editJoinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:editJoinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Lock size={15}/> Request</button>
           </div>
         </>}
         <div style={{borderRadius:16,overflow:'hidden',border:'1px solid var(--border-color)'}}>
           <button onClick={()=>{setShowSettings(false);setShowMembers(true)}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'var(--text-primary)',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
-            <span>👥 Members</span><span style={{color:'var(--text-secondary)'}}>{members.length} ›</span>
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}><Users size={16}/> Members</span><span style={{color:'var(--text-secondary)'}}>{members.length} ›</span>
           </button>
           <button onClick={copyInviteLink} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'#00C9A7',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
-            <span>🔗 Copy Invite Link</span><span style={{color:'var(--text-secondary)',fontSize:13}}>@{group.tag}</span>
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}><Link2 size={16}/> Copy Invite Link</span><span style={{color:'var(--text-secondary)',fontSize:13}}>@{group.tag}</span>
           </button>
           {(isAdmin||isCreator)&&<button onClick={()=>{setShowSettings(false);setShowRequests(true)}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'#F7B731',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
-            <span>📬 Join Requests</span>{joinRequests.length>0&&<span style={{background:'#FF4757',borderRadius:10,padding:'2px 8px',fontSize:12,color:'var(--text-primary)'}}>{joinRequests.length}</span>}
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}><Inbox size={16}/> Join Requests</span>{joinRequests.length>0&&<span style={{background:'#FF4757',borderRadius:10,padding:'2px 8px',fontSize:12,color:'var(--text-primary)'}}>{joinRequests.length}</span>}
           </button>}
           <button onClick={leaveGroup} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:isCreator?'1px solid rgba(255,255,255,0.07)':'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
-            🚪 Leave Group
+            <LogOut size={16}/> Leave Group
           </button>
           {(isCreator||isAdmin)&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
-            🗑️ Delete Group
+            <Trash2 size={16}/> Delete Group
           </button>}
         </div>
       </div>
@@ -1727,7 +1734,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
             <div style={{color:'var(--text-secondary)',fontSize:12}}>{members.length} members</div>
           </div>
         </div>
-        <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'var(--text-muted)',fontSize:22,cursor:'pointer'}}>⚙️</button>
+        <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',display:'flex'}}><Settings size={22}/></button>
       </div>
 
       <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,overflowY:'auto',height:0}}>
@@ -1748,11 +1755,11 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
                 )
               })}
             </div>
-            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setReplyToId(selectedMsg.id);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
-            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
+            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setReplyToId(selectedMsg.id);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><CornerUpLeft size={17}/> Reply</button>
+            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Copy size={17}/> Copy</button>}
             {selectedMsg.sender_id===currentUser.id&&<>
-              <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
-              <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
+              <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Pencil size={17}/> Edit</button>
+              <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Trash2 size={17}/> Delete</button>
             </>}
           </div>
         </div>}
@@ -1783,10 +1790,10 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         {showStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendSticker} onClose={()=>setShowStickerTray(false)}/>}
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
-          <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingImg?'⏳':'🖼️'}</button>
+          <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
           <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',fontSize:18,flexShrink:0}}>😊</button>
         <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
-          <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
+          <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
         </div>
       </div>
     </div>
@@ -1940,13 +1947,13 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   if(showUpload) return (
     <div style={{position:'fixed',inset:0,zIndex:400,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid var(--border-color)'}}>
-        <button onClick={()=>setShowUpload(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>setShowUpload(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Reel</span>
         <button onClick={uploadReel} disabled={!videoFile||uploading} style={{background:videoFile?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-2)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{uploading?'Uploading...':'Post'}</button>
       </div>
       <div style={{flex:1,padding:20,display:'flex',flexDirection:'column',gap:16}}>
         <div onClick={()=>fileRef.current?.click()} style={{height:200,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:8}}>
-          {videoFile?<><span style={{fontSize:40}}>🎬</span><span style={{color:'#00C9A7',fontSize:14}}>{videoFile.name}</span></>:<><span style={{fontSize:40}}>📹</span><span style={{color:'var(--text-secondary)',fontSize:14}}>Tap to select video</span></>}
+          {videoFile?<><Clapperboard size={36}/><span style={{color:'#00C9A7',fontSize:14}}>{videoFile.name}</span></>:<><Video size={36}/><span style={{color:'var(--text-secondary)',fontSize:14}}>Tap to select video</span></>}
         </div>
         <input ref={fileRef} type="file" accept="video/*" onChange={e=>setVideoFile(e.target.files[0])} style={{display:'none'}}/>
         <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Write a caption..." rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
@@ -1959,11 +1966,11 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
       onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
 
       {/* top controls */}
-      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'var(--text-primary)',fontSize:20,cursor:'pointer'}}>✕</button>
+      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={20}/></button>
       <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
 
       {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'var(--text-primary)'}}>
-        <p style={{fontSize:48}}>🎬</p>
+        <div style={{display:'flex',justifyContent:'center'}}><Clapperboard size={44}/></div>
         <p style={{fontSize:18,fontWeight:700}}>No reels yet</p>
         <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
       </div>}
@@ -2021,27 +2028,27 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           {/* action buttons */}
           <div style={{position:'absolute',bottom:130,right:12,display:'flex',flexDirection:'column',alignItems:'center',gap:22,zIndex:4}}>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>toggleLike(reel)}>
-              <span style={{fontSize:30}}>{liked[reel.id]?'❤️':'🤍'}</span>
+              <Heart size={28} fill={liked[reel.id]?'#FF4757':'none'} color={liked[reel.id]?'#FF4757':'currentColor'}/>
               <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
             </div>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>openComments(reel)}>
-              <span style={{fontSize:28}}>💬</span>
+              <MessageCircle size={26}/>
               <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
             </div>
             {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
-              <span style={{fontSize:26}}>🗑️</span>
+              <Trash2 size={24}/>
             </div>}
           </div>
 
           {currentIdx<reels.length-1&&<div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',color:'rgba(255,255,255,0.35)',fontSize:11,zIndex:4,display:'flex',flexDirection:'column',alignItems:'center',gap:2,pointerEvents:'none'}}>
-            <span style={{fontSize:14}}>↑</span><span>swipe up</span>
+            <ArrowRight size={14} style={{transform:'rotate(-90deg)'}}/><span>swipe up</span>
           </div>}
 
           {/* comments panel */}
           {showComments&&<div className="sheet-in" style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
             <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--border-color)'}}>
               <span style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>Comments</span>
-              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'var(--text-tertiary)',fontSize:22,cursor:'pointer'}}>✕</button>
+              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
               {comments.length===0&&<p style={{color:'var(--text-secondary)',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
@@ -2204,7 +2211,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
       </div>
       <style>{'@keyframes progress{from{width:0}to{width:100%}}'}</style>
       <div style={{padding:'20px 16px 8px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>{setViewingPulse(null);onHideNav&&onHideNav(false)}} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>{setViewingPulse(null);onHideNav&&onHideNav(false)}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <Avatar url={viewingPulse.author?.avatar_url} name={viewingPulse.author?.display_name} color={viewingPulse.author?.avatar_color||'#5B9CF6'} size={38}/>
         <div>
           <div style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{viewingPulse.author?.display_name}</div>
@@ -2233,7 +2240,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   if(showCreatePulse) return (
     <div className="screen-in" style={{minHeight:'100vh',background:pulseBg,color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Pulse</span>
         <button onClick={createPulse} disabled={saving||!pulseText.trim()} style={{background:'rgba(255,255,255,0.2)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Posting...':'Share'}</button>
       </div>
@@ -2249,7 +2256,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   if(showCreateGroup) return (
     <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>✕</button>
+        <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
         <button onClick={createGroup} disabled={saving||!groupName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Creating...':'Create'}</button>
       </div>
@@ -2267,8 +2274,8 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         <div style={{marginBottom:8}}>
           <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
           <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>setJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:joinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:joinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer'}}>🌐 Anyone</button>
-            <button onClick={()=>setJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:joinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:joinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer'}}>🔒 Request</button>
+            <button onClick={()=>setJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:joinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:joinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Globe size={15}/> Anyone</button>
+            <button onClick={()=>setJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:joinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:joinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Lock size={15}/> Request</button>
           </div>
         </div>
       </div>
@@ -2278,14 +2285,14 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   return (
     <div style={{paddingBottom:20}}>
       <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <span style={{fontWeight:800,fontSize:18}}>Pulse ⚡</span>
+        <span style={{fontWeight:800,fontSize:18,display:'inline-flex',alignItems:'center',gap:6}}>Pulse <Zap size={16}/></span>
         <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>{setShowReels(true);onHideNav&&onHideNav(true)}} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:12,padding:'6px 14px',color:'#FF4757',cursor:'pointer',fontWeight:700,fontSize:13}}>🎬 Reels</button>
+          <button onClick={()=>{setShowReels(true);onHideNav&&onHideNav(true)}} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:12,padding:'6px 14px',color:'#FF4757',cursor:'pointer',fontWeight:700,fontSize:13,display:'inline-flex',alignItems:'center',gap:6}}><Clapperboard size={14}/> Reels</button>
           <button onClick={()=>setShowCreateGroup(true)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'6px 14px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ Group</button>
         </div>
       </div>
       <div style={{padding:'0 16px 12px'}}>
-        <input value={groupSearch} onChange={e=>searchGroups(e.target.value)} placeholder="🔍 Search group by @tag..." style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:24,padding:'10px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+        <input value={groupSearch} onChange={e=>searchGroups(e.target.value)} placeholder="Search group by @tag..." style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:24,padding:'10px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
         {searchedGroups.length>0&&<div style={{marginTop:8,borderRadius:12,overflow:'hidden',border:'1px solid var(--bg-card-6)'}}>
           {searchedGroups.map(g=>{
             const isMember = g.group_members?.some(m=>m.user_id===currentUser.id)
@@ -2294,7 +2301,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
                 <div style={{width:42,height:42,borderRadius:12,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'var(--text-primary)',flexShrink:0}}>{g.name[0]}</div>
                 <div style={{flex:1}}>
                   <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>{g.name}</div>
-                  <div style={{color:'var(--text-secondary)',fontSize:12}}>@{g.tag} · {g.group_members?.length||0} members · {g.join_mode==='open'?'🌐 Open':'🔒 Request'}</div>
+                  <div style={{color:'var(--text-secondary)',fontSize:12,display:'flex',alignItems:'center',gap:4}}>@{g.tag} · {g.group_members?.length||0} members · {g.join_mode==='open'?<><Globe size={12}/> Open</>:<><Lock size={12}/> Request</>}</div>
                 </div>
                 <button onClick={()=>joinGroupByTag(g)} style={{background:isMember?'var(--bg-card)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 14px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>{isMember?'Open':'Join'}</button>
               </div>
@@ -2329,8 +2336,8 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         </div>
         {(Array.isArray(myPulse)?myPulse:[]).map(mp=>(
           <div key={mp.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0,position:'relative'}}>
-            <div onClick={()=>setViewingPulse({...mp,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}})} style={{width:64,height:64,borderRadius:'50%',background:mp.bg_color||'#5B9CF6',border:'3px solid #00C9A7',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,color:'var(--text-primary)',cursor:'pointer'}}>⚡</div>
-            <button onClick={async(e)=>{e.stopPropagation();await supabase.from('pulses').delete().eq('id',mp.id);setMyPulse(prev=>prev.filter(p=>p.id!==mp.id))}} style={{position:'absolute',top:-4,right:-4,width:20,height:20,borderRadius:'50%',background:'#FF4757',border:'none',color:'var(--text-primary)',fontSize:11,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>✕</button>
+            <div onClick={()=>setViewingPulse({...mp,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}})} style={{width:64,height:64,borderRadius:'50%',background:mp.bg_color||'#5B9CF6',border:'3px solid #00C9A7',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',cursor:'pointer'}}><Zap size={22}/></div>
+            <button onClick={async(e)=>{e.stopPropagation();await supabase.from('pulses').delete().eq('id',mp.id);setMyPulse(prev=>prev.filter(p=>p.id!==mp.id))}} style={{position:'absolute',top:-4,right:-4,width:20,height:20,borderRadius:'50%',background:'#FF4757',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={12}/></button>
             <span style={{color:'var(--text-subtle)',fontSize:11}}>My Pulse</span>
           </div>
         ))}
@@ -2432,9 +2439,9 @@ function FlittersAI({ currentUser, onClose }) {
           <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
         </div>
         <button onClick={()=>setDeepThink(d=>!d)} title="Toggle deep thinking mode" style={{marginLeft:'auto',background:deepThink?AI_GRADIENT:'var(--bg-card)',border:'none',borderRadius:14,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
-          🧠 {deepThink?'Deep':'Fast'}
+          <Brain size={14}/> {deepThink?'Deep':'Fast'}
         </button>
-        <button onClick={clearHistory} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 10px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>🗑</button>
+        <button onClick={clearHistory} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 10px',color:'#FF4757',fontWeight:700,cursor:'pointer',display:'flex'}}><Trash2 size={14}/></button>
       </div>
 
       <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
@@ -2472,8 +2479,8 @@ function FlittersAI({ currentUser, onClose }) {
       {showImgGen&&<div className="backdrop-in" style={{position:'fixed',inset:0,zIndex:10,background:'rgba(0,0,0,0.85)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:12}}>
         <div className="sheet-in" style={{width:'100%',maxWidth:400,background:'#1a1d26',borderRadius:20,padding:20,display:'flex',flexDirection:'column',gap:12}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
-            <span style={{fontWeight:700,fontSize:17,color:'var(--text-primary)'}}>🎨 Image Generator</span>
-            <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'var(--text-tertiary)',fontSize:22,cursor:'pointer'}}>✕</button>
+            <span style={{fontWeight:700,fontSize:17,color:'var(--text-primary)',display:'inline-flex',alignItems:'center',gap:8}}><Palette size={17}/> Image Generator</span>
+            <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
           </div>
           <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
           <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:AI_GRADIENT,border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
@@ -2485,13 +2492,13 @@ function FlittersAI({ currentUser, onClose }) {
             document.body.appendChild(a)
             a.click()
             document.body.removeChild(a)
-          }} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'10px',color:'var(--text-primary)',fontSize:13,cursor:'pointer'}}>💾 Save Image</button>}
+          }} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'10px',color:'var(--text-primary)',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Save size={15}/> Save Image</button>}
         </div>
       </div>}
       <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center'}}>
-        <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',fontSize:18,flexShrink:0}}>🎨</button>
+        <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Palette size={18}/></button>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask Flitters AI anything..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:26,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
-        <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'var(--bg-card-3)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
+        <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'var(--bg-card-3)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
       </div>
     </div>
   )
@@ -2565,14 +2572,14 @@ function AdminPanel({ currentUser, supabase, onBack }) {
       </div>
       <div style={{padding:20,display:'flex',flexDirection:'column',gap:12}}>
         <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>setAdType('post')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='post'?'#F7B731':'var(--bg-card-2)'),background:adType==='post'?'rgba(247,183,49,0.15)':'transparent',color:adType==='post'?'#F7B731':'#888',fontWeight:700,cursor:'pointer'}}>📝 Feed Post</button>
-          <button onClick={()=>setAdType('reel')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='reel'?'#F7B731':'var(--bg-card-2)'),background:adType==='reel'?'rgba(247,183,49,0.15)':'transparent',color:adType==='reel'?'#F7B731':'#888',fontWeight:700,cursor:'pointer'}}>🎬 Reel Video</button>
+          <button onClick={()=>setAdType('post')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='post'?'#F7B731':'var(--bg-card-2)'),background:adType==='post'?'rgba(247,183,49,0.15)':'transparent',color:adType==='post'?'#F7B731':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><FileText size={15}/> Feed Post</button>
+          <button onClick={()=>setAdType('reel')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='reel'?'#F7B731':'var(--bg-card-2)'),background:adType==='reel'?'rgba(247,183,49,0.15)':'transparent',color:adType==='reel'?'#F7B731':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Clapperboard size={15}/> Reel Video</button>
         </div>
         <input value={advertiserName} onChange={e=>setAdvertiserName(e.target.value)} placeholder="Advertiser/Brand name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
         <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Ad text/caption" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
         <input value={linkUrl} onChange={e=>setLinkUrl(e.target.value)} placeholder="Link URL (optional)" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
         <div onClick={()=>fileRef.current?.click()} style={{height:120,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:6}}>
-          {mediaFile?<span style={{color:'#00C9A7',fontSize:13}}>{mediaFile.name}</span>:<><span style={{fontSize:28}}>{adType==='reel'?'📹':'🖼️'}</span><span style={{color:'var(--text-secondary)',fontSize:13}}>Tap to select {adType==='reel'?'video':'image'} (optional)</span></>}
+          {mediaFile?<span style={{color:'#00C9A7',fontSize:13}}>{mediaFile.name}</span>:<>{adType==='reel'?<Video size={26}/>:<ImageIcon size={26}/>}<span style={{color:'var(--text-secondary)',fontSize:13}}>Tap to select {adType==='reel'?'video':'image'} (optional)</span></>}
         </div>
         <input ref={fileRef} type="file" accept={adType==='reel'?'video/*':'image/*'} onChange={e=>setMediaFile(e.target.files[0])} style={{display:'none'}}/>
       </div>
@@ -2586,14 +2593,14 @@ function AdminPanel({ currentUser, supabase, onBack }) {
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Ad Manager</span>
         <button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>
       </div>
-      {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>📢</p><p style={{color:'var(--text-secondary)',marginTop:8}}>No ads yet</p></div>}
+      {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No ads yet</p></div>}
       {ads.map(ad=>(
         <div key={ad.id} style={{padding:'14px 16px',borderBottom:'1px solid rgba(255,255,255,0.06)'}}>
           <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
             <div>
               <div style={{display:'flex',gap:8,alignItems:'center'}}>
                 <span style={{fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
-                <span style={{background:ad.type==='reel'?'rgba(255,71,87,0.15)':'rgba(91,156,246,0.15)',borderRadius:6,padding:'1px 6px',fontSize:10,color:ad.type==='reel'?'#FF4757':'#5B9CF6',fontWeight:700}}>{ad.type==='reel'?'🎬 REEL':'📝 POST'}</span>
+                <span style={{background:ad.type==='reel'?'rgba(255,71,87,0.15)':'rgba(91,156,246,0.15)',borderRadius:6,padding:'1px 6px',fontSize:10,color:ad.type==='reel'?'#FF4757':'#5B9CF6',fontWeight:700,display:'inline-flex',alignItems:'center',gap:3}}>{ad.type==='reel'?<><Clapperboard size={10}/> REEL</>:<><FileText size={10}/> POST</>}</span>
               </div>
               <span style={{color:ad.active?'#00C9A7':'#555',fontSize:12}}>{ad.active?'● Active':'○ Inactive'}</span>
             </div>
@@ -3221,7 +3228,7 @@ function FlittersAppInner({ currentUser }) {
         setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
       }
       if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
-        sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), content.slice(0,100))
+        sendPush(selectedConv.other.id, (currentUser.display_name||'New message'), content.slice(0,100))
       }
       loadConvos()
     } finally { dmSendInFlight.current = false }
@@ -3284,13 +3291,13 @@ function FlittersAppInner({ currentUser }) {
     const {data:urlData}=supabase.storage.from('avatars').getPublicUrl(path)
     const url=urlData.publicUrl
     const tempId = 'tmp_img'+Date.now()
-    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
     setMessages(prev=>[...prev,tmp])
-    const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'📷',image_url:url}).select('id,created_at').single()
+    const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',image_url:url}).select('id,created_at').single()
     if(inserted){
       setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
       dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
-        id:inserted.id, sender_id:currentUser.id, content:'📷', image_url:url, created_at:inserted.created_at,
+        id:inserted.id, sender_id:currentUser.id, content:'', image_url:url, created_at:inserted.created_at,
         sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
         message_reactions:[]
       }})
@@ -3313,7 +3320,7 @@ function FlittersAppInner({ currentUser }) {
         message_reactions:[]
       }})
       if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
-        sendPush(selectedConv.other.id, '💬 '+(currentUser.display_name||'New message'), (currentUser.display_name||'Someone')+' sent you a sticker')
+        sendPush(selectedConv.other.id, (currentUser.display_name||'New message'), (currentUser.display_name||'Someone')+' sent you a sticker')
       }
       loadConvos()
     } else {
@@ -3355,7 +3362,7 @@ function FlittersAppInner({ currentUser }) {
     } catch(e) { console.log('Push send error',e) }
   }
 
-  const TABS=[{id:'home',label:'Home',icon:'🏠'},{id:'messages',label:'Messages',icon:'💬'},{id:'pulse',label:'Pulse',icon:'⚡'},{id:'friends',label:'People',icon:'👥'},{id:'notifications',label:'Alerts',icon:'🔔'}]
+  const TABS=[{id:'home',label:'Home',icon:<Home size={22}/>},{id:'messages',label:'Messages',icon:<MessageCircle size={22}/>},{id:'pulse',label:'Pulse',icon:<Zap size={22}/>},{id:'friends',label:'People',icon:<Users size={22}/>},{id:'notifications',label:'Alerts',icon:<Bell size={22}/>}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#FlittersSpotlight',posts:'445K',cat:'Flitters'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   
@@ -3385,8 +3392,8 @@ function FlittersAppInner({ currentUser }) {
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           
-          {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700}}>📢 Ads</button>}
-<button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',fontSize:22}}>⚙️</button>
+          {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><Megaphone size={13}/> Ads</button>}
+<button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Settings size={22}/></button>
         </div>
       </div>}
 
@@ -3398,11 +3405,11 @@ function FlittersAppInner({ currentUser }) {
             ))}
           </div>
           {loading&&<div style={{padding:'50px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</div>}
-          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🌐</p><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters! 🎵'}</p></div>}
+          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Globe size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters!'}</p></div>}
           {posts.map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
               {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
-                <span style={{fontSize:14}}>🔁</span>
+                <Repeat2 size={14}/>
                 <span><strong style={{color:'var(--text-subtle)'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
               </div>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
@@ -3519,11 +3526,11 @@ function FlittersAppInner({ currentUser }) {
                       )
                     })}
                   </div>
-                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setDmReplyToId(selectedDMMsg.id);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>↩ Reply</button>
-                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left'}}>📋 Copy</button>}
+                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setDmReplyToId(selectedDMMsg.id);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><CornerUpLeft size={17}/> Reply</button>
+                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Copy size={17}/> Copy</button>}
                   {selectedDMMsg.sender_id===currentUser.id&&<>
-                    <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left'}}>✏️ Edit</button>
-                    <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left'}}>🗑️ Delete</button>
+                    <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Pencil size={17}/> Edit</button>
+                    <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Trash2 size={17}/> Delete</button>
                   </>}
                 </div>
               </div>}
@@ -3553,10 +3560,10 @@ function FlittersAppInner({ currentUser }) {
               {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onClose={()=>setShowDMStickerTray(false)}/>}
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
-              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',fontSize:18,flexShrink:0}}>{sendingDMImg?'⏳':'🖼️'}</button>
+              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
               <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',fontSize:18,flexShrink:0}}>😊</button>
               <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
-              <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',fontSize:20,flexShrink:0}}>→</button>
+              <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
               </div>
             </div>
           </div>}
@@ -3564,11 +3571,11 @@ function FlittersAppInner({ currentUser }) {
 
         {tab==='friends'&&<>
           <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(12px)'}}>
-            <button onClick={()=>setFriendsSubTab('friends')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='friends'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='friends'?'#fff':'#555',fontWeight:friendsSubTab==='friends'?700:500,fontSize:14,cursor:'pointer'}}>👥 Friends</button>
+            <button onClick={()=>setFriendsSubTab('friends')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='friends'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='friends'?'#fff':'#555',fontWeight:friendsSubTab==='friends'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Users size={15}/> Friends</button>
             <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer'}}>🔭 Explore</button>
           </div>
           {friendsSubTab==='friends'&&<>
-            {people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><p style={{fontSize:40}}>👥</p><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
+            {people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Users size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
             {people.filter(u=>followed[u.id]).map((u,i)=>(
               <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
                 <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
@@ -3603,7 +3610,7 @@ function FlittersAppInner({ currentUser }) {
         </>}
 
         {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef} reelsRef={reelsRef}/>}
-        {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><p style={{fontSize:48}}>🔍</p><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
+        {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Search size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
         {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>}
       </div>
@@ -3639,12 +3646,12 @@ function FlittersAppInner({ currentUser }) {
               <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'var(--text-primary)',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
               {composeImageUrl&&<div style={{position:'relative',marginBottom:8}}>
                 <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview" loading="lazy"/>
-                <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'var(--text-primary)',cursor:'pointer',fontSize:14}}>✕</button>
+                <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={14}/></button>
               </div>}
               <input ref={composeImgRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){setComposeImage(f);if(typeof window!=='undefined')setComposeImageUrl(URL.createObjectURL(f))}}} style={{display:'none'}}/>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:12,borderTop:'1px solid var(--border-color)'}}>
                 <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                  <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',fontSize:22}}>🖼️</button>
+                  <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',display:'flex'}}><ImageIcon size={22}/></button>
                   <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
                 </div>
                 <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Flit it</button>
