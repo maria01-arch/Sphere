@@ -2,7 +2,7 @@ export const metadata = { title: 'Privacy Policy — Flitters', description: 'Fl
 
 export default function PrivacyPolicy() {
   const s = {
-    page: { minHeight:'100vh', background:'#090B10', color:'#fff', fontFamily:'sans-serif', padding:'0 0 80px' },
+    page: { minHeight:'100dvh', background:'#090B10', color:'#fff', fontFamily:'sans-serif', padding:'0 0 80px' },
     header: { padding:'24px 20px', borderBottom:'1px solid rgba(255,255,255,0.07)', display:'flex', alignItems:'center', gap:12 },
     logoText: { fontWeight:900, fontSize:20, background:'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent', letterSpacing:'-0.5px' },
     body: { maxWidth:680, margin:'0 auto', padding:'32px 20px' },

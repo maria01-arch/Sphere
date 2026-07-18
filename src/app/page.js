@@ -40,7 +40,7 @@ export default function Home() {
   }, [])
 
   if (failedToLoad) return (
-    <div style={{ minHeight: '100vh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
+    <div style={{ minHeight: '100dvh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
       <img src="/flitters-mark.png" alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }} />
       <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Setting up your account</p>
       <p style={{ color: '#888', fontSize: 14, maxWidth: 320 }}>This is taking longer than expected. Please try again in a moment.</p>
@@ -50,7 +50,7 @@ export default function Home() {
 
   if (loading) return (
     <div style={{
-      minHeight: '100vh', background: '#090B10',
+      minHeight: '100dvh', background: '#090B10',
       display: 'flex', flexDirection: 'column',
       alignItems: 'center', justifyContent: 'center', gap: 24,
       opacity: fadeOut ? 0 : 1,

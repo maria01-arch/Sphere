@@ -1,5 +1,4 @@
 import './globals.css'
-import Script from 'next/script'
 
 export const metadata = {
   title: 'Flitters — Connect Globally',
@@ -60,12 +59,6 @@ export default function RootLayout({ children }) {
               document.documentElement.setAttribute('data-theme', theme);
             }catch(e){}})();`
           }}
-        />
-        <Script
-          async
-          src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1625129471311969"
-          crossOrigin="anonymous"
-          strategy="afterInteractive"
         />
       </head>
       <body>{children}</body>

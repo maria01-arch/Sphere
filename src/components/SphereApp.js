@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState, useRef, useCallback } from 'react'
+import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/lib/theme'
 import {
@@ -16,7 +16,7 @@ class ErrorBoundary extends (require('react').Component) {
   static getDerivedStateFromError(e) { return {error:e} }
   render() {
     if(this.state.error) return (
-      <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)',padding:20,fontFamily:'sans-serif'}}>
+      <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',padding:20,fontFamily:'sans-serif'}}>
         <h2 style={{color:'#FF4757'}}>App Error</h2>
         <p style={{color:'var(--text-subtle)',fontSize:14,wordBreak:'break-word'}}>{this.state.error?.message}</p>
         <pre style={{color:'var(--text-muted)',fontSize:11,overflow:'auto'}}>{this.state.error?.stack?.slice(0,500)}</pre>
@@ -158,7 +158,25 @@ function StickerMedia({ url, size=132 }) {
 // Single message row: avatar (for others) + bubble + reactions.
 // Bubble corners are uniform/rounded (no tail) — pill-style like Beeper.
 // Reply quotes render *inside* the bubble — WhatsApp-style — via ReplyQuoteInline.
-function MessageBubble({
+// Custom comparator: the call sites pass onClick/onLongPress/etc as fresh
+// inline arrow functions on every parent render (they close over `msg`,
+// which is itself a stable reference from the `messages` array state), so a
+// plain shallow-compare memo would never skip a re-render — every keystroke
+// in the composer would re-render the entire message list. Comparing only
+// the props that actually affect what's rendered lets memo do its job.
+function messageBubblePropsEqual(prev, next) {
+  return prev.msg === next.msg &&
+    prev.own === next.own &&
+    prev.reactions === next.reactions &&
+    prev.isEditing === next.isEditing &&
+    prev.editValue === next.editValue &&
+    prev.highlighted === next.highlighted &&
+    prev.showSenderInfo === next.showSenderInfo &&
+    prev.showReadTicks === next.showReadTicks &&
+    prev.currentUserId === next.currentUserId &&
+    prev.rowId === next.rowId
+}
+const MessageBubble = memo(function MessageBubble({
   msg, own, showSenderInfo=false,
   onAvatarClick, onImageClick,
   onLongPress, onPressEnd,
@@ -215,7 +233,7 @@ function MessageBubble({
       </div>
     </div>
   )
-}
+}, messageBubblePropsEqual)
 
 // ── STICKER TRAY (shared by DM + GroupChat) ─────────────────────────────────
 // Sticker packs are shared/public (anyone can browse & send from any pack,
@@ -533,8 +551,8 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>{profile?.display_name}</span>
       </div>
@@ -728,14 +746,14 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const MsgBox = () => msg.text ? <div style={{padding:'10px 14px',borderRadius:10,background:msg.ok?'rgba(0,201,167,0.1)':'rgba(255,71,87,0.1)',border:`1px solid ${msg.ok?'rgba(0,201,167,0.2)':'rgba(255,71,87,0.2)'}`,color:msg.ok?'#00C9A7':'#FF4757',fontSize:13,marginBottom:16}}>{msg.text}</div> : null
 
   const Header = ({title}) => (
-    <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
       <button onClick={()=>setSection('main')} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
       <span style={{fontWeight:700,fontSize:17}}>{title}</span>
     </div>
   )
 
   if (section==='avatar') return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Profile Picture"/>
       <div style={{padding:'30px 20px',display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
         <MsgBox/>
@@ -750,7 +768,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='profile') return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Edit Profile"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
@@ -766,7 +784,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='password') return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Change Password"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
@@ -782,7 +800,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='location') return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Location"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
@@ -796,7 +814,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
   if (section==='language') return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Language"/>
       <div style={{padding:'8px 0'}}>
         {LANGUAGES.map(lang=>(
@@ -811,7 +829,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
 
 
   if(section==='verify') return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Get Verified"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
@@ -855,7 +873,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       }
     }
     return (
-      <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
         <Header title="Notifications"/>
         <div style={{padding:'20px 16px'}}>
           <div style={{background:'var(--bg-card-5)',border:'1px solid var(--bg-card-6)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'var(--text-subtle)'}}>
@@ -872,8 +890,8 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Settings</span>
       </div>
@@ -921,8 +939,8 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
   }
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>My Profile</span>
         <button onClick={onSettings} style={{background:'none',border:'none',color:'var(--text-subtle)',cursor:'pointer',display:'flex'}}><Settings size={22}/></button>
@@ -1017,30 +1035,6 @@ function AdCard({ ad }) {
   )
 }
 
-function AdsenseCard() {
-  const ref = useRef(null)
-  useEffect(()=>{
-    try {
-      if(ref.current && ref.current.offsetWidth > 0) {
-        ;(window.adsbygoogle = window.adsbygoogle || []).push({})
-      }
-    } catch(e){}
-  },[])
-  return (
-    <div ref={ref} style={{padding:'8px 16px',borderBottom:'1px solid var(--border-color)'}}>
-      <div style={{display:'flex',justifyContent:'flex-end',marginBottom:4}}>
-        <span style={{fontSize:9,color:'var(--text-faint)',letterSpacing:0.5}}>ADVERTISEMENT</span>
-      </div>
-      <ins className="adsbygoogle"
-        style={{display:'block'}}
-        data-ad-format="fluid"
-        data-ad-layout-key="-e5+6k-30-ac+ty"
-        data-ad-client="ca-pub-1625129471311969"
-        data-ad-slot="7026369503"/>
-    </div>
-  )
-}
-
 
 function CommentThread({ comment, depth, onUserClick, onReply }) {
   const hasChildren = comment.children && comment.children.length > 0
@@ -1071,7 +1065,12 @@ function CommentThread({ comment, depth, onUserClick, onReply }) {
   )
 }
 
-function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
+function postCardPropsEqual(prev, next) {
+  return prev.post === next.post &&
+    prev.currentUser?.id === next.currentUser?.id &&
+    prev.autoExpandComments === next.autoExpandComments
+}
+const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
   const [likes, setLikes] = useState(post.likes_count||0)
@@ -1313,7 +1312,7 @@ function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPo
       </div>
     </div>
   )
-}
+}, postCardPropsEqual)
 
 // ── MAIN APP ───────────────────────────────────────────────────────────────
 
@@ -1669,8 +1668,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
 
   if(showRequests) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Join Requests ({joinRequests.length})</span>
       </div>
@@ -1692,8 +1691,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   if(showMembers) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowMembers(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Members ({members.length})</span>
       </div>
@@ -1727,8 +1726,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   )
 
   if(showSettings) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Group Settings</span>
         {isCreator&&<button onClick={saveGroupSettings} disabled={editSaving} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>{editSaving?'Saving...':'Save'}</button>}
@@ -1775,7 +1774,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   return (
     <div className="screen-in-safe full-screen-height" style={{background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
-      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
           <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',overflow:'hidden'}}>
@@ -2014,17 +2013,17 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   )
 
   return (
-    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',overflow:'hidden',overscrollBehavior:'none',touchAction:'pan-y'}}
+    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',color:'#fff',overflow:'hidden',overscrollBehavior:'none',touchAction:'pan-y'}}
       onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
 
       {/* top controls */}
-      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={20}/></button>
-      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'var(--text-primary)',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
+      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={20}/></button>
+      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
 
-      {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'var(--text-primary)'}}>
+      {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'#fff'}}>
         <div style={{display:'flex',justifyContent:'center'}}><Clapperboard size={44}/></div>
         <p style={{fontSize:18,fontWeight:700}}>No reels yet</p>
-        <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
+        <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
       </div>}
 
       {/* animated reel container */}
@@ -2032,16 +2031,16 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
         {isAdSlot&&currentAd?<>
           <video src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={false}/>
           <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
-          <div style={{position:'absolute',bottom:100,left:16,right:80,color:'var(--text-primary)'}}>
+          <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'var(--text-primary)'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
+              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
                 <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{currentAd.advertiser_name}</span>
                 <span style={{background:'rgba(247,183,49,0.2)',border:'1px solid rgba(247,183,49,0.4)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
               </div>
             </div>
             {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
-            {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
+            {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
           </div>
         </>:reel?<>
           {/* dark background while buffering — no gray flash */}
@@ -2062,7 +2061,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           </div>}
 
           {/* author + caption */}
-          <div style={{position:'absolute',bottom:showComments?'52%':110,left:16,right:80,color:'var(--text-primary)',zIndex:4,transition:'bottom 0.3s'}}>
+          <div style={{position:'absolute',bottom:showComments?'52%':110,left:16,right:80,color:'#fff',zIndex:4,transition:'bottom 0.3s'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,cursor:'pointer'}} onClick={()=>onUserClick(reel.author)}>
               <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={38}/>
               <div>
@@ -2081,11 +2080,11 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           <div style={{position:'absolute',bottom:130,right:12,display:'flex',flexDirection:'column',alignItems:'center',gap:22,zIndex:4}}>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>toggleLike(reel)}>
               <Heart size={28} fill={liked[reel.id]?'#FF4757':'none'} color={liked[reel.id]?'#FF4757':'currentColor'}/>
-              <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
             </div>
             <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>openComments(reel)}>
               <MessageCircle size={26}/>
-              <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
             </div>
             {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
               <Trash2 size={24}/>
@@ -2098,30 +2097,30 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
 
           {/* comments panel */}
           {showComments&&<div className="sheet-in" style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
-            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid var(--border-color)'}}>
-              <span style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>Comments</span>
-              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
+            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+              <span style={{fontWeight:700,fontSize:15,color:'#fff'}}>Comments</span>
+              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.5)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
             </div>
             <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
-              {comments.length===0&&<p style={{color:'var(--text-secondary)',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
+              {comments.length===0&&<p style={{color:'rgba(255,255,255,0.55)',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
               {comments.map(c=>(
                 <div key={c.id} style={{display:'flex',gap:10,alignItems:'flex-end'}}>
                   <div style={{cursor:'pointer',flexShrink:0}} onClick={()=>{ setShowComments(false); onUserClick(c.author) }}>
                     <Avatar url={c.author?.avatar_url} name={c.author?.display_name} color={c.author?.avatar_color||'#5B9CF6'} size={32}/>
                   </div>
                   <div style={{flex:1,maxWidth:'80%'}}>
-                    <div style={{fontSize:11,color:'var(--text-secondary)',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
-                    <div style={{background:'var(--bg-card-7)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
+                    <div style={{fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
+                    <div style={{background:'rgba(255,255,255,0.09)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
                       <span style={{fontSize:14,color:'rgba(255,255,255,0.92)',lineHeight:1.4}}>{c.content}</span>
                     </div>
                   </div>
                 </div>
               ))}
             </div>
-            <div style={{padding:'10px 14px',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center',paddingBottom:'env(safe-area-inset-bottom,10px)'}}>
+            <div style={{padding:'10px 14px',borderTop:'1px solid rgba(255,255,255,0.1)',display:'flex',gap:10,alignItems:'center',paddingBottom:'env(safe-area-inset-bottom,10px)'}}>
               <Avatar url={currentUser?.avatar_url} name={currentUser?.display_name} color={currentUser?.avatar_color||'#5B9CF6'} size={32}/>
-              <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&postComment(reel)} placeholder="Add a comment..." style={{flex:1,background:'var(--bg-card-6)',border:'none',borderRadius:20,padding:'10px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
-              <button onClick={()=>postComment(reel)} disabled={!commentText.trim()} style={{background:commentText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-2)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Post</button>
+              <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&postComment(reel)} placeholder="Add a comment..." style={{flex:1,background:'rgba(255,255,255,0.08)',border:'none',borderRadius:20,padding:'10px 14px',color:'#fff',fontSize:14,outline:'none'}}/>
+              <button onClick={()=>postComment(reel)} disabled={!commentText.trim()} style={{background:commentText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Post</button>
             </div>
           </div>}
         </>:null}
@@ -2290,7 +2289,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   if(viewingGroupRef) viewingGroupRef.current = null
 
   if(showCreatePulse) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:pulseBg,color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+    <div className="screen-in" style={{minHeight:'100dvh',background:pulseBg,color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Pulse</span>
@@ -2306,8 +2305,8 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   )
 
   if(showCreateGroup) return (
-    <div className="screen-in" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
         <button onClick={createGroup} disabled={saving||!groupName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Creating...':'Create'}</button>
@@ -2616,8 +2615,8 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   }
 
   if(showForm) return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={()=>setShowForm(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Ad</span>
         <button onClick={createAd} disabled={saving} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 18px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Saving...':'Create'}</button>
@@ -2639,8 +2638,8 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   )
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>Ad Manager</span>
         <button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>
@@ -3440,8 +3439,8 @@ function FlittersAppInner({ currentUser }) {
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
-    <div className="screen-in-safe" style={{minHeight:'100vh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+    <div className="screen-in-safe" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={closePost} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Post</span>
       </div>
@@ -3450,8 +3449,8 @@ function FlittersAppInner({ currentUser }) {
   )
 
   return (
-    <div style={{minHeight:'100vh',background:'var(--bg-app)',maxWidth:600,margin:'0 auto',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
-      {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(16px)',borderBottom:'1px solid var(--border-color)',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',maxWidth:600,margin:'0 auto',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
+      {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'10px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
@@ -3468,7 +3467,7 @@ function FlittersAppInner({ currentUser }) {
 
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>
-          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(12px)'}}>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(7px)'}}>
             {[{id:'foryou',label:'For You'},{id:'following',label:'Following'},{id:'global',label:'Global'}].map(t=>(
               <button key={t.id} onClick={()=>setFeedTab(t.id)} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:feedTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:feedTab===t.id?'#fff':'#555',fontWeight:feedTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
             ))}
@@ -3483,7 +3482,7 @@ function FlittersAppInner({ currentUser }) {
               </div>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
-              {(i+1)%7===0&&<AdsenseCard/>}
+              
               {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTabWithHash('pulse');setPendingReelId(reelId)}}/>}
             </div>
           ))}
@@ -3568,7 +3567,7 @@ function FlittersAppInner({ currentUser }) {
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
-            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(12px)',flexShrink:0}}>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(7px)',flexShrink:0}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
               <div onClick={()=>setViewingUser(selectedConv.other)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
@@ -3639,7 +3638,7 @@ function FlittersAppInner({ currentUser }) {
         </>}
 
         {tab==='friends'&&<>
-          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(12px)'}}>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(7px)'}}>
             <button onClick={()=>setFriendsSubTab('friends')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='friends'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='friends'?'#fff':'#555',fontWeight:friendsSubTab==='friends'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Users size={15}/> Friends</button>
             <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer'}}>🔭 Explore</button>
           </div>
@@ -3687,7 +3686,7 @@ function FlittersAppInner({ currentUser }) {
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
 
       <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
-        <div style={{background:'var(--bg-header)',backdropFilter:'blur(28px)',borderRadius:30,padding:'8px 4px',border:'1px solid var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px var(--shadow-color)'}}>
+        <div style={{background:'var(--bg-header)',backdropFilter:'blur(14px)',borderRadius:30,padding:'8px 4px',border:'1px solid var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px var(--shadow-color)'}}>
           {TABS.map(({id,label,icon})=>{
             const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
             const showDot = id==='pulse'&&unreadGC
@@ -3706,7 +3705,7 @@ function FlittersAppInner({ currentUser }) {
         </div>
       </div>
 
-      {showCompose&&<div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(10px)',display:'flex',alignItems:'flex-end'}} onClick={()=>setShowCompose(false)}>
+      {showCompose&&<div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(6px)',display:'flex',alignItems:'flex-end'}} onClick={()=>setShowCompose(false)}>
         <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'var(--bg-app)',borderRadius:'24px 24px 0 0',padding:'16px 20px 40px',border:'1px solid rgba(255,255,255,0.09)'}}>
           <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 20px'}}/>
           <div style={{display:'flex',gap:12}}>
@@ -3736,7 +3735,7 @@ function FlittersAppInner({ currentUser }) {
 export default function FlittersApp({ currentUser }) {
   if (!currentUser || !currentUser.id) {
     return (
-      <div style={{ minHeight: '100vh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
+      <div style={{ minHeight: '100dvh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
         <img src="/flitters-mark.png" alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }}  loading="lazy"/>
         <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Something went wrong loading your account</p>
         <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Reload</button>

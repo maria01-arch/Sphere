@@ -276,7 +276,7 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
       <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
