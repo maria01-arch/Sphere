@@ -7,7 +7,7 @@ import {
   Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
   Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
   Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
-  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2
+  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile
 } from 'lucide-react'
 const supabase = createClient()
 
@@ -526,6 +526,9 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
   const [followingCount, setFollowingCount] = useState(null)
   const [profile, setProfile] = useState(user)
   const [loading, setLoading] = useState(true)
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false)
   const color = profile?.avatar_color || getColor(profile?.id)
 
   useEffect(() => {
@@ -537,6 +540,8 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
       .then(({data}) => { setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,user_liked:p.likes?.some(l=>l.user_id===currentUser.id)}))); setLoading(false) })
     supabase.from('follows').select('id').eq('follower_id',currentUser.id).eq('following_id',user.id).maybeSingle()
       .then(({data}) => setIsFollowing(!!data))
+    supabase.from('blocks').select('id').eq('blocker_id',currentUser.id).eq('blocked_id',user.id).maybeSingle()
+      .then(({data}) => setIsBlocked(!!data))
   }, [user])
 
   const toggleFollow = async () => {
@@ -550,11 +555,41 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
     setIsFollowing(!isFollowing)
   }
 
+  const toggleBlock = async () => {
+    setShowMenu(false)
+    if (isBlocked) {
+      await supabase.from('blocks').delete().eq('blocker_id',currentUser.id).eq('blocked_id',user.id)
+      setIsBlocked(false)
+    } else {
+      setShowBlockConfirm(true)
+    }
+  }
+  const confirmBlock = async () => {
+    setShowBlockConfirm(false)
+    await supabase.from('blocks').insert({blocker_id:currentUser.id,blocked_id:user.id})
+    // blocking implies unfollowing each other
+    await supabase.from('follows').delete().eq('follower_id',currentUser.id).eq('following_id',user.id)
+    await supabase.from('follows').delete().eq('follower_id',user.id).eq('following_id',currentUser.id)
+    setIsBlocked(true)
+    setIsFollowing(false)
+  }
+
   return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
-        <span style={{fontWeight:700,fontSize:17}}>{profile?.display_name}</span>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>{profile?.display_name}</span>
+        {profile?.id !== currentUser.id && <div style={{position:'relative'}}>
+          <button onClick={()=>setShowMenu(m=>!m)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><MoreHorizontal size={20}/></button>
+          {showMenu && <>
+            <div onClick={()=>setShowMenu(false)} style={{position:'fixed',inset:0,zIndex:20}}/>
+            <div style={{position:'absolute',top:'100%',right:0,marginTop:6,background:'var(--bg-card-8)',border:'1px solid var(--border-color-2)',borderRadius:12,overflow:'hidden',zIndex:21,minWidth:160,boxShadow:'0 8px 30px var(--shadow-color)'}}>
+              <button onClick={toggleBlock} style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',border:'none',padding:'12px 16px',color:'#FF4757',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}>
+                <Ban size={16}/> {isBlocked?'Unblock':'Block'} @{profile?.username}
+              </button>
+            </div>
+          </>}
+        </div>}
       </div>
       <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
       {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt="" loading="lazy"/></div>}
@@ -563,14 +598,29 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
           <Avatar url={profile?.avatar_url} name={profile?.display_name} color={color} size={72}/>
         </div>
         <div style={{display:'flex',gap:8}}>
-          {profile?.id !== currentUser.id && <>
+          {profile?.id !== currentUser.id && (isBlocked ? (
+            <button onClick={toggleBlock} style={{background:'var(--bg-card)',border:'1px solid rgba(255,71,87,0.3)',borderRadius:20,padding:'8px 16px',color:'#FF4757',cursor:'pointer',fontWeight:700,fontSize:13,display:'inline-flex',alignItems:'center',gap:6}}><Ban size={14}/> Blocked · Tap to unblock</button>
+          ) : <>
             <div onClick={()=>onMessage(profile)} style={{background:'var(--bg-card-6)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none',display:'inline-flex',alignItems:'center',gap:6}}><MessageCircle size={15}/> Message</div>
             <button onClick={toggleFollow} style={{background:isFollowing?'var(--bg-card)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:isFollowing?'1px solid rgba(255,255,255,0.15)':'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:700,fontSize:13}}>
               {isFollowing?'Following':'Follow'}
             </button>
-          </>}
+          </>)}
         </div>
       </div>
+      {showBlockConfirm && (
+        <div onClick={()=>setShowBlockConfirm(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:18,padding:22,maxWidth:340,width:'100%'}}>
+            <div style={{display:'flex',justifyContent:'center',color:'#FF4757',marginBottom:10}}><Ban size={30}/></div>
+            <p style={{fontWeight:700,fontSize:16,textAlign:'center',marginBottom:8}}>Block @{profile?.username}?</p>
+            <p style={{color:'var(--text-secondary)',fontSize:13,textAlign:'center',marginBottom:18,lineHeight:1.5}}>They won't be able to follow you or message you, and you won't see each other's posts. You can unblock them anytime from Settings.</p>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setShowBlockConfirm(false)} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card)',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+              <button onClick={confirmBlock} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'#FF4757',color:'#fff',fontWeight:700,cursor:'pointer'}}>Block</button>
+            </div>
+          </div>
+        </div>
+      )}
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
         <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
@@ -585,9 +635,10 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
       </div>
       <div style={{borderTop:'1px solid var(--border-color)'}}>
         <p style={{padding:'14px 16px',fontWeight:700,fontSize:15}}>Posts</p>
-        {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
-        {!loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>No posts yet</p>}
-        {posts.map(post=>(
+        {isBlocked && <p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>You've blocked this account</p>}
+        {!isBlocked && loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+        {!isBlocked && !loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>No posts yet</p>}
+        {!isBlocked && posts.map(post=>(
           <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null} onOpenPost={onOpenPost} sendPush={sendPush}/>
         ))}
       </div>
@@ -699,6 +750,20 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const fileRef = useRef(null)
   const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
   const [testMsg, setTestMsg] = useState('')
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const deleteAccount = async () => {
+    setDeleting(true); setDeleteError('')
+    try {
+      const res = await fetch('/api/delete-account',{method:'POST'})
+      const result = await res.json().catch(()=>({}))
+      if(!res.ok) { setDeleteError(result.error||'Something went wrong. Please try again.'); setDeleting(false); return }
+      await supabase.auth.signOut()
+      window.location.href = '/auth'
+    } catch(e) { setDeleteError(e.message); setDeleting(false) }
+  }
 
   const showMsg = (text, ok=true) => { setMsg({text,ok}); setTimeout(()=>setMsg({text:'',ok:true}),3000) }
   const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}
@@ -889,6 +954,37 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
     )
   }
 
+  if(section==='blocked') {
+    const [blockedList, setBlockedList] = useState(null)
+    useEffect(()=>{
+      supabase.from('blocks').select('id,blocked_id,blocked:profiles!blocks_blocked_id_fkey(id,display_name,username,avatar_url,avatar_color)').eq('blocker_id',currentUser.id).order('created_at',{ascending:false})
+        .then(({data,error})=>{ if(error) console.log('blocked list error',error.message); setBlockedList(data||[]) })
+    },[])
+    const unblock = async(blockRowId) => {
+      setBlockedList(list=>list.filter(b=>b.id!==blockRowId))
+      await supabase.from('blocks').delete().eq('id',blockRowId).eq('blocker_id',currentUser.id)
+    }
+    return (
+      <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+        <Header title="Blocked Accounts"/>
+        <div style={{padding:'8px 0'}}>
+          {blockedList===null&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+          {blockedList?.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Ban size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You haven't blocked anyone</p></div>}
+          {blockedList?.map(b=>(
+            <div key={b.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
+              <Avatar url={b.blocked?.avatar_url} name={b.blocked?.display_name} color={b.blocked?.avatar_color||'#5B9CF6'} size={40}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:14}}>{b.blocked?.display_name}</div>
+                <div style={{color:'var(--text-secondary)',fontSize:12}}>@{b.blocked?.username}</div>
+              </div>
+              <button onClick={()=>unblock(b.id)} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'7px 14px',color:'var(--text-primary)',fontWeight:600,fontSize:12,cursor:'pointer',flexShrink:0}}>Unblock</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
   return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
@@ -897,7 +993,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       </div>
       <div style={{padding:'12px 0'}}>
         <ThemeToggleRow/>
-        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Award size={18}/>,label:'Get Verified Badge',id:'verify'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'}].map(s=>(
+        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Award size={18}/>,label:'Get Verified Badge',id:'verify'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
             <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
           </button>
@@ -905,12 +1001,31 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <button onClick={onSignOut} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#FF4757',borderTop:'1px solid var(--border-color)',marginTop:8,fontSize:15}}>
           <LogOut size={20}/><span style={{fontWeight:600}}>Sign Out</span>
         </button>
+        <button onClick={()=>setShowDeleteConfirm(true)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-quaternary)',fontSize:14}}>
+          <Trash2 size={18}/><span style={{fontWeight:500}}>Delete Account</span>
+        </button>
         <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
           <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
           <span style={{color:'#222',fontSize:12}}> · </span>
           <span style={{color:'#222',fontSize:12}}>© 2025 Flitters · fka Sphere</span>
         </div>
       </div>
+      {showDeleteConfirm && (
+        <div onClick={()=>!deleting&&setShowDeleteConfirm(false)} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:18,padding:24,maxWidth:360,width:'100%'}}>
+            <div style={{display:'flex',justifyContent:'center',color:'#FF4757',marginBottom:10}}><AlertTriangle size={32}/></div>
+            <p style={{fontWeight:800,fontSize:17,textAlign:'center',marginBottom:8}}>Delete your account?</p>
+            <p style={{color:'var(--text-secondary)',fontSize:13,textAlign:'center',marginBottom:16,lineHeight:1.6}}>This permanently deletes your profile, posts, messages, and everything tied to your account. This cannot be undone.</p>
+            <label style={{color:'var(--text-tertiary)',fontSize:12,display:'block',marginBottom:6}}>Type <strong style={{color:'var(--text-primary)'}}>DELETE</strong> to confirm</label>
+            <input value={deleteConfirmText} onChange={e=>setDeleteConfirmText(e.target.value)} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'10px 14px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+            {deleteError && <p style={{color:'#FF4757',fontSize:12,marginBottom:12}}>{deleteError}</p>}
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>{setShowDeleteConfirm(false);setDeleteConfirmText('')}} disabled={deleting} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card)',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+              <button onClick={deleteAccount} disabled={deleteConfirmText!=='DELETE'||deleting} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:deleteConfirmText==='DELETE'?'#FF4757':'var(--bg-card-2)',color:deleteConfirmText==='DELETE'?'#fff':'var(--text-quaternary)',fontWeight:700,cursor:deleteConfirmText==='DELETE'?'pointer':'not-allowed'}}>{deleting?'Deleting...':'Delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   )
 }
@@ -1842,7 +1957,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
-          <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',fontSize:18,flexShrink:0}}>😊</button>
+          <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
         <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
         </div>
@@ -2698,6 +2813,7 @@ function FlittersAppInner({ currentUser }) {
   const [selectedConv, setSelectedConv] = useState(null)
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
+  const [dmBlocked, setDmBlocked] = useState(false)
   const [dmView, setDmView] = useState('list')
   const [searchQ, setSearchQ] = useState('')
   const [searchResults, setSearchResults] = useState([])
@@ -3009,11 +3125,14 @@ function FlittersAppInner({ currentUser }) {
     setLoading(true)
     try {
       // fetch who current user follows and has interacted with
-      const [{data:followsData},{data:likedData},{data:commentedData}] = await Promise.all([
+      const [{data:followsData},{data:likedData},{data:commentedData},{data:blockedByMe},{data:blockedMe}] = await Promise.all([
         supabase.from('follows').select('following_id').eq('follower_id',currentUser.id),
         supabase.from('likes').select('post_id,posts(user_id)').eq('user_id',currentUser.id).limit(50),
         supabase.from('comments').select('post_id,posts(user_id)').eq('user_id',currentUser.id).limit(50),
+        supabase.from('blocks').select('blocked_id').eq('blocker_id',currentUser.id),
+        supabase.from('blocks').select('blocker_id').eq('blocked_id',currentUser.id),
       ])
+      const hiddenUserIds = new Set([...(blockedByMe||[]).map(b=>b.blocked_id), ...(blockedMe||[]).map(b=>b.blocker_id)])
       const followingIds = new Set((followsData||[]).map(f=>f.following_id))
       // build author affinity score: how much this user has interacted with each author
       const affinityMap = {}
@@ -3030,7 +3149,9 @@ function FlittersAppInner({ currentUser }) {
         repostsQuery = repostsQuery.in('user_id',[...followingIds])
       }
 
-      const [{data},{data:repostsData}] = await Promise.all([postsQuery,repostsQuery])
+      const [{data:rawData},{data:rawRepostsData}] = await Promise.all([postsQuery,repostsQuery])
+      const data = (rawData||[]).filter(p=>!hiddenUserIds.has(p.user_id))
+      const repostsData = (rawRepostsData||[]).filter(r=>!hiddenUserIds.has(r.user?.id) && !hiddenUserIds.has(r.post?.user_id))
       const now = Date.now()
 
       const normalized = (data||[]).map(p=>{
@@ -3120,7 +3241,14 @@ function FlittersAppInner({ currentUser }) {
   }
 
   useEffect(()=>{
-    if(!selectedConv) return
+    if(!selectedConv) { setDmBlocked(false); return }
+    if(selectedConv.id==='omnicore-ai' || !selectedConv.other?.id) { setDmBlocked(false) }
+    else {
+      Promise.all([
+        supabase.from('blocks').select('id').eq('blocker_id',currentUser.id).eq('blocked_id',selectedConv.other.id).maybeSingle(),
+        supabase.from('blocks').select('id').eq('blocker_id',selectedConv.other.id).eq('blocked_id',currentUser.id).maybeSingle(),
+      ]).then(([mine,theirs])=>setDmBlocked(!!mine.data || !!theirs.data))
+    }
     if(selectedConv.id!=='omnicore-ai') {
       supabase.from('conversation_participants').update({last_read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).eq('user_id',currentUser.id).then(()=>loadUnreadCounts())
       supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
@@ -3626,13 +3754,19 @@ function FlittersAppInner({ currentUser }) {
             <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
               <ReplyComposerBar text={dmReplyTo} onCancel={()=>{setDmReplyTo(null);setDmReplyToId(null)}}/>
               {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onClose={()=>setShowDMStickerTray(false)}/>}
+              {dmBlocked ? (
+                <div style={{padding:'16px 14px',display:'flex',alignItems:'center',justifyContent:'center',gap:8,color:'var(--text-quaternary)',fontSize:13}}>
+                  <Ban size={15}/> You can't message this conversation
+                </div>
+              ) : (
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
-              <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',fontSize:18,flexShrink:0}}>😊</button>
+              <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
               <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
               </div>
+              )}
             </div>
           </div>}
         </>}
@@ -3640,7 +3774,7 @@ function FlittersAppInner({ currentUser }) {
         {tab==='friends'&&<>
           <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(7px)'}}>
             <button onClick={()=>setFriendsSubTab('friends')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='friends'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='friends'?'#fff':'#555',fontWeight:friendsSubTab==='friends'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Users size={15}/> Friends</button>
-            <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer'}}>🔭 Explore</button>
+            <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Compass size={15}/> Explore</button>
           </div>
           {friendsSubTab==='friends'&&<>
             {people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Users size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
