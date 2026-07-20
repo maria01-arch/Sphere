@@ -3068,12 +3068,18 @@ function FlittersAppInner({ currentUser }) {
         if(permission !== 'granted') { console.log('Permission:',permission); return }
 
         let sub = await reg.pushManager.getSubscription()
-        if(!sub) {
-          sub = await reg.pushManager.subscribe({
-            userVisibleOnly: true,
-            applicationServerKey: vapidKey
-          })
-        }
+        // Don't trust a cached subscription — the push service can silently
+        // invalidate it (device unlinked, long inactivity, etc.) and the
+        // browser has no way of knowing that on its own; it'll keep handing
+        // back the same dead subscription indefinitely, surviving even an
+        // app uninstall/reinstall since that doesn't clear the underlying
+        // browser storage for the site. Always re-verify with a fresh
+        // subscribe so a dead one can't linger.
+        if(sub) { try { await sub.unsubscribe() } catch(e){}; sub = null }
+        sub = await reg.pushManager.subscribe({
+          userVisibleOnly: true,
+          applicationServerKey: vapidKey
+        })
         const {error} = await supabase.from('push_subscriptions').upsert({
           user_id:currentUser.id,
           subscription:JSON.parse(JSON.stringify(sub))
