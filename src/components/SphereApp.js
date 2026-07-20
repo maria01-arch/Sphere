@@ -736,7 +736,7 @@ function ThemeToggleRow() {
   )
 }
 
-function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate }) {
+function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush }) {
   const [section, setSection] = useState('main')
   const [displayName, setDisplayName] = useState(currentUser?.display_name||'')
   const [bio, setBio] = useState(currentUser?.bio||'')
@@ -750,10 +750,18 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const fileRef = useRef(null)
   const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
   const [testMsg, setTestMsg] = useState('')
+  const [serverTestMsg, setServerTestMsg] = useState('')
+  const [testingServer, setTestingServer] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
   const [deleteError, setDeleteError] = useState('')
+  const [blockedList, setBlockedList] = useState(null)
+  useEffect(()=>{
+    if(section!=='blocked') return
+    supabase.from('blocks').select('id,blocked_id,blocked:profiles!blocks_blocked_id_fkey(id,display_name,username,avatar_url,avatar_color)').eq('blocker_id',currentUser.id).order('created_at',{ascending:false})
+      .then(({data,error})=>{ if(error) console.log('blocked list error',error.message); setBlockedList(data||[]) })
+  },[section])
   const deleteAccount = async () => {
     setDeleting(true); setDeleteError('')
     try {
@@ -937,6 +945,14 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         setTestMsg('showNotification() threw an error: ' + e.message)
       }
     }
+    const runServerTest = async () => {
+      setServerTestMsg('')
+      setTestingServer(true)
+      const result = await sendPush(currentUser.id, 'Flitters Push Test', 'This came through the real server — subscription, VAPID keys, and all.')
+      setTestingServer(false)
+      if(result.ok) setServerTestMsg('Sent via the server! If it doesn\'t appear in a few seconds, the issue is on the delivery side (check your device notification settings for this site/app), not your setup.')
+      else setServerTestMsg('Failed: '+result.error+(result.error.includes('subscription')?' — try closing and reopening the app once (with notifications allowed) so it can register.':''))
+    }
     return (
       <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
         <Header title="Notifications"/>
@@ -944,22 +960,21 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
           <div style={{background:'var(--bg-card-5)',border:'1px solid var(--bg-card-6)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'var(--text-subtle)'}}>
             <div>Browser permission status: <strong style={{color: permState==='granted'?'#00C9A7':'#FF4757'}}>{permState}</strong></div>
           </div>
-          <button onClick={runTest} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
-            Send Test Notification
+          <button onClick={runTest} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
+            1. Test local notification
           </button>
-          {testMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5}}>{testMsg}</div>}
-          <p style={{color:'var(--text-secondary)',fontSize:12,marginTop:20,lineHeight:1.6}}>This sends a notification directly from this screen, bypassing chat/likes/comments entirely — useful for checking whether notifications work in this browser or app at all.</p>
+          {testMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5,marginBottom:16}}>{testMsg}</div>}
+          <button onClick={runServerTest} disabled={testingServer} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
+            {testingServer?'Sending...':'2. Test real push (via server)'}
+          </button>
+          {serverTestMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5}}>{serverTestMsg}</div>}
+          <p style={{color:'var(--text-secondary)',fontSize:12,marginTop:20,lineHeight:1.6}}>Test 1 checks only that this browser/app can show notifications at all. Test 2 sends a real notification from the server through your saved subscription — the same path likes, comments, and messages use. If test 1 works but test 2 doesn't, the problem is server-side (subscription, VAPID keys, or delivery), not your device.</p>
         </div>
       </div>
     )
   }
 
   if(section==='blocked') {
-    const [blockedList, setBlockedList] = useState(null)
-    useEffect(()=>{
-      supabase.from('blocks').select('id,blocked_id,blocked:profiles!blocks_blocked_id_fkey(id,display_name,username,avatar_url,avatar_color)').eq('blocker_id',currentUser.id).order('created_at',{ascending:false})
-        .then(({data,error})=>{ if(error) console.log('blocked list error',error.message); setBlockedList(data||[]) })
-    },[])
     const unblock = async(blockRowId) => {
       setBlockedList(list=>list.filter(b=>b.id!==blockRowId))
       await supabase.from('blocks').delete().eq('id',blockRowId).eq('blocker_id',currentUser.id)
@@ -1352,7 +1367,6 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
               <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{a.display_name}</button>
               {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
-              <span style={{color:'var(--text-secondary)',fontSize:13}}>@{a.username}</span>
               <span style={{color:'var(--text-faint)'}}>·</span>
               <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
             </div>
@@ -1958,7 +1972,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
           <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
-        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder="Message group..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
+        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder="Message group..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
           <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
         </div>
       </div>
@@ -2610,7 +2624,7 @@ function FlittersAI({ currentUser, onClose }) {
         <button onClick={clearHistory} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 10px',color:'#FF4757',fontWeight:700,cursor:'pointer',display:'flex'}}><Trash2 size={14}/></button>
       </div>
 
-      <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12,paddingBottom:80}}>
+      <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12}}>
         {messages.map((msg,i)=>(
           <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
             {msg.role==='assistant'&&<img src="/flitters-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}} loading="lazy"/>}
@@ -2661,7 +2675,7 @@ function FlittersAI({ currentUser, onClose }) {
           }} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'10px',color:'var(--text-primary)',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Save size={15}/> Save Image</button>}
         </div>
       </div>}
-      <div style={{position:'fixed',bottom:0,left:0,right:0,maxWidth:600,margin:'0 auto',padding:'10px 14px 24px',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center'}}>
+      <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',padding:'10px 14px',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center',paddingBottom:'calc(10px + env(safe-area-inset-bottom,0px))'}}>
         <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Palette size={18}/></button>
         <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask Flitters AI anything..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:26,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
         <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'var(--bg-card-3)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
@@ -3546,16 +3560,21 @@ function FlittersAppInner({ currentUser }) {
 
   const sendPush = async(userId, title, body) => {
     try {
-      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId).order('created_at',{ascending:false}).limit(1)
-      const subscription = data?.[0]?.subscription
-      if(subscription) {
-        const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription,title,body,url:'/'})})
-        if(!res.ok) {
-          const err = await res.json().catch(()=>({}))
-          console.error('Push send failed:', res.status, err.error||'unknown error')
-        }
-      }
-    } catch(e) { console.log('Push send error',e) }
+      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId)
+      const subs = (data||[]).map(d=>d.subscription).filter(Boolean)
+      if(!subs.length) { console.log('No push subscription for user',userId); return {ok:false, error:'No subscription found for this account'} }
+      // Send to every subscription on file (handles any leftover duplicate
+      // rows gracefully instead of erroring on them).
+      const results = await Promise.allSettled(subs.map(subscription=>
+        fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription,title,body,url:'/'})})
+          .then(async res=>{ if(!res.ok){ const err=await res.json().catch(()=>({})); throw new Error(err.error||('HTTP '+res.status)) } return true })
+      ))
+      const anyOk = results.some(r=>r.status==='fulfilled')
+      if(anyOk) return {ok:true}
+      const firstError = results.find(r=>r.status==='rejected')?.reason?.message || 'Unknown error'
+      console.error('Push send failed:', firstError)
+      return {ok:false, error:firstError}
+    } catch(e) { console.log('Push send error',e); return {ok:false, error:e.message} }
   }
 
   const TABS=[{id:'home',label:'Home',icon:<Home size={22}/>},{id:'messages',label:'Messages',icon:<MessageCircle size={22}/>},{id:'pulse',label:'Pulse',icon:<Zap size={22}/>},{id:'friends',label:'People',icon:<Users size={22}/>},{id:'notifications',label:'Alerts',icon:<Bell size={22}/>}]
@@ -3563,7 +3582,7 @@ function FlittersAppInner({ currentUser }) {
 
   
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
-  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}}/>
+  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
@@ -3763,7 +3782,7 @@ function FlittersAppInner({ currentUser }) {
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
               <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
-              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();e.target.style.height='auto';e.target.style.height=Math.min(e.target.scrollHeight,120)+'px'}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
+              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
               </div>
               )}
