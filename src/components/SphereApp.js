@@ -736,7 +736,7 @@ function ThemeToggleRow() {
   )
 }
 
-function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush }) {
+function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush, setupPush }) {
   const [section, setSection] = useState('main')
   const [displayName, setDisplayName] = useState(currentUser?.display_name||'')
   const [bio, setBio] = useState(currentUser?.bio||'')
@@ -752,6 +752,14 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const [testMsg, setTestMsg] = useState('')
   const [serverTestMsg, setServerTestMsg] = useState('')
   const [testingServer, setTestingServer] = useState(false)
+  const [pushSetupStatus, setPushSetupStatus] = useState(()=>{ try { return localStorage.getItem('flitters_push_status')||'' } catch(e){ return '' } })
+  const [rerunning, setRerunning] = useState(false)
+  const rerunSetup = async () => {
+    setRerunning(true)
+    await setupPush()
+    try { setPushSetupStatus(localStorage.getItem('flitters_push_status')||'') } catch(e){}
+    setRerunning(false)
+  }
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
   const [deleteConfirmText, setDeleteConfirmText] = useState('')
   const [deleting, setDeleting] = useState(false)
@@ -959,7 +967,11 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <div style={{padding:'20px 16px'}}>
           <div style={{background:'var(--bg-card-5)',border:'1px solid var(--bg-card-6)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'var(--text-subtle)'}}>
             <div>Browser permission status: <strong style={{color: permState==='granted'?'#00C9A7':'#FF4757'}}>{permState}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>Last subscription attempt: <strong style={{color:'var(--text-primary)'}}>{pushSetupStatus||'(none recorded yet — try the button below)'}</strong></div>
           </div>
+          <button onClick={rerunSetup} disabled={rerunning} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:600,fontSize:13,cursor:'pointer',marginBottom:16}}>
+            {rerunning?'Running...':'Re-run subscription setup now'}
+          </button>
           <button onClick={runTest} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
             1. Test local notification
           </button>
@@ -3042,54 +3054,61 @@ function FlittersAppInner({ currentUser }) {
     return()=>supabase.removeChannel(presenceChannel)
   },[])
 
+  const setupPush = useCallback(async() => {
+    const setStatus = (s) => { try { localStorage.setItem('flitters_push_status', s) } catch(e){} }
+    try {
+      setStatus('Starting...')
+      if(!('Notification' in window)) { setStatus('No Notification API in this browser'); return }
+      if(!('serviceWorker' in navigator)) { setStatus('No serviceWorker support in this browser'); return }
+      if(!('PushManager' in window)) { setStatus('No PushManager support in this browser'); return }
+
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if(!vapidKey) { setStatus('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set at build time'); return }
+
+      // Clean up any other service worker registration (e.g. a leftover
+      // OneSignal worker from a previous setup) so it can't compete for
+      // the same push scope and cause duplicate/conflicting deliveries.
+      setStatus('Checking for stale service workers...')
+      const existingRegs = await navigator.serviceWorker.getRegistrations()
+      for(const r of existingRegs){
+        const scriptUrl = r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || ''
+        if(scriptUrl && !scriptUrl.endsWith('/sw.js')) await r.unregister()
+      }
+
+      setStatus('Registering service worker...')
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+      let permission = Notification.permission
+      if(permission === 'default') permission = await Notification.requestPermission()
+      if(permission !== 'granted') { setStatus('Permission is "'+permission+'", not granted'); return }
+
+      setStatus('Refreshing subscription...')
+      let sub = await reg.pushManager.getSubscription()
+      // Don't trust a cached subscription — the push service can silently
+      // invalidate it (device unlinked, long inactivity, etc.) and the
+      // browser has no way of knowing that on its own; it'll keep handing
+      // back the same dead subscription indefinitely, surviving even an
+      // app uninstall/reinstall since that doesn't clear the underlying
+      // browser storage for the site. Always re-verify with a fresh
+      // subscribe so a dead one can't linger.
+      if(sub) { try { await sub.unsubscribe() } catch(e){}; sub = null }
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey
+      })
+      setStatus('Saving subscription to account...')
+      const {error} = await supabase.from('push_subscriptions').upsert({
+        user_id:currentUser.id,
+        subscription:JSON.parse(JSON.stringify(sub))
+      },{onConflict:'user_id'})
+      if(error) setStatus('DB save failed: '+error.message)
+      else setStatus('Ready — subscribed at '+new Date().toLocaleTimeString())
+    } catch(e) { setStatus('Error: '+(e.name?e.name+': ':'')+e.message) }
+  }, [currentUser.id])
+
   useEffect(()=>{
-    const setupPush = async() => {
-      try {
-        if(!('Notification' in window)) { console.log('No Notification API'); return }
-        if(!('serviceWorker' in navigator)) { console.log('No SW'); return }
-        if(!('PushManager' in window)) { console.log('No PushManager'); return }
-
-        const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
-        if(!vapidKey) { console.log('Push setup skipped: NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set'); return }
-
-        // Clean up any other service worker registration (e.g. a leftover
-        // OneSignal worker from a previous setup) so it can't compete for
-        // the same push scope and cause duplicate/conflicting deliveries.
-        const existingRegs = await navigator.serviceWorker.getRegistrations()
-        for(const r of existingRegs){
-          const scriptUrl = r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || ''
-          if(scriptUrl && !scriptUrl.endsWith('/sw.js')) await r.unregister()
-        }
-
-        const reg = await navigator.serviceWorker.register('/sw.js')
-        await navigator.serviceWorker.ready
-        let permission = Notification.permission
-        if(permission === 'default') permission = await Notification.requestPermission()
-        if(permission !== 'granted') { console.log('Permission:',permission); return }
-
-        let sub = await reg.pushManager.getSubscription()
-        // Don't trust a cached subscription — the push service can silently
-        // invalidate it (device unlinked, long inactivity, etc.) and the
-        // browser has no way of knowing that on its own; it'll keep handing
-        // back the same dead subscription indefinitely, surviving even an
-        // app uninstall/reinstall since that doesn't clear the underlying
-        // browser storage for the site. Always re-verify with a fresh
-        // subscribe so a dead one can't linger.
-        if(sub) { try { await sub.unsubscribe() } catch(e){}; sub = null }
-        sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: vapidKey
-        })
-        const {error} = await supabase.from('push_subscriptions').upsert({
-          user_id:currentUser.id,
-          subscription:JSON.parse(JSON.stringify(sub))
-        },{onConflict:'user_id'})
-        if(error) console.log('Sub save error:',error.message)
-        else console.log('Push ready!')
-      } catch(e) { console.log('Push setup error:',e.message) }
-    }
     setupPush()
-  },[])
+  },[setupPush])
 
   useEffect(()=>{
     // Prevent back button from ever going to auth/login
@@ -3601,7 +3620,7 @@ function FlittersAppInner({ currentUser }) {
 
   
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
-  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush}/>
+  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
