@@ -3560,14 +3560,27 @@ function FlittersAppInner({ currentUser }) {
 
   const sendPush = async(userId, title, body) => {
     try {
-      const {data} = await supabase.from('push_subscriptions').select('subscription').eq('user_id',userId)
-      const subs = (data||[]).map(d=>d.subscription).filter(Boolean)
-      if(!subs.length) { console.log('No push subscription for user',userId); return {ok:false, error:'No subscription found for this account'} }
+      const {data} = await supabase.from('push_subscriptions').select('id,subscription').eq('user_id',userId)
+      const rows = data||[]
+      if(!rows.length) { console.log('No push subscription for user',userId); return {ok:false, error:'No subscription found for this account'} }
       // Send to every subscription on file (handles any leftover duplicate
       // rows gracefully instead of erroring on them).
-      const results = await Promise.allSettled(subs.map(subscription=>
-        fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription,title,body,url:'/'})})
-          .then(async res=>{ if(!res.ok){ const err=await res.json().catch(()=>({})); throw new Error(err.error||('HTTP '+res.status)) } return true })
+      const results = await Promise.allSettled(rows.map(row=>
+        fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:row.subscription,title,body,url:'/'})})
+          .then(async res=>{
+            if(!res.ok){
+              const err = await res.json().catch(()=>({}))
+              // A dead subscription (expired / app reinstalled) — clean it up
+              // so it stops failing on every future send. RLS only allows
+              // deleting your own row, which is fine here: userId is always
+              // the recipient, and cleanup only matters for their own record.
+              if(err.statusCode===404 || err.statusCode===410) {
+                supabase.from('push_subscriptions').delete().eq('id',row.id).then(()=>{})
+              }
+              throw new Error(err.error||('HTTP '+res.status))
+            }
+            return true
+          })
       ))
       const anyOk = results.some(r=>r.status==='fulfilled')
       if(anyOk) return {ok:true}
