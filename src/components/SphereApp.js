@@ -1230,7 +1230,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   const replyImageRef = useRef(null)
   const [showShareMenu, setShowShareMenu] = useState(false)
 
-  const shareUrl = (typeof window!=='undefined'?window.location.origin:'https://flitters.app')+'/p/'+post.id
+  const shareUrl = (typeof window!=='undefined'?window.location.origin:'https://xchord.space')+'/p/'+post.id
   const shareText = (post.content||(post.author?.display_name||'Someone')+' shared a post on Flitters').slice(0,100)
   const handleShare = async () => {
     if(navigator.share){

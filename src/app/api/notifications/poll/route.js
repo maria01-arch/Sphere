@@ -44,7 +44,7 @@ export async function GET() {
     const items = notifs.map(n => {
       const name = n.actor?.display_name || 'Someone'
       const body = n.type === 'welcome' ? 'Welcome to Flitters!' : `${name} ${typeText[n.type] || 'sent you a notification'}`
-      const url = n.post_id ? `https://flitters.app/p/${n.post_id}` : 'https://flitters.app/'
+      const url = n.post_id ? `https://xchord.space/p/${n.post_id}` : 'https://xchord.space/'
       return { title: 'Flitters', body, url }
     })
 

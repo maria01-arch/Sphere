@@ -43,7 +43,7 @@ async function tryOpenRouterImage(prompt) {
     headers: {
       'Content-Type': 'application/json',
       'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'HTTP-Referer': 'https://flitters.app',
+      'HTTP-Referer': 'https://xchord.space',
       'X-Title': 'Flitters AI'
     },
     body: JSON.stringify({

@@ -5,4 +5,4 @@ Allow: /privacy
 
 Disallow: /api/
 
-Sitemap: https://flitters.app/sitemap.xml
+Sitemap: https://xchord.space/sitemap.xml

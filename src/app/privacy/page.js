@@ -23,7 +23,7 @@ export default function PrivacyPolicy() {
         <h1 style={s.h1}>Privacy Policy</h1>
         <p style={s.updated}>Last updated: July 1, 2025</p>
 
-        <p style={s.p}>Welcome to Flitters (formerly known as Sphere) ("we", "our", or "us"). This Privacy Policy explains how we collect, use, and protect your information when you use the Flitters social media platform at <strong>flitters.app</strong>.</p>
+        <p style={s.p}>Welcome to Flitters (formerly known as Sphere) ("we", "our", or "us"). This Privacy Policy explains how we collect, use, and protect your information when you use the Flitters social media platform at <strong>xchord.space</strong>.</p>
 
         <h2 style={s.h2}>1. Information We Collect</h2>
         <p style={s.p}>We collect the following types of information:</p>
@@ -81,8 +81,8 @@ export default function PrivacyPolicy() {
         <h2 style={s.h2}>10. Contact Us</h2>
         <p style={s.p}>If you have questions about this Privacy Policy, please contact us at:<br/>
           <strong>Flitters Labs Corp</strong><br/>
-          Email: <a href="mailto:support@flitters.app" style={s.a}>support@flitters.app</a><br/>
-          Website: <a href="https://flitters.app" style={s.a}>flitters.app</a>
+          Email: <a href="mailto:support@xchord.space" style={s.a}>support@xchord.space</a><br/>
+          Website: <a href="https://xchord.space" style={s.a}>xchord.space</a>
         </p>
 
         <div style={{marginTop:48,padding:'20px',background:'rgba(91,156,246,0.07)',border:'1px solid rgba(91,156,246,0.15)',borderRadius:16}}>
