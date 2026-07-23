@@ -26,6 +26,12 @@ export const metadata = {
     images: ['/og-image.png'],
   },
   robots: { index: true, follow: true, googleBot: { index: true, follow: true } },
+  manifest: '/manifest.json',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'black-translucent',
+    title: 'Flitters',
+  },
   icons: {
     icon: [
       { url: '/favicon.ico', sizes: 'any' },
@@ -44,7 +50,8 @@ export const viewport = {
   maximumScale: 1,
   userScalable: false,
   viewportFit: 'cover',
-  interactiveWidget: 'resizes-content'
+  interactiveWidget: 'resizes-content',
+  themeColor: '#090B10',
 }
 
 export default function RootLayout({ children }) {

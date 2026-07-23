@@ -19,17 +19,6 @@ export async function GET() {
     const { data: { user } } = await supabase.auth.getUser()
     if (!user) return Response.json([])
 
-    const { data: notifs, error } = await supabase
-      .from('notifications')
-      .select('id,type,post_id,actor:profiles!actor_id(display_name)')
-      .eq('user_id', user.id)
-      .eq('delivered_via_poll', false)
-      .order('created_at', { ascending: true })
-      .limit(5)
-
-    if (error) { console.error('poll query error:', error.message); return Response.json([]) }
-    if (!notifs?.length) return Response.json([])
-
     const typeText = {
       like: 'liked your post',
       comment: 'commented on your post',
@@ -38,22 +27,85 @@ export async function GET() {
       follow_request: 'sent you a follow request',
       follow_accepted: 'accepted your follow request',
       mention: 'tagged you in a post',
-      welcome: null, // handled specially below
     }
 
-    const items = notifs.map(n => {
-      const name = n.actor?.display_name || 'Someone'
-      const body = n.type === 'welcome' ? 'Welcome to Flitters!' : `${name} ${typeText[n.type] || 'sent you a notification'}`
-      const url = n.post_id ? `https://xchord.space/p/${n.post_id}` : 'https://xchord.space/'
-      return { title: 'Flitters', body, url }
-    })
+    // 1. Likes/comments/follows/etc — the notifications table.
+    const { data: notifs } = await supabase
+      .from('notifications')
+      .select('id,type,post_id,created_at,actor:profiles!actor_id(display_name)')
+      .eq('user_id', user.id)
+      .eq('delivered_via_poll', false)
+      .order('created_at', { ascending: true })
+      .limit(5)
 
-    // Mark delivered so the next poll (5+ minutes later) doesn't resend
-    // the same items — the builder's spec has no "seen" concept on their
-    // end, so this side has to track it.
-    await supabase.from('notifications').update({ delivered_via_poll: true }).in('id', notifs.map(n => n.id))
+    const notifItems = (notifs || []).map(n => ({
+      source: 'notifications', id: n.id, created_at: n.created_at,
+      title: 'Flitters',
+      body: n.type === 'welcome' ? 'Welcome to Flitters!' : `${n.actor?.display_name || 'Someone'} ${typeText[n.type] || 'sent you a notification'}`,
+      url: n.post_id ? `https://xchord.space/p/${n.post_id}` : 'https://xchord.space/',
+    }))
 
-    return Response.json(items)
+    // 2. Direct messages — these never touch the notifications table at
+    //    all, they go straight through the real-time push path, so they
+    //    have to be polled for separately here.
+    const { data: myConvos } = await supabase.from('conversation_participants').select('conversation_id').eq('user_id', user.id)
+    const convoIds = (myConvos || []).map(c => c.conversation_id)
+    let dmItems = []
+    if (convoIds.length) {
+      const { data: dms } = await supabase
+        .from('messages')
+        .select('id,content,is_sticker,created_at,sender:profiles!sender_id(display_name)')
+        .in('conversation_id', convoIds)
+        .neq('sender_id', user.id)
+        .eq('delivered_via_poll', false)
+        .order('created_at', { ascending: true })
+        .limit(5)
+      dmItems = (dms || []).map(m => ({
+        source: 'messages', id: m.id, created_at: m.created_at,
+        title: 'Flitters',
+        body: `${m.sender?.display_name || 'Someone'} sent you ${m.is_sticker ? 'a sticker' : ('a message: ' + (m.content || '').slice(0, 80))}`,
+        url: 'https://xchord.space/',
+      }))
+    }
+
+    // 3. Group messages — same gap as DMs.
+    const { data: myGroups } = await supabase.from('group_members').select('group_id').eq('user_id', user.id)
+    const groupIds = (myGroups || []).map(g => g.group_id)
+    let groupItems = []
+    if (groupIds.length) {
+      const { data: gms } = await supabase
+        .from('group_messages')
+        .select('id,content,is_sticker,created_at,sender:profiles!sender_id(display_name)')
+        .in('group_id', groupIds)
+        .neq('sender_id', user.id)
+        .eq('delivered_via_poll', false)
+        .order('created_at', { ascending: true })
+        .limit(5)
+      groupItems = (gms || []).map(m => ({
+        source: 'group_messages', id: m.id, created_at: m.created_at,
+        title: 'Flitters',
+        body: `${m.sender?.display_name || 'Someone'} sent ${m.is_sticker ? 'a sticker' : ('a group message: ' + (m.content || '').slice(0, 80))}`,
+        url: 'https://xchord.space/',
+      }))
+    }
+
+    const all = [...notifItems, ...dmItems, ...groupItems]
+      .sort((a, b) => new Date(a.created_at) - new Date(b.created_at))
+      .slice(0, 5)
+
+    if (!all.length) return Response.json([])
+
+    // Mark whichever ones we're actually returning as delivered, per source
+    // table, so the next poll (5+ minutes later) doesn't resend them.
+    const idsBySource = { notifications: [], messages: [], group_messages: [] }
+    for (const item of all) idsBySource[item.source].push(item.id)
+    await Promise.all([
+      idsBySource.notifications.length ? supabase.from('notifications').update({ delivered_via_poll: true }).in('id', idsBySource.notifications) : null,
+      idsBySource.messages.length ? supabase.from('messages').update({ delivered_via_poll: true }).in('id', idsBySource.messages) : null,
+      idsBySource.group_messages.length ? supabase.from('group_messages').update({ delivered_via_poll: true }).in('id', idsBySource.group_messages) : null,
+    ].filter(Boolean))
+
+    return Response.json(all.map(({ title, body, url }) => ({ title, body, url })))
   } catch (e) {
     console.error('poll error:', e.message)
     return Response.json([])
