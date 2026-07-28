@@ -749,7 +749,9 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const [msg, setMsg] = useState({text:'',ok:true})
   const [uploading, setUploading] = useState(false)
   const fileRef = useRef(null)
-  const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+  const [crossUsername, setCrossUsername] = useState('')
+  const [crossTestMsg, setCrossTestMsg] = useState('')
+  const [testingCross, setTestingCross] = useState(false)
   const [testMsg, setTestMsg] = useState('')
   const [serverTestMsg, setServerTestMsg] = useState('')
   const [testingServer, setTestingServer] = useState(false)
@@ -962,6 +964,19 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       if(result.ok) setServerTestMsg('Sent via the server! If it doesn\'t appear in a few seconds, the issue is on the delivery side (check your device notification settings for this site/app), not your setup.')
       else setServerTestMsg('Failed: '+result.error+(result.error.includes('subscription')?' — try closing and reopening the app once (with notifications allowed) so it can register.':''))
     }
+    const runCrossTest = async () => {
+      setCrossTestMsg('')
+      const uname = crossUsername.trim().replace(/^@/,'')
+      if(!uname) { setCrossTestMsg('Enter a username first.'); return }
+      setTestingCross(true)
+      const {data:target, error:lookupErr} = await supabase.from('profiles').select('id,display_name').ilike('username',uname).maybeSingle()
+      if(lookupErr || !target) { setCrossTestMsg('No account found with username @'+uname); setTestingCross(false); return }
+      if(target.id === currentUser.id) { setCrossTestMsg('That\'s your own account — this test needs a different account to check cross-account delivery.'); setTestingCross(false); return }
+      const result = await sendPush(target.id, 'Flitters Push Test', 'Sent to you by '+(currentUser.display_name||'someone')+' as a cross-account test.')
+      setTestingCross(false)
+      if(result.ok) setCrossTestMsg('Sent to @'+uname+'! Ask them to check their device — if it doesn\'t arrive there, the read succeeded but delivery failed on their end.')
+      else setCrossTestMsg('Failed reading/sending to @'+uname+': '+result.error+(result.error.includes('subscription')?' — this is the same lookup a like/comment notification uses, so if that account has genuinely completed setup and this still says no subscription found, it points at a database permissions (RLS) issue reading someone else\'s subscription row rather than your own.':''))
+    }
     return (
       <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
         <Header title="Notifications"/>
@@ -980,8 +995,16 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
           <button onClick={runServerTest} disabled={testingServer} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
             {testingServer?'Sending...':'2. Test real push (via server)'}
           </button>
-          {serverTestMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5}}>{serverTestMsg}</div>}
-          <p style={{color:'var(--text-secondary)',fontSize:12,marginTop:20,lineHeight:1.6}}>Test 1 checks only that this browser/app can show notifications at all. Test 2 sends a real notification from the server through your saved subscription — the same path likes, comments, and messages use. If test 1 works but test 2 doesn't, the problem is server-side (subscription, VAPID keys, or delivery), not your device.</p>
+          {serverTestMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5,marginBottom:16}}>{serverTestMsg}</div>}
+          <div style={{background:'var(--bg-card-3)',borderRadius:12,padding:14,marginBottom:12}}>
+            <p style={{fontWeight:700,fontSize:14,marginBottom:10}}>3. Test push to another account</p>
+            <input value={crossUsername} onChange={e=>setCrossUsername(e.target.value)} placeholder="their username (no @)" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'10px 14px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box',marginBottom:10}}/>
+            <button onClick={runCrossTest} disabled={testingCross} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:10,padding:'12px',color:'var(--text-primary)',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+              {testingCross?'Sending...':'Send test to that account'}
+            </button>
+            {crossTestMsg && <p style={{marginTop:10,color:'var(--text-subtle)',fontSize:13,lineHeight:1.5}}>{crossTestMsg}</p>}
+          </div>
+          <p style={{color:'var(--text-secondary)',fontSize:12,marginTop:8,lineHeight:1.6}}>Test 1 checks only that this browser/app can show notifications at all. Test 2 sends a real notification from the server through your own saved subscription. Test 3 does the same thing but to someone else's account by username — this is exactly what happens when someone likes or comments on your post, so it's the right way to check cross-account delivery specifically.</p>
         </div>
       </div>
     )
@@ -3578,33 +3601,28 @@ function FlittersAppInner({ currentUser }) {
 
   const sendPush = async(userId, title, body) => {
     try {
-      const {data} = await supabase.from('push_subscriptions').select('id,subscription').eq('user_id',userId)
+      const {data} = await supabase.from('push_subscriptions').select('id,subscription').eq('user_id',userId).order('created_at',{ascending:false})
       const rows = data||[]
       if(!rows.length) { console.log('No push subscription for user',userId); return {ok:false, error:'No subscription found for this account'} }
-      // Send to every subscription on file (handles any leftover duplicate
-      // rows gracefully instead of erroring on them).
-      const results = await Promise.allSettled(rows.map(row=>
-        fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:row.subscription,title,body,url:'/'})})
-          .then(async res=>{
-            if(!res.ok){
-              const err = await res.json().catch(()=>({}))
-              // A dead subscription (expired / app reinstalled) — clean it up
-              // so it stops failing on every future send. RLS only allows
-              // deleting your own row, which is fine here: userId is always
-              // the recipient, and cleanup only matters for their own record.
-              if(err.statusCode===404 || err.statusCode===410) {
-                supabase.from('push_subscriptions').delete().eq('id',row.id).then(()=>{})
-              }
-              throw new Error(err.error||('HTTP '+res.status))
-            }
-            return true
-          })
-      ))
-      const anyOk = results.some(r=>r.status==='fulfilled')
-      if(anyOk) return {ok:true}
-      const firstError = results.find(r=>r.status==='rejected')?.reason?.message || 'Unknown error'
-      console.error('Push send failed:', firstError)
-      return {ok:false, error:firstError}
+      // Only ever target the single freshest subscription. If someone has
+      // used the app on more than one domain (each origin gets its own,
+      // independently-valid subscription), sending to every row on file
+      // means sending the same notification once per domain they've ever
+      // visited — which is exactly the "double notification" bug. Picking
+      // just the newest one also naturally retires older domains' rows
+      // below once they fail as stale.
+      const [freshest, ...stale] = rows
+      if(stale.length) supabase.from('push_subscriptions').delete().in('id', stale.map(r=>r.id)).then(()=>{})
+      const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:freshest.subscription,title,body,url:'/'})})
+      if(!res.ok){
+        const err = await res.json().catch(()=>({}))
+        if(err.statusCode===404 || err.statusCode===410) {
+          supabase.from('push_subscriptions').delete().eq('id',freshest.id).then(()=>{})
+        }
+        console.error('Push send failed:', err.error||('HTTP '+res.status))
+        return {ok:false, error:err.error||('HTTP '+res.status)}
+      }
+      return {ok:true}
     } catch(e) { console.log('Push send error',e); return {ok:false, error:e.message} }
   }
 
