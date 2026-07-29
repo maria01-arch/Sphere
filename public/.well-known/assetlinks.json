@@ -3,9 +3,9 @@
     "relation": ["delegate_permission/common.handle_all_urls"],
     "target": {
       "namespace": "android_app",
-      "package_name": "REPLACE_WITH_YOUR_ANDROID_PACKAGE_NAME",
+      "package_name": "com.flitters.app",
       "sha256_cert_fingerprints": [
-        "REPLACE_WITH_YOUR_SHA256_FINGERPRINT"
+        "8D:4D:B7:61:51:AB:70:FC:A6:58:8D:42:5A:8B:4D:A9:85:C3:19:4D:CE:B3:01:62:6A:06:99:34:5B:6B:1C:94"
       ]
     }
   }
