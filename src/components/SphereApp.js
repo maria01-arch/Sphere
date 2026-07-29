@@ -753,6 +753,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const [crossTestMsg, setCrossTestMsg] = useState('')
   const [testingCross, setTestingCross] = useState(false)
   const [testMsg, setTestMsg] = useState('')
+  const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
   const [serverTestMsg, setServerTestMsg] = useState('')
   const [testingServer, setTestingServer] = useState(false)
   const [pushSetupStatus, setPushSetupStatus] = useState(()=>{ try { return localStorage.getItem('flitters_push_status')||'' } catch(e){ return '' } })
