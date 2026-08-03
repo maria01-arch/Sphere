@@ -2985,13 +2985,29 @@ function FlittersAppInner({ currentUser }) {
     stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current,viewingReels:reelsRef.current,viewingPost}
   },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost])
 
+  // Shared between the instant realtime listener below and the polling
+  // backup further down, so an item that already got notified instantly
+  // (when the realtime connection is alive) doesn't get shown again by the
+  // next poll cycle.
+  const notifiedIdsRef = useRef(new Set())
+
   // Global listener for push notifications regardless of tab
   useEffect(()=>{
     const ch = supabase.channel('global_notifs_'+currentUser.id)
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+currentUser.id},async(payload)=>{
-        // Push notifications are handled server-side via sendPush (Firebase Cloud Messaging).
-        // This listener just keeps the in-app unread badge count fresh.
         loadUnreadCounts()
+        const n = payload.new
+        if(notifiedIdsRef.current.has(n.id)) return
+        notifiedIdsRef.current.add(n.id)
+        const typeText = {
+          like:'liked your post', comment:'commented on your post', follow:'started following you',
+          repost:'reposted your flit', follow_request:'sent you a follow request',
+          follow_accepted:'accepted your follow request', mention:'tagged you in a post',
+        }
+        let name = 'Someone'
+        if(n.actor_id){ const {data:actor} = await supabase.from('profiles').select('display_name').eq('id',n.actor_id).maybeSingle(); name = actor?.display_name || 'Someone' }
+        const body = n.type==='welcome' ? 'Welcome to Flitters!' : `${name} ${typeText[n.type]||'sent you a notification'}`
+        showLocalNotif('Flitters', body)
       })
       .subscribe()
 
@@ -3002,8 +3018,14 @@ function FlittersAppInner({ currentUser }) {
         supabase.channel('dm_notif_'+conversation_id)
           .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conversation_id},async(payload)=>{
             if(payload.new.sender_id === currentUser.id) return
-            // Push notifications handled server-side via sendPush (Firebase Cloud Messaging).
             loadUnreadCounts()
+            const m = payload.new
+            if(notifiedIdsRef.current.has(m.id)) return
+            notifiedIdsRef.current.add(m.id)
+            const {data:sender} = await supabase.from('profiles').select('display_name').eq('id',m.sender_id).maybeSingle()
+            const name = sender?.display_name || 'Someone'
+            const body = m.is_sticker ? `${name} sent you a sticker` : `${name}: ${(m.content||'').slice(0,100)}`
+            showLocalNotif('Flitters', body)
           })
           .subscribe()
       })
@@ -3017,7 +3039,7 @@ function FlittersAppInner({ currentUser }) {
   // killed, auth token refresh isn't always handled). This polls on an
   // interval instead, so notifications keep working even if the websocket dies.
   useEffect(()=>{
-    const notifiedIds = new Set()
+    const notifiedIds = notifiedIdsRef.current
     let lastPollTime = new Date().toISOString()
 
     const poll = async () => {
@@ -3031,9 +3053,17 @@ function FlittersAppInner({ currentUser }) {
           .gt('created_at', lastPollTime)
           .order('created_at', {ascending:true})
         if(newNotifs?.length){
+          const typeText = {
+            like:'liked your post', comment:'commented on your post', follow:'started following you',
+            repost:'reposted your flit', follow_request:'sent you a follow request',
+            follow_accepted:'accepted your follow request', mention:'tagged you in a post',
+          }
           for(const n of newNotifs){
             if(notifiedIds.has(n.id)) continue
             notifiedIds.add(n.id)
+            const name = n.actor?.display_name || 'Someone'
+            const body = n.type==='welcome' ? 'Welcome to Flitters!' : `${name} ${typeText[n.type]||'sent you a notification'}`
+            showLocalNotif('Flitters', body)
           }
         }
 
@@ -3050,6 +3080,31 @@ function FlittersAppInner({ currentUser }) {
             for(const m of newMsgs){
               if(notifiedIds.has(m.id)) continue
               notifiedIds.add(m.id)
+              if(m.sender_id === currentUser.id) continue
+              const name = m.sender?.display_name || 'Someone'
+              const body = m.is_sticker ? `${name} sent you a sticker` : `${name}: ${(m.content||'').slice(0,100)}`
+              showLocalNotif('Flitters', body)
+            }
+          }
+        }
+
+        // New group messages across all of the user's groups
+        const {data:myGroups} = await supabase.from('group_members').select('group_id').eq('user_id', currentUser.id)
+        if(myGroups?.length){
+          const groupIds = myGroups.map(g=>g.group_id)
+          const {data:newGroupMsgs} = await supabase.from('group_messages')
+            .select('*,sender:profiles!sender_id(display_name),group:groups!group_id(name)')
+            .in('group_id', groupIds)
+            .gt('created_at', lastPollTime)
+            .order('created_at', {ascending:true})
+          if(newGroupMsgs?.length){
+            for(const m of newGroupMsgs){
+              if(notifiedIds.has(m.id)) continue
+              notifiedIds.add(m.id)
+              if(m.sender_id === currentUser.id) continue
+              const name = m.sender?.display_name || 'Someone'
+              const body = m.is_sticker ? `${name} sent a sticker in ${m.group?.name||'a group'}` : `${name} in ${m.group?.name||'a group'}: ${(m.content||'').slice(0,100)}`
+              showLocalNotif('Flitters', body)
             }
           }
         }
