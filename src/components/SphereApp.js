@@ -736,7 +736,7 @@ function ThemeToggleRow() {
   )
 }
 
-function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush, setupPush }) {
+function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush, setupPush, requestNotifPermission }) {
   const [section, setSection] = useState('main')
   const [displayName, setDisplayName] = useState(currentUser?.display_name||'')
   const [bio, setBio] = useState(currentUser?.bio||'')
@@ -942,7 +942,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       setTestMsg('')
       if (typeof Notification === 'undefined') { setTestMsg('This browser/app does not support the Notification API at all.'); return }
       let perm = Notification.permission
-      if (perm === 'default') { perm = await Notification.requestPermission(); setPermState(perm) }
+      if (perm === 'default') { perm = await requestNotifPermission(); setPermState(perm) }
       if (perm !== 'granted') { setTestMsg('Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
       try {
         if('serviceWorker' in navigator){
@@ -3133,6 +3133,29 @@ function FlittersAppInner({ currentUser }) {
     return()=>supabase.removeChannel(presenceChannel)
   },[])
 
+  // WebToApp's wrapper shell can expose a native permission-request bridge
+  // (requestNotificationPermissions) that triggers Android's real permission
+  // dialog directly — standard Notification.requestPermission() is silently
+  // ignored inside that shell, so this has to be tried first when present.
+  const requestNotifPermission = async () => {
+    try {
+      if(typeof window.requestNotificationPermissions === 'function') {
+        console.log('Triggering WebToApp native permission prompt...')
+        await window.requestNotificationPermissions(true)
+        // The bridge is expected to keep the standard Notification.permission
+        // property in sync after the native prompt resolves.
+        return Notification.permission
+      } else if('Notification' in window) {
+        console.log('Triggering standard browser push prompt...')
+        return await Notification.requestPermission()
+      }
+      return 'unsupported'
+    } catch(e) {
+      console.error('Error requesting permission:', e)
+      return 'error'
+    }
+  }
+
   const setupPush = useCallback(async() => {
     const setStatus = (s) => { try { localStorage.setItem('flitters_push_status', s) } catch(e){} }
     try {
@@ -3158,7 +3181,7 @@ function FlittersAppInner({ currentUser }) {
       const reg = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
       let permission = Notification.permission
-      if(permission === 'default') permission = await Notification.requestPermission()
+      if(permission === 'default') permission = await requestNotifPermission()
       if(permission !== 'granted') { setStatus('Permission is "'+permission+'", not granted'); return }
 
       setStatus('Refreshing subscription...')
@@ -3693,7 +3716,7 @@ function FlittersAppInner({ currentUser }) {
 
   
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
-  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush}/>
+  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
