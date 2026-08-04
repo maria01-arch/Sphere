@@ -1,35 +1,45 @@
-import { getAdminMessaging } from '@/lib/firebase/admin'
+import webpush from 'web-push'
+
+const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY
+let vapidConfigured = false
+let vapidError = null
+try {
+  if (!VAPID_PUBLIC || !VAPID_PRIVATE) {
+    vapidError = 'VAPID keys are not set (NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY missing from environment)'
+  } else {
+    webpush.setVapidDetails('mailto:samzybankz@omnispherelabs.com', VAPID_PUBLIC, VAPID_PRIVATE)
+    vapidConfigured = true
+  }
+} catch (e) {
+  vapidError = 'Invalid VAPID keys: ' + e.message
+}
 
 export const runtime = 'nodejs'
 
 export async function POST(request) {
-  const messaging = getAdminMessaging()
-  if (!messaging) {
-    return Response.json({ error: 'Firebase Admin is not configured (missing FIREBASE_PROJECT_ID / FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY)' }, { status: 500 })
+  if (!vapidConfigured) {
+    console.error('Push not configured:', vapidError)
+    return Response.json({ error: vapidError }, { status: 500 })
   }
   try {
-    // `subscription` here is the FCM registration token saved by the
-    // client's getToken() call — kept as the same field name as before to
-    // avoid touching every call site, even though it's no longer a
-    // PushSubscription object.
-    const { subscription: token, title, body, url } = await request.json()
-    if (!token) return Response.json({ error: 'No token' }, { status: 400 })
+    const { subscription, title, body, url } = await request.json()
+    if (!subscription) return Response.json({ error: 'No subscription' }, { status: 400 })
 
-    await messaging.send({
-      token,
-      notification: { title: title || 'Flitters', body: body || 'You have a new notification' },
-      data: { url: url || '/' },
-      webpush: { fcmOptions: { link: url || '/' } },
-    })
+    await webpush.sendNotification(
+      subscription,
+      JSON.stringify({ title: title || 'Flitters', body: body || 'You have a new notification', url: url || '/' })
+    )
     return Response.json({ success: true })
   } catch (e) {
-    const code = e.code || ''
-    console.error('Push error:', code, e.message)
+    const statusCode = e.statusCode
+    const pushBody = e.body
+    console.error('Push error:', statusCode, pushBody || e.message)
     let hint = ''
-    let statusCode = null
-    if (code === 'messaging/registration-token-not-registered') { hint = 'This token is no longer valid (expired or the app was reinstalled) — reopening the app should create a fresh one.'; statusCode = 410 }
-    else if (code === 'messaging/invalid-argument' || code === 'messaging/invalid-registration-token') { hint = 'The saved token is malformed.'; statusCode = 400 }
-    else if (code === 'messaging/authentication-error' || code === 'messaging/third-party-auth-error') { hint = 'Firebase Admin credentials look wrong — double check FIREBASE_CLIENT_EMAIL / FIREBASE_PRIVATE_KEY.'; statusCode = 401 }
-    return Response.json({ error: (code ? code + ': ' : '') + e.message + (hint ? ' — ' + hint : ''), statusCode }, { status: 500 })
+    if (statusCode === 401 || statusCode === 403) hint = 'The push service rejected the VAPID key — NEXT_PUBLIC_VAPID_PUBLIC_KEY / VAPID_PRIVATE_KEY likely don\'t match each other, or don\'t match the key the browser subscribed with.'
+    else if (statusCode === 404 || statusCode === 410) hint = 'This subscription is no longer valid (expired or the app was reinstalled) — reopening the app should create a fresh one.'
+    else if (statusCode === 413) hint = 'Notification payload too large.'
+    else if (statusCode === 429) hint = 'Rate limited by the push service — try again shortly.'
+    return Response.json({ error: (statusCode ? ('HTTP ' + statusCode + ': ') : '') + (pushBody || e.message) + (hint ? ' — ' + hint : ''), statusCode }, { status: 500 })
   }
 }

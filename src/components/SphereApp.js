@@ -2,7 +2,6 @@
 import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { useTheme } from '@/lib/theme'
-import { getFirebaseMessaging } from '@/lib/firebase/client'
 import {
   X, Check, CheckCheck, MessageCircle, MessageSquare, MapPin, Award, Settings,
   Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
@@ -3140,13 +3139,14 @@ function FlittersAppInner({ currentUser }) {
       setStatus('Starting...')
       if(!('Notification' in window)) { setStatus('No Notification API in this browser'); return }
       if(!('serviceWorker' in navigator)) { setStatus('No serviceWorker support in this browser'); return }
+      if(!('PushManager' in window)) { setStatus('No PushManager support in this browser'); return }
 
-      const vapidKey = process.env.NEXT_PUBLIC_FIREBASE_VAPID_KEY
-      if(!vapidKey) { setStatus('NEXT_PUBLIC_FIREBASE_VAPID_KEY is not set at build time'); return }
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if(!vapidKey) { setStatus('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set at build time'); return }
 
       // Clean up any other service worker registration (e.g. a leftover
-      // OneSignal worker from a previous setup) so it can't compete for
-      // the same push scope and cause duplicate/conflicting deliveries.
+      // OneSignal/Firebase worker from a previous setup) so it can't compete
+      // for the same push scope and cause duplicate/conflicting deliveries.
       setStatus('Checking for stale service workers...')
       const existingRegs = await navigator.serviceWorker.getRegistrations()
       for(const r of existingRegs){
@@ -3161,17 +3161,23 @@ function FlittersAppInner({ currentUser }) {
       if(permission === 'default') permission = await Notification.requestPermission()
       if(permission !== 'granted') { setStatus('Permission is "'+permission+'", not granted'); return }
 
-      setStatus('Getting FCM token...')
-      const messaging = await getFirebaseMessaging()
-      if(!messaging) { setStatus('Firebase Messaging is not supported in this browser'); return }
-      const { getToken } = await import('firebase/messaging')
-      const token = await getToken(messaging, { vapidKey, serviceWorkerRegistration: reg })
-      if(!token) { setStatus('getToken() returned empty — permission or config issue'); return }
+      setStatus('Refreshing subscription...')
+      let sub = await reg.pushManager.getSubscription()
+      // Don't trust a cached subscription — the push service can silently
+      // invalidate it, and the browser has no way of knowing that on its
+      // own; it'll keep handing back the same dead subscription
+      // indefinitely, surviving even an app uninstall/reinstall. Always
+      // re-verify with a fresh subscribe so a dead one can't linger.
+      if(sub) { try { await sub.unsubscribe() } catch(e){}; sub = null }
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey
+      })
 
-      setStatus('Saving token to account...')
+      setStatus('Saving subscription to account...')
       const {error} = await supabase.from('push_subscriptions').upsert({
         user_id:currentUser.id,
-        subscription: token
+        subscription: JSON.parse(JSON.stringify(sub))
       },{onConflict:'user_id'})
       if(error) setStatus('DB save failed: '+error.message)
       else setStatus('Ready — subscribed at '+new Date().toLocaleTimeString())
