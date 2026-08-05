@@ -941,9 +941,10 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
     const runTest = async () => {
       setTestMsg('')
       if (typeof Notification === 'undefined') { setTestMsg('This browser/app does not support the Notification API at all.'); return }
+      const usingNativeBridge = typeof window.requestNotificationPermissions === 'function'
       let perm = Notification.permission
       if (perm === 'default') { perm = await requestNotifPermission(); setPermState(perm) }
-      if (perm !== 'granted') { setTestMsg('Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
+      if (perm !== 'granted' && !usingNativeBridge) { setTestMsg('Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
       try {
         if('serviceWorker' in navigator){
           const reg = await navigator.serviceWorker.ready
@@ -951,7 +952,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         } else {
           new Notification('Flitters Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
         }
-        setTestMsg('Test notification sent — check if it appeared.')
+        setTestMsg('Test notification sent — check if it appeared.'+(perm!=='granted'?' (permission property said "'+perm+'" but the native bridge is in play, so this is the real test.)':''))
       } catch(e) {
         setTestMsg('showNotification() threw an error: ' + e.message)
       }
@@ -3180,9 +3181,19 @@ function FlittersAppInner({ currentUser }) {
       setStatus('Registering service worker...')
       const reg = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
+
+      const usingNativeBridge = typeof window.requestNotificationPermissions === 'function'
       let permission = Notification.permission
       if(permission === 'default') permission = await requestNotifPermission()
-      if(permission !== 'granted') { setStatus('Permission is "'+permission+'", not granted'); return }
+      if(permission !== 'granted' && !usingNativeBridge) { setStatus('Permission is "'+permission+'", not granted'); return }
+      if(permission !== 'granted' && usingNativeBridge) {
+        // The wrapper's native bridge can grant permission at the OS level
+        // without ever updating this page's Notification.permission property
+        // — that property just isn't trustworthy in this shell. Proceed to
+        // the actual subscribe() call and let a real failure (if any) be
+        // the signal instead of a stale flag.
+        setStatus('Native bridge used (permission property stayed "'+permission+'" — proceeding anyway, this is expected in this app shell)...')
+      }
 
       setStatus('Refreshing subscription...')
       let sub = await reg.pushManager.getSubscription()
