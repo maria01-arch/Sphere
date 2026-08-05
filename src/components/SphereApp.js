@@ -985,6 +985,8 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
           <div style={{background:'var(--bg-card-5)',border:'1px solid var(--bg-card-6)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'var(--text-subtle)'}}>
             <div>Browser permission status: <strong style={{color: permState==='granted'?'#00C9A7':'#FF4757'}}>{permState}</strong></div>
             <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>Last subscription attempt: <strong style={{color:'var(--text-primary)'}}>{pushSetupStatus||'(none recorded yet — try the button below)'}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>window.requestNotificationPermissions: <strong style={{color:typeof window!=='undefined'&&typeof window.requestNotificationPermissions==='function'?'#00C9A7':'#FF4757'}}>{typeof window!=='undefined'?typeof window.requestNotificationPermissions:'n/a'}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>Similar globals found: <strong style={{color:'var(--text-primary)',wordBreak:'break-word'}}>{typeof window!=='undefined'?(Object.keys(window).filter(k=>/notif|permission/i.test(k)).join(', ')||'(none)'):'n/a'}</strong></div>
           </div>
           <button onClick={rerunSetup} disabled={rerunning} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:600,fontSize:13,cursor:'pointer',marginBottom:16}}>
             {rerunning?'Running...':'Re-run subscription setup now'}
