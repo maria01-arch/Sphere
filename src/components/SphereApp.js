@@ -941,7 +941,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
     const runTest = async () => {
       setTestMsg('')
       if (typeof Notification === 'undefined') { setTestMsg('This browser/app does not support the Notification API at all.'); return }
-      const usingNativeBridge = typeof window.requestNotificationPermissions === 'function'
+      const usingNativeBridge = window.__webtoapp_notification_polyfill__ === true
       let perm = Notification.permission
       if (perm === 'default') { perm = await requestNotifPermission(); setPermState(perm) }
       if (perm !== 'granted' && !usingNativeBridge) { setTestMsg('Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
@@ -3139,20 +3139,17 @@ function FlittersAppInner({ currentUser }) {
     return()=>supabase.removeChannel(presenceChannel)
   },[])
 
-  // WebToApp's wrapper shell can expose a native permission-request bridge
-  // (requestNotificationPermissions) that triggers Android's real permission
-  // dialog directly — standard Notification.requestPermission() is silently
-  // ignored inside that shell, so this has to be tried first when present.
+  // WebToApp's wrapper shell sets window.__webtoapp_notification_polyfill__
+  // = true to claim it has polyfilled the standard Notification API — but in
+  // practice Notification.permission/requestPermission() here are just the
+  // native, unmodified browser API surface (no special bridge function
+  // exists to call), and the permission property doesn't reliably reflect
+  // the real OS-level grant. So: call the standard API, but don't trust its
+  // reported result as the final word when this flag is present.
   const requestNotifPermission = async () => {
     try {
-      if(typeof window.requestNotificationPermissions === 'function') {
-        console.log('Triggering WebToApp native permission prompt...')
-        await window.requestNotificationPermissions(true)
-        // The bridge is expected to keep the standard Notification.permission
-        // property in sync after the native prompt resolves.
-        return Notification.permission
-      } else if('Notification' in window) {
-        console.log('Triggering standard browser push prompt...')
+      if('Notification' in window) {
+        console.log('Triggering permission prompt...')
         return await Notification.requestPermission()
       }
       return 'unsupported'
@@ -3187,17 +3184,17 @@ function FlittersAppInner({ currentUser }) {
       const reg = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
 
-      const usingNativeBridge = typeof window.requestNotificationPermissions === 'function'
+      const usingWebtoappShell = window.__webtoapp_notification_polyfill__ === true
       let permission = Notification.permission
       if(permission === 'default') permission = await requestNotifPermission()
-      if(permission !== 'granted' && !usingNativeBridge) { setStatus('Permission is "'+permission+'", not granted'); return }
-      if(permission !== 'granted' && usingNativeBridge) {
-        // The wrapper's native bridge can grant permission at the OS level
-        // without ever updating this page's Notification.permission property
-        // — that property just isn't trustworthy in this shell. Proceed to
+      if(permission !== 'granted' && !usingWebtoappShell) { setStatus('Permission is "'+permission+'", not granted'); return }
+      if(permission !== 'granted' && usingWebtoappShell) {
+        // This shell's Notification.permission doesn't reliably reflect the
+        // real OS-level grant — it can stay stuck on "default" even after
+        // the user has genuinely allowed notifications natively. Proceed to
         // the actual subscribe() call and let a real failure (if any) be
-        // the signal instead of a stale flag.
-        setStatus('Native bridge used (permission property stayed "'+permission+'" — proceeding anyway, this is expected in this app shell)...')
+        // the signal instead of trusting this stale property.
+        setStatus('WebToApp shell detected (permission property stayed "'+permission+'" — proceeding anyway, this is expected in this app shell)...')
       }
 
       setStatus('Refreshing subscription...')
