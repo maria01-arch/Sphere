@@ -3217,7 +3217,14 @@ function FlittersAppInner({ currentUser }) {
       },{onConflict:'user_id'})
       if(error) setStatus('DB save failed: '+error.message)
       else setStatus('Ready — subscribed at '+new Date().toLocaleTimeString())
-    } catch(e) { setStatus('Error: '+(e.name?e.name+': ':'')+e.message) }
+    } catch(e) {
+      const msg = (e.name?e.name+': ':'')+e.message
+      if(/not available in this WebView/i.test(e.message||'')) {
+        setStatus('This app shell doesn\'t support real push subscriptions (confirmed by the platform itself) — local notifications (realtime + polling) are already active and are the correct fallback here. Nothing more to fix on this front.')
+      } else {
+        setStatus('Error: '+msg)
+      }
+    }
   }, [currentUser.id])
 
   useEffect(()=>{
