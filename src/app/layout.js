@@ -55,6 +55,24 @@ export const viewport = {
 }
 
 export default function RootLayout({ children }) {
+  const jsonLd = [
+    {
+      '@context': 'https://schema.org',
+      '@type': 'Organization',
+      name: 'Flitters',
+      alternateName: 'Flitters Social',
+      url: 'https://xchord.space',
+      logo: 'https://xchord.space/icon-512.png',
+      sameAs: [],
+    },
+    {
+      '@context': 'https://schema.org',
+      '@type': 'WebSite',
+      name: 'Flitters',
+      url: 'https://xchord.space',
+      description: 'Flitters is a social media platform to connect, share posts, reels, messages and more with people around the world.',
+    },
+  ]
   return (
     <html lang="en">
       <head>
@@ -66,6 +84,10 @@ export default function RootLayout({ children }) {
               document.documentElement.setAttribute('data-theme', theme);
             }catch(e){}})();`
           }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
       <body>{children}</body>
