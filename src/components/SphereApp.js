@@ -1,6 +1,8 @@
 'use client'
 import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { uploadMedia, uploadToR2 } from '@/lib/media/upload'
+import HlsVideo from './HlsVideo'
 import { useTheme } from '@/lib/theme'
 import {
   X, Check, CheckCheck, MessageCircle, MessageSquare, MapPin, Award, Settings,
@@ -465,9 +467,9 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
     if(!targetPack) { alert("Couldn't find that sticker pack — try reopening the sticker tray."); setUploading(false); return }
     const ext = file.name.split('.').pop()
     const path = 'stickers/'+currentUser.id+'_'+Date.now()+'.'+ext
-    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
-    if(error){ alert('Sticker upload failed: '+error.message); setUploading(false); return }
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err) { alert('Sticker upload failed: '+err.message); setUploading(false); return }
     const {data:inserted, error:insertErr} = await supabase.from('stickers').insert({pack_id:targetPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
     if(inserted){
       setActivePack(targetPack.id)
@@ -665,9 +667,9 @@ function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) 
     let idDocUrl = null
     const ext = idFile.name.split('.').pop()
     const path = 'verification-ids/'+currentUser.id+'_'+Date.now()+'.'+ext
-    const {error:uploadErr} = await supabase.storage.from('avatars').upload(path,idFile,{upsert:false})
-    if(uploadErr){ showMsg("ID upload failed: "+uploadErr.message,false); setSaving(false); return }
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadToR2(idFile, path) }
+    catch(err) { showMsg("ID upload failed: "+err.message,false); setSaving(false); return }
     idDocUrl = urlData.publicUrl
     const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod,id_document_url:idDocUrl})
     if(error) showMsg(error.message,false)
@@ -793,9 +795,9 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
     setUploading(true)
     const ext = file.name.split('.').pop()
     const path = `avatars/${currentUser.id}.${ext}`
-    const { error: upErr } = await supabase.storage.from('avatars').upload(path, file, {upsert:true})
-    if (upErr) { showMsg('Upload failed: '+upErr.message, false); setUploading(false); return }
-    const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err) { showMsg('Upload failed: '+err.message, false); setUploading(false); return }
     // Cache-bust: the storage path (and therefore the base public URL) stays
     // identical across re-uploads, so browsers cache the old image against
     // that same URL and never re-fetch the new one. Appending a changing
@@ -1166,7 +1168,7 @@ function ReelPreviewCard({ supabase, onOpen }) {
   if(!reel) return null
   return (
     <div onClick={()=>onOpen(reel.id)} style={{margin:'10px 16px',borderRadius:18,overflow:'hidden',position:'relative',cursor:'pointer',height:200,background:'#000'}}>
-      <video src={reel.video_url} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
+      <HlsVideo src={reel.video_url} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
       <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
       <div style={{position:'absolute',top:12,left:12,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.5)',borderRadius:14,padding:'4px 10px'}}>
         <Clapperboard size={13}/>
@@ -1340,11 +1342,10 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
       if (replyImage) {
         const ext = replyImage.name.split('.').pop()
         const path = `comments/${currentUser.id}_${Date.now()}.${ext}`
-        const { error: upErr } = await supabase.storage.from('avatars').upload(path, replyImage, {upsert:false, contentType: replyImage.type})
-        if (!upErr) {
-          const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+        try {
+          const urlData = await uploadToR2(replyImage, path)
           imageUrl = urlData.publicUrl
-        }
+        } catch { /* image is optional on a reply — fall through without it */ }
       }
       const { error } = await supabase.from('comments').insert({
         post_id: post.id,
@@ -1704,9 +1705,9 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     setSendingImg(true)
     const ext = file.name.split('.').pop()
     const path = 'chats/gc_'+group.id+'_'+Date.now()+'.'+ext
-    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:false})
-    if(error){alert('Image upload failed: '+error.message);setSendingImg(false);return}
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err){alert('Image upload failed: '+err.message);setSendingImg(false);return}
     const url = urlData.publicUrl
     const tempMsg = {id:'temp_img_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'[image]',image_url:url,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
     setMessages(prev=>[...prev,tempMsg])
@@ -1803,9 +1804,9 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
     if(!file) return
     const ext = file.name.split('.').pop()
     const path = 'groups/'+group.id+'.'+ext
-    const {error} = await supabase.storage.from('avatars').upload(path,file,{upsert:true})
-    if(error){alert('Upload failed: '+error.message);return}
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err){alert('Upload failed: '+err.message);return}
     const url = urlData.publicUrl+'?t='+Date.now()
     const {data:updated,error:dbErr} = await supabase.from('groups').update({avatar_url:urlData.publicUrl}).eq('id',group.id).select().single()
     if(dbErr){alert('DB error: '+dbErr.message+' groupid:'+group.id);return}
@@ -2130,11 +2131,9 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const uploadReel = async() => {
     if(!videoFile) return
     setUploading(true)
-    const ext = videoFile.name.split('.').pop()
-    const path = 'reels/'+currentUser.id+'_'+Date.now()+'.'+ext
-    const {error} = await supabase.storage.from('avatars').upload(path,videoFile,{upsert:false})
-    if(error){alert('Upload failed: '+error.message);setUploading(false);return}
-    const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadMedia(videoFile) }
+    catch(err){alert('Upload failed: '+err.message);setUploading(false);return}
     const {data:reel} = await supabase.from('reels').insert({user_id:currentUser.id,video_url:urlData.publicUrl,caption:caption.trim()}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
     if(reel){ setReels(prev=>[reel,...prev]); setLikes(p=>({...p,[reel.id]:0})); setLiked(p=>({...p,[reel.id]:false})) }
     setVideoFile(null); setCaption(''); setShowUpload(false); setUploading(false)
@@ -2200,7 +2199,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
       {/* animated reel container */}
       {reels.length>0&&<div style={{...slideStyle,position:'absolute',inset:0}}>
         {isAdSlot&&currentAd?<>
-          <video src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={false}/>
+          <HlsVideo src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={false}/>
           <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
           <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
@@ -2219,7 +2218,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           {buffering&&<div style={{position:'absolute',inset:0,zIndex:2,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
             <div style={{width:48,height:48,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.15)',borderTopColor:'#fff',animation:'spin 0.8s linear infinite'}}/>
           </div>}
-          <video ref={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',zIndex:1,background:'#000'}}
+          <HlsVideo videoRef={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',zIndex:1,background:'#000'}}
             loop playsInline autoPlay muted={false}
             onWaiting={()=>setBuffering(true)}
             onPlaying={()=>setBuffering(false)}
@@ -2751,9 +2750,9 @@ function AdminPanel({ currentUser, supabase, onBack }) {
     if(mediaFile) {
       const ext = mediaFile.name.split('.').pop()
       const path = 'ads/'+Date.now()+'.'+ext
-      const {error} = await supabase.storage.from('avatars').upload(path,mediaFile,{upsert:false,contentType:mediaFile.type})
-      if(error) { alert('Upload failed: '+error.message); setSaving(false); return }
-      const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+      let urlData
+      try { urlData = mediaFile.type.startsWith('video/') ? await uploadMedia(mediaFile) : await uploadToR2(mediaFile, path) }
+      catch(err) { alert('Upload failed: '+err.message); setSaving(false); return }
       if(adType==='reel') videoUrl = urlData.publicUrl
       else imageUrl = urlData.publicUrl
     }
@@ -3314,25 +3313,35 @@ function FlittersAppInner({ currentUser }) {
       const repostsData = (rawRepostsData||[]).filter(r=>!hiddenUserIds.has(r.user?.id) && !hiddenUserIds.has(r.post?.user_id))
       const now = Date.now()
 
+      // Exponential half-life decay: recency stays a meaningful, always-present
+      // signal (never hard-clamps to 0 like a linear falloff would), so a fresh
+      // post from someone you don't follow can still surface, while a 3-day-old
+      // post and a 3-month-old post are no longer scored as equally "stale".
+      const halfLifeHours = 30
+      const recencyOf = (hrs) => 100 * Math.pow(0.5, hrs/halfLifeHours)
+      // Affinity/engagement are capped so a handful of heavily-liked accounts
+      // can't permanently outrank everything else regardless of how old their
+      // posts get — recency always keeps some pull on the final ranking.
+      const followBoost = (uid) => followingIds.has(uid) ? 35 : 0
+      const affinityOf = (uid) => Math.min((affinityMap[uid]||0) * 6, 55)
+
       const normalized = (data||[]).map(p=>{
         const ageHours = (now - new Date(p.created_at).getTime()) / 3600000
         const likes = p.likes?.length||0
         const comments = p.comments?.length||0
         const reposts = p.reposts?.length||0
-        const engagement = likes*1 + comments*2 + reposts*1.5
-        const recencyScore = Math.max(0, 100 - ageHours*1.5) // decays over time
-        const affinityScore = (affinityMap[p.user_id]||0) * 8
+        const engagement = Math.min(likes*1 + comments*2 + reposts*1.5, 40)
+        const recencyScore = recencyOf(ageHours)
         const isOwn = p.user_id===currentUser.id ? -20 : 0 // slightly deprioritize own posts
-        const score = feedType==='foryou' ? (recencyScore + engagement*0.8 + affinityScore + isOwn) : recencyScore
+        const score = feedType==='foryou' ? (recencyScore + engagement*0.8 + followBoost(p.user_id) + affinityOf(p.user_id) + isOwn) : recencyScore
         return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:likes,reposts_count:reposts,comments_count:comments,sortTime:p.created_at,_score:score}
       })
 
       const repostItems = (repostsData||[]).filter(r=>r.post).map(r=>{
         const p=r.post
         const ageHours=(now-new Date(r.created_at).getTime())/3600000
-        const recencyScore=Math.max(0,100-ageHours*1.5)
-        const affinityScore=(affinityMap[r.user?.id]||0)*8
-        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at,_score:recencyScore+affinityScore}
+        const recencyScore=recencyOf(ageHours)
+        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at,_score:recencyScore+followBoost(r.user?.id)+affinityOf(r.user?.id)}
       })
 
       // sort by score descending
@@ -3497,15 +3506,42 @@ function FlittersAppInner({ currentUser }) {
     setSearchResults(allPeople.filter(u=>u.display_name?.toLowerCase().includes(q)||u.username?.toLowerCase().includes(q)))
   },[searchQ,allPeople])
 
+  // Global search (top search icon): searches people AND posts, not just the
+  // small cached allPeople list used by the "new DM" screen above.
+  const [showSearch, setShowSearch] = useState(false)
+  const [gsQuery, setGsQuery] = useState('')
+  const [gsTab, setGsTab] = useState('people')
+  const [gsPeople, setGsPeople] = useState([])
+  const [gsPosts, setGsPosts] = useState([])
+  const [gsLoading, setGsLoading] = useState(false)
+  useEffect(()=>{
+    if(!showSearch) return
+    const q = gsQuery.trim()
+    if(!q){ setGsPeople([]); setGsPosts([]); return }
+    setGsLoading(true)
+    const t = setTimeout(async()=>{
+      const [{data:people},{data:postsRes}] = await Promise.all([
+        supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').neq('id',currentUser.id)
+          .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`).limit(20),
+        supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)')
+          .ilike('content',`%${q}%`).order('created_at',{ascending:false}).limit(20),
+      ])
+      setGsPeople(people||[])
+      setGsPosts((postsRes||[]).map(p=>({...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
+      setGsLoading(false)
+    },300) // debounce so we're not firing a query on every keystroke
+    return ()=>clearTimeout(t)
+  },[gsQuery,showSearch,currentUser.id])
+
   const sendPost = async() => {
     if(!composeText.trim()&&!composeImage) return
     let imageUrl = null
     if(composeImage) {
       const ext = composeImage.name.split('.').pop().toLowerCase()
       const path = 'posts/'+currentUser.id+'_'+Date.now()+'.'+ext
-      const {data:upData, error} = await supabase.storage.from('avatars').upload(path, composeImage, {upsert:true, contentType:composeImage.type})
-      if(error) { alert('Image upload failed: '+error.message); return }
-      const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
+      let urlData
+      try { urlData = await uploadToR2(composeImage, path) }
+      catch(err) { alert('Image upload failed: '+err.message); return }
       imageUrl = urlData.publicUrl
     }
     const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
@@ -3544,9 +3580,9 @@ function FlittersAppInner({ currentUser }) {
       await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
       convId = conv.id
     }
+    setTabWithHash('messages')
     setSelectedConv({id:convId,other:user})
     setDmView('chat')
-    setTabWithHash('messages')
   }
 
   const dmInputRef = useRef(null)
@@ -3641,9 +3677,9 @@ function FlittersAppInner({ currentUser }) {
     setSendingDMImg(true)
     const ext=file.name.split('.').pop()
     const path='chats/dm_'+selectedConv.id+'_'+Date.now()+'.'+ext
-    const {error}=await supabase.storage.from('avatars').upload(path,file,{upsert:false})
-    if(error){alert('Upload failed: '+error.message);setSendingDMImg(false);return}
-    const {data:urlData}=supabase.storage.from('avatars').getPublicUrl(path)
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err){alert('Upload failed: '+err.message);setSendingDMImg(false);return}
     const url=urlData.publicUrl
     const tempId = 'tmp_img'+Date.now()
     const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
@@ -3762,9 +3798,39 @@ function FlittersAppInner({ currentUser }) {
         <div style={{display:'flex',alignItems:'center',gap:8}}>
           
           {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><Megaphone size={13}/> Ads</button>}
+<button onClick={()=>setShowSearch(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Search size={22}/></button>
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Settings size={22}/></button>
         </div>
       </div>}
+
+      {showSearch && (
+        <div style={{position:'fixed',inset:0,zIndex:60,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'10px 16px',display:'flex',alignItems:'center',gap:10}}>
+            <button onClick={()=>{setShowSearch(false);setGsQuery('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+            <input autoFocus value={gsQuery} onChange={e=>setGsQuery(e.target.value)} placeholder="Search people or posts..." style={{...inp,flex:1}}/>
+          </div>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)'}}>
+            {[{id:'people',label:'People'},{id:'posts',label:'Posts'}].map(t=>(
+              <button key={t.id} onClick={()=>setGsTab(t.id)} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:gsTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:gsTab===t.id?'var(--text-primary)':'var(--text-muted)',fontWeight:gsTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
+            ))}
+          </div>
+          <div style={{flex:1,overflowY:'auto'}}>
+            {!gsQuery.trim() && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>Search for people by name or username, or find posts by keyword.</p>}
+            {gsQuery.trim() && gsLoading && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>Searching...</p>}
+            {gsQuery.trim() && !gsLoading && gsTab==='people' && gsPeople.length===0 && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>No people found</p>}
+            {gsTab==='people' && gsPeople.map(u=>(
+              <div key={u.id} onClick={()=>{setShowSearch(false);setGsQuery('');handleUserClick(u)}} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-5)',cursor:'pointer'}}>
+                <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color} size={44}/>
+                <div><div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div><div style={{color:'var(--text-muted)',fontSize:13}}>@{u.username}</div></div>
+              </div>
+            ))}
+            {gsQuery.trim() && !gsLoading && gsTab==='posts' && gsPosts.length===0 && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>No posts found</p>}
+            {gsTab==='posts' && gsPosts.map(post=>(
+              <PostCard key={post.id} post={post} currentUser={currentUser} supabase={supabase} onUserClick={u=>{setShowSearch(false);setGsQuery('');handleUserClick(u)}} onDelete={null} onOpenPost={id=>{setShowSearch(false);setGsQuery('');openPost(id)}} sendPush={sendPush}/>
+            ))}
+          </div>
+        </div>
+      )}
 
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>
