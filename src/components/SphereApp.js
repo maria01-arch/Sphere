@@ -95,7 +95,58 @@ function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
   )
 }
 
-// ── CHAT BUBBLE (shared by DM + GroupChat) ──────────────────────────────────
+// ── SKELETON LOADING PRIMITIVES ─────────────────────────────────────────────
+// Used everywhere the app was showing a bare "Loading..." string or spinner.
+// A shimmering block communicates "content is coming" without a jarring
+// flash screen — reserved now for true first-launch only (see page.js).
+function SkeletonBlock({ w='100%', h=14, radius=6, style={} }) {
+  return <div style={{width:w,height:h,borderRadius:radius,background:'var(--bg-card-3, rgba(255,255,255,0.08))',animation:'skeletonPulse 1.4s ease-in-out infinite',...style}}/>
+}
+function PostSkeleton() {
+  return (
+    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',gap:12}}>
+      <SkeletonBlock w={44} h={44} radius={22}/>
+      <div style={{flex:1,minWidth:0}}>
+        <SkeletonBlock w={120} h={13} style={{marginBottom:8}}/>
+        <SkeletonBlock w="90%" h={13} style={{marginBottom:6}}/>
+        <SkeletonBlock w="60%" h={13} style={{marginBottom:12}}/>
+        <div style={{display:'flex',gap:24}}>
+          <SkeletonBlock w={40} h={12}/><SkeletonBlock w={40} h={12}/><SkeletonBlock w={40} h={12}/>
+        </div>
+      </div>
+    </div>
+  )
+}
+function FeedSkeleton({ count=5 }) {
+  return <div>{Array.from({length:count}).map((_,i)=><PostSkeleton key={i}/>)}</div>
+}
+function RowSkeleton() {
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px'}}>
+      <SkeletonBlock w={40} h={40} radius={20}/>
+      <div style={{flex:1}}>
+        <SkeletonBlock w="50%" h={12} style={{marginBottom:6}}/>
+        <SkeletonBlock w="30%" h={11}/>
+      </div>
+    </div>
+  )
+}
+function RowSkeletonList({ count=6 }) {
+  return <div>{Array.from({length:count}).map((_,i)=><RowSkeleton key={i}/>)}</div>
+}
+function ChatSkeleton({ count=6 }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:10,padding:'8px 0'}}>
+      {Array.from({length:count}).map((_,i)=>(
+        <div key={i} style={{display:'flex',justifyContent:i%2?'flex-end':'flex-start'}}>
+          <SkeletonBlock w={120+((i*37)%80)} h={34} radius={16}/>
+        </div>
+      ))}
+    </div>
+  )
+}
+
+
 // Reply text is stored as a flattened "Sender Name: quoted text" string today.
 // We split on the first ": " to render it WhatsApp-style (bold name + dimmed
 // quote) without needing a schema migration. Older messages with no ": " just
@@ -537,7 +588,16 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
     if (!user) return
     // fetch full fresh profile so badges and counts are always accurate
     supabase.from('profiles').select('*').eq('id',user.id).single()
-      .then(({data})=>{ if(data){ setProfile(data); setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0) } })
+      .then(({data})=>{
+        if(data){
+          // This account is Flitters AI, always — if its DB row still has an
+          // old display_name/username from before the app's rebrand, don't
+          // let that leak into the UI. Everything else about the row (real
+          // user profiles) is trusted as-is.
+          const merged = user.id==='omnicore-ai' ? {...data,display_name:'Flitters AI',username:'flittersai',avatar_url:'/flitters-ai-icon.png'} : data
+          setProfile(merged); setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0)
+        }
+      })
     supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',user.id).order('created_at',{ascending:false}).limit(50)
       .then(({data}) => { setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,user_liked:p.likes?.some(l=>l.user_id===currentUser.id)}))); setLoading(false) })
     supabase.from('follows').select('id').eq('follower_id',currentUser.id).eq('following_id',user.id).maybeSingle()
@@ -638,7 +698,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
       <div style={{borderTop:'1px solid var(--border-color)'}}>
         <p style={{padding:'14px 16px',fontWeight:700,fontSize:15}}>Posts</p>
         {isBlocked && <p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>You've blocked this account</p>}
-        {!isBlocked && loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+        {!isBlocked && loading&&<FeedSkeleton count={3}/>}
         {!isBlocked && !loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>No posts yet</p>}
         {!isBlocked && posts.map(post=>(
           <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null} onOpenPost={onOpenPost} sendPush={sendPush}/>
@@ -1027,7 +1087,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
       <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
         <Header title="Blocked Accounts"/>
         <div style={{padding:'8px 0'}}>
-          {blockedList===null&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+          {blockedList===null&&<RowSkeletonList count={4}/>}
           {blockedList?.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Ban size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You haven't blocked anyone</p></div>}
           {blockedList?.map(b=>(
             <div key={b.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
@@ -1135,7 +1195,7 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
       </div>
       <div style={{borderTop:'1px solid var(--border-color)'}}>
         <p style={{padding:'14px 16px',fontWeight:700,fontSize:15,borderBottom:'1px solid var(--border-color)'}}>My Posts</p>
-        {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+        {loading&&<FeedSkeleton count={3}/>}
         {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><FileText size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No posts yet</p></div>}
         {posts.map(post=>(
           <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
@@ -1361,7 +1421,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
         setReplyImagePreview('')
         setShowReply(false)
         setReplyingTo(null)
-        loadComments(true) // refresh thread so the new reply appears immediately
+        if (autoExpandComments) loadComments(true) // refresh thread so the new reply appears immediately, only when the thread is already showing
         if (post.user_id !== currentUser.id) {
           await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
           sendPush&&sendPush(post.user_id, 'New Comment', (currentUser.display_name||'Someone')+' commented on your post')
@@ -1418,7 +1478,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
           {post.content&&<p onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
           {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
           <div style={{display:'flex'}}>
-            <button onClick={loadComments} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:showComments?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
+            <button onClick={()=>{setReplyingTo(null);setShowReply(v=>!v)}} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:(showComments||showReply)?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
               <MessageCircle size={16}/><span>{comments}</span>
             </button>
             <button onClick={toggleRepost} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:reposted?'#00C9A7':'#555',fontSize:13,padding:'6px 0'}}>
@@ -1449,7 +1509,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
                 <span style={{color:'var(--text-tertiary)',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
                 <button onClick={()=>{setReplyingTo(null);setShowReply(!showReply)}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
               </div>
-              {loadingComments&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>Loading...</p>}
+              {loadingComments&&<RowSkeletonList count={2}/>}
               {buildCommentTree(commentsList).map(cm=>(
                 <CommentThread key={cm.id} comment={cm} depth={0} onUserClick={onUserClick} onReply={startReply}/>
               ))}
@@ -1513,7 +1573,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
   return(
     <div>
       <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'var(--text-primary)',display:'flex',alignItems:'center',gap:8}}>Notifications <Bell size={18}/></div>
-      {loading&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</p>}
+      {loading&&<RowSkeletonList count={5}/>}
       {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Bell size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No notifications yet</p></div>}
       {notifs.map((n,i)=>{
         const info = typeInfo[n.type]||{icon:<Bell size={16}/>,text:''}
@@ -1961,7 +2021,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       </div>
 
       <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,overflowY:'auto',height:0}}>
-        {loading&&<p style={{textAlign:'center',color:'var(--text-quaternary)',marginTop:40}}>Loading...</p>}
+        {loading&&<ChatSkeleton count={6}/>}
         {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
           <p style={{fontSize:40}}>👋</p>
           <p style={{color:'var(--text-quaternary)',fontSize:14,marginTop:8}}>Say hello to the group!</p>
@@ -3299,8 +3359,8 @@ function FlittersAppInner({ currentUser }) {
       ;(commentedData||[]).forEach(c=>{ const uid=c.posts?.user_id; if(uid){ affinityMap[uid]=(affinityMap[uid]||0)+2 } })
       followingIds.forEach(id=>{ affinityMap[id]=(affinityMap[id]||0)+3 })
 
-      let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:100)
-      let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(40)
+      let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:150)
+      let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
 
       if(feedType==='following'){
         if(!followingIds.size){ setPosts([]); setLoading(false); return }
@@ -3344,26 +3404,18 @@ function FlittersAppInner({ currentUser }) {
         return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at,_score:recencyScore+followBoost(r.user?.id)+affinityOf(r.user?.id)}
       })
 
-      // sort by score descending
-      let merged = [...normalized,...repostItems].sort((a,b)=>b._score-a._score)
-
-      // diversity pass: avoid 3+ consecutive posts from same author
-      const final=[]
-      const deferred=[]
-      const recentAuthors=[]
-      for(const post of merged){
-        const author=post.user_id
-        const recentCount=recentAuthors.slice(-3).filter(a=>a===author).length
-        if(recentCount>=2){ deferred.push(post); continue }
-        final.push(post)
-        recentAuthors.push(author)
-        if(final.length>=60) break
-      }
-      // append deferred posts at the end (no more loop risk)
-      for(const post of deferred){
-        if(final.length>=60) break
-        final.push(post)
-      }
+      // The score above decides WHICH posts are relevant enough to include
+      // (still shaped by who you follow and engage with) — but the actual
+      // display order is always strict recency, most-recent-to-oldest. This
+      // is what was producing the "old post pinned above new ones" complaint:
+      // sorting the feed itself by score let a high-affinity old post outrank
+      // a brand new one. Now score only trims the pool; time always wins the
+      // final ordering.
+      const pool = [...normalized,...repostItems]
+      const relevant = feedType==='foryou'
+        ? pool.sort((a,b)=>b._score-a._score).slice(0,80)
+        : pool
+      const final = relevant.sort((a,b)=> new Date(b.sortTime) - new Date(a.sortTime))
 
       setPosts(final)
     } catch(e){ console.error('loadPosts error',e) }
@@ -3839,7 +3891,7 @@ function FlittersAppInner({ currentUser }) {
               <button key={t.id} onClick={()=>setFeedTab(t.id)} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:feedTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:feedTab===t.id?'#fff':'#555',fontWeight:feedTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
             ))}
           </div>
-          {loading&&<div style={{padding:'50px',textAlign:'center',color:'var(--text-quaternary)'}}>Loading...</div>}
+          {loading&&<FeedSkeleton count={5}/>}
           {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Globe size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters!'}</p></div>}
           {posts.map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>

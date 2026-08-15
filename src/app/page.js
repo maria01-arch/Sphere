@@ -8,9 +8,18 @@ export default function Home() {
   const [loading, setLoading] = useState(true)
   const [fadeOut, setFadeOut] = useState(false)
   const [failedToLoad, setFailedToLoad] = useState(false)
+  // The full animated splash is reserved for a person's very first-ever visit.
+  // Every reload after that shows a lightweight skeleton instead — starts
+  // false so server and client render the same thing on first paint (no
+  // hydration mismatch), then flips true almost immediately in the effect
+  // below if localStorage says this browser has already launched before.
+  const [useSkeleton, setUseSkeleton] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
+    const alreadyLaunched = typeof window !== 'undefined' && localStorage.getItem('flitters_launched')
+    if (alreadyLaunched) setUseSkeleton(true)
+
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { window.location.href = '/auth'; return }
@@ -31,6 +40,7 @@ export default function Home() {
         return
       }
 
+      if (!alreadyLaunched) localStorage.setItem('flitters_launched', '1')
       setProfile(data)
       // fade out loading screen smoothly
       setFadeOut(true)
@@ -45,6 +55,31 @@ export default function Home() {
       <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Setting up your account</p>
       <p style={{ color: '#888', fontSize: 14, maxWidth: 320 }}>This is taking longer than expected. Please try again in a moment.</p>
       <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Try Again</button>
+    </div>
+  )
+
+  if (loading && useSkeleton) return (
+    <div style={{ minHeight: '100dvh', background: '#090B10', padding: '58px 0 0' }}>
+      {/* Header bar skeleton */}
+      <div style={{ height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', position: 'fixed', top: 0, left: 0, right: 0, background: 'rgba(9,11,16,0.9)' }}>
+        <div style={{ width: 90, height: 20, borderRadius: 6, background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+        <div style={{ display: 'flex', gap: 14 }}>
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+          <div style={{ width: 22, height: 22, borderRadius: '50%', background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+        </div>
+      </div>
+      {/* Feed-shaped skeleton rows */}
+      {Array.from({ length: 5 }).map((_, i) => (
+        <div key={i} style={{ padding: '14px 16px', borderBottom: '1px solid rgba(255,255,255,0.06)', display: 'flex', gap: 12 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 22, flexShrink: 0, background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+          <div style={{ flex: 1 }}>
+            <div style={{ width: 120, height: 13, borderRadius: 6, marginBottom: 8, background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+            <div style={{ width: '90%', height: 13, borderRadius: 6, marginBottom: 6, background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+            <div style={{ width: '60%', height: 13, borderRadius: 6, background: 'rgba(255,255,255,0.08)', animation: 'skeletonPulse 1.4s ease-in-out infinite' }} />
+          </div>
+        </div>
+      ))}
+      <style>{`@keyframes skeletonPulse{0%,100%{opacity:0.5}50%{opacity:1}}`}</style>
     </div>
   )
 

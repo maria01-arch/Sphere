@@ -25,6 +25,13 @@ button:active,[role="button"]:active,.tappable:active{
   animation:sheetSlideUp 0.28s cubic-bezier(0.16,1,0.3,1) both;
 }
 
+/* Skeleton loading blocks — used everywhere content is fetching, in place of
+   "Loading..." text or spinners */
+@keyframes skeletonPulse{
+  0%,100%{opacity:0.5}
+  50%{opacity:1}
+}
+
 /* Smooth fade-in for full screen page overlays (settings, group chat, profile, etc)
    NOTE: opacity-only on purpose — a transform here would create a new containing
    block for any position:fixed descendants (e.g. sticky message input bars),
