@@ -145,6 +145,23 @@ function ChatSkeleton({ count=6 }) {
     </div>
   )
 }
+// Sits at the bottom of the rendered feed slice; fires onReached once when it
+// scrolls near the viewport, which is what grows visibleCount by 10. Keeps
+// the feed from rendering everything at once (10 at a time), and reveals
+// more automatically instead of needing a "Load more" tap.
+function FeedLoadMoreSentinel({ onReached }) {
+  const ref = useRef(null)
+  useEffect(()=>{
+    const el = ref.current
+    if(!el) return
+    const obs = new IntersectionObserver((entries)=>{
+      if(entries[0].isIntersecting) onReached()
+    }, { rootMargin: '600px' }) // trigger a bit before it's actually on screen, so more posts are ready by the time you scroll to them
+    obs.observe(el)
+    return ()=>obs.disconnect()
+  },[onReached])
+  return <div ref={ref} style={{height:1}}/>
+}
 
 
 // Reply text is stored as a flattened "Sender Name: quoted text" string today.
@@ -2920,6 +2937,7 @@ function FlittersAppInner({ currentUser }) {
   const [pendingReelId, setPendingReelId] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
   const [posts, setPosts] = useState([])
+  const [visibleCount, setVisibleCount] = useState(10) // feed renders 10 posts at a time, grows as you scroll near the end
   const [loading, setLoading] = useState(true)
   const [showCompose, setShowCompose] = useState(false)
   const [composeText, setComposeText] = useState('')
@@ -2927,6 +2945,7 @@ function FlittersAppInner({ currentUser }) {
   const [composeImageUrl, setComposeImageUrl] = useState(null)
   const composeImgRef = useRef(null)
   const [conversations, setConversations] = useState([])
+  const [convosLoading, setConvosLoading] = useState(true)
   const [selectedConv, setSelectedConv] = useState(null)
   const [messages, setMessages] = useState([])
   const [msgText, setMsgText] = useState('')
@@ -3020,6 +3039,7 @@ function FlittersAppInner({ currentUser }) {
     }
   },[])
   const [people, setPeople] = useState([])
+  const [peopleLoading, setPeopleLoading] = useState(true)
   const [notifs, setNotifs] = useState([])
   const [viewingUser, setViewingUser] = useState(null)
   const [viewingPost, setViewingPost] = useState(null)
@@ -3365,7 +3385,7 @@ function FlittersAppInner({ currentUser }) {
       let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
 
       if(feedType==='following'){
-        if(!followingIds.size){ setPosts([]); setLoading(false); return }
+        if(!followingIds.size){ setPosts([]); setVisibleCount(10); setLoading(false); return }
         postsQuery = postsQuery.in('user_id',[...followingIds])
         repostsQuery = repostsQuery.in('user_id',[...followingIds])
       }
@@ -3420,6 +3440,7 @@ function FlittersAppInner({ currentUser }) {
       const final = relevant.sort((a,b)=> new Date(b.sortTime) - new Date(a.sortTime))
 
       setPosts(final)
+      setVisibleCount(10)
     } catch(e){ console.error('loadPosts error',e) }
     setLoading(false)
   },[currentUser.id])
@@ -3437,7 +3458,8 @@ function FlittersAppInner({ currentUser }) {
 
   useEffect(()=>{
     if(tab==='friends') {
-      supabase.from('profiles').select('*').neq('id',currentUser.id).limit(40).then(({data})=>setPeople(data||[]))
+      setPeopleLoading(true)
+      supabase.from('profiles').select('*').neq('id',currentUser.id).limit(40).then(({data})=>{setPeople(data||[]);setPeopleLoading(false)})
       // Load who current user already follows
       supabase.from('follows').select('following_id').eq('follower_id',currentUser.id).then(({data})=>{
         const map = {}
@@ -3449,8 +3471,9 @@ function FlittersAppInner({ currentUser }) {
   useEffect(()=>{ if(tab==='messages'&&dmView==='list') loadConvos() },[tab])
 
   const loadConvos = async() => {
+    setConvosLoading(true)
     const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
-    if(!parts?.length){setConversations([]);return}
+    if(!parts?.length){setConversations([]);setConvosLoading(false);return}
     const results = await Promise.all(parts.map(async p=>{
       const id = p.conversation_id
       const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
@@ -3461,6 +3484,7 @@ function FlittersAppInner({ currentUser }) {
       return {id, other:prof, last:lastMsg, unread:(unreadCount||0)>0}
     }))
     setConversations(results.filter(Boolean).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)))
+    setConvosLoading(false)
   }
 
   useEffect(()=>{
@@ -3895,7 +3919,7 @@ function FlittersAppInner({ currentUser }) {
           </div>
           {loading&&<FeedSkeleton count={5}/>}
           {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Globe size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters!'}</p></div>}
-          {posts.map((post,i)=>(
+          {posts.slice(0,visibleCount).map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
               {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
                 <Repeat2 size={14}/>
@@ -3907,6 +3931,7 @@ function FlittersAppInner({ currentUser }) {
               {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTabWithHash('pulse');setPendingReelId(reelId)}}/>}
             </div>
           ))}
+          {!loading && visibleCount<posts.length && <FeedLoadMoreSentinel onReached={()=>setVisibleCount(v=>Math.min(v+10,posts.length))}/>}
         </>}
 
         {tab==='messages'&&<>
@@ -3928,7 +3953,8 @@ function FlittersAppInner({ currentUser }) {
               </div>
               <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
             </div>
-            {conversations.map(conv=>(
+            {convosLoading && <RowSkeletonList count={6}/>}
+            {!convosLoading && conversations.map(conv=>(
               <div key={conv.id}
                 onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
                 style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
@@ -4070,8 +4096,9 @@ function FlittersAppInner({ currentUser }) {
             <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Compass size={15}/> Explore</button>
           </div>
           {friendsSubTab==='friends'&&<>
-            {people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Users size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
-            {people.filter(u=>followed[u.id]).map((u,i)=>(
+            {peopleLoading && <RowSkeletonList count={6}/>}
+            {!peopleLoading && people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Users size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
+            {!peopleLoading && people.filter(u=>followed[u.id]).map((u,i)=>(
               <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
                 <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
                   <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||COLORS[i%COLORS.length]} size={48}/>
@@ -4087,7 +4114,8 @@ function FlittersAppInner({ currentUser }) {
           </>}
           {friendsSubTab==='explore'&&<>
             <p style={{color:'var(--text-secondary)',fontSize:13,padding:'12px 16px 4px'}}>People you might know</p>
-            {people.filter(u=>!followed[u.id]).map((u,i)=>(
+            {peopleLoading && <RowSkeletonList count={6}/>}
+            {!peopleLoading && people.filter(u=>!followed[u.id]).map((u,i)=>(
               <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
                 <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
                   <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||COLORS[i%COLORS.length]} size={48}/>
@@ -4100,7 +4128,7 @@ function FlittersAppInner({ currentUser }) {
                 <button onClick={()=>toggleFollow(u)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Follow</button>
               </div>
             ))}
-            {!people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'var(--text-quaternary)'}}>You follow everyone on Flitters!</p>}
+            {!peopleLoading && !people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'var(--text-quaternary)'}}>You follow everyone on Flitters!</p>}
           </>}
         </>}
 
