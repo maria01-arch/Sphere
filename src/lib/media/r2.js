@@ -15,6 +15,13 @@ function client() {
       accessKeyId: process.env.R2_ACCESS_KEY_ID,
       secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
     },
+    // Recent @aws-sdk/client-s3 versions default to adding flexible-checksum
+    // trailers on every request. R2 doesn't fully support that behavior, and
+    // it can manifest as a low-level connection failure (TLS handshake
+    // errors) rather than a clean API error — this is a known R2 + AWS SDK
+    // v3 compatibility gotcha, not something specific to this app.
+    requestChecksumCalculation: 'WHEN_REQUIRED',
+    responseChecksumValidation: 'WHEN_REQUIRED',
   })
   return _client
 }
