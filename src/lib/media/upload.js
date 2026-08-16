@@ -39,21 +39,16 @@ export async function uploadToR2(file, path) {
 }
 
 async function uploadImage(file, path) {
+  const form = new FormData()
+  form.append('file', file)
+  form.append('path', path)
   const res = await fetch('/api/upload/image', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-    body: JSON.stringify({ path, contentType: file.type || 'application/octet-stream' }),
+    headers: await authHeader(), // no Content-Type here — the browser sets the multipart boundary itself
+    body: form,
   })
   const json = await res.json()
-  if (!res.ok) throw new Error(json.error || 'Could not start upload')
-
-  const put = await fetch(json.uploadUrl, {
-    method: 'PUT',
-    headers: { 'Content-Type': file.type || 'application/octet-stream' },
-    body: file,
-  })
-  if (!put.ok) throw new Error('Image upload failed')
-
+  if (!res.ok) throw new Error(json.error || 'Image upload failed')
   return { publicUrl: json.publicUrl }
 }
 
