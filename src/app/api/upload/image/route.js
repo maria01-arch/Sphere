@@ -1,5 +1,5 @@
 import { createClient } from '@/lib/supabase/server'
-import { uploadImageDirect } from '@/lib/media/r2'
+import { uploadImageDirect, debugConfig } from '@/lib/media/r2'
 
 export const runtime = 'nodejs'
 
@@ -32,6 +32,9 @@ export async function POST(req) {
     const { publicUrl } = await uploadImageDirect(key, bytes, file.type)
     return Response.json({ publicUrl })
   } catch (err) {
-    return Response.json({ error: err.message || 'Upload failed' }, { status: 500 })
+    // Temporary: include masked config so a failed upload tells us directly
+    // what endpoint/credentials were actually used, instead of guessing.
+    // Nothing secret is exposed — just prefix/suffix + length of each value.
+    return Response.json({ error: (err.message || 'Upload failed') + ' | debug: ' + JSON.stringify(debugConfig()) }, { status: 500 })
   }
 }
