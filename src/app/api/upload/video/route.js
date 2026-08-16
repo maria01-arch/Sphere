@@ -8,7 +8,9 @@ export const runtime = 'nodejs'
 // publicUrl is an HLS manifest (.m3u8) — play it with the HlsVideo component.
 export async function POST(req) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const authHeader = req.headers.get('authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Not signed in' }, { status: 401 })
 
   let maxDurationSeconds = 180

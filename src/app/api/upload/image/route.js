@@ -8,7 +8,12 @@ export const runtime = 'nodejs'
 // uploadUrl, then saves publicUrl into the same DB columns as before.
 export async function POST(req) {
   const supabase = await createClient()
-  const { data: { user } } = await supabase.auth.getUser()
+  const authHeader = req.headers.get('authorization')
+  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+  // Prefer the explicit token the client sends (works regardless of cookie
+  // reliability, e.g. inside the Android WebView wrapper) — fall back to the
+  // cookie-based session for any other caller.
+  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser()
   if (!user) return Response.json({ error: 'Not signed in' }, { status: 401 })
 
   const { path, contentType } = await req.json()

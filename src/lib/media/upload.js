@@ -1,3 +1,18 @@
+import { createClient } from '@/lib/supabase/client'
+
+// Cookie-based auth (via middleware) is unreliable inside the Android
+// WebView wrapper this app also ships in — cookies can fail to persist there
+// even though the in-memory/localStorage Supabase session works fine for
+// every other call in the app. So instead of relying on the browser sending
+// auth cookies to our API route, we grab the access token from the session
+// that's already working and send it explicitly. The server verifies that
+// token directly — no cookies required.
+async function authHeader() {
+  const supabase = createClient()
+  const { data: { session } } = await supabase.auth.getSession()
+  return session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
+}
+
 // Drop-in replacement for the old pattern:
 //   const {error} = await supabase.storage.from('avatars').upload(path, file, {...})
 //   const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
@@ -26,7 +41,7 @@ export async function uploadToR2(file, path) {
 async function uploadImage(file, path) {
   const res = await fetch('/api/upload/image', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
     body: JSON.stringify({ path, contentType: file.type || 'application/octet-stream' }),
   })
   const json = await res.json()
@@ -45,7 +60,7 @@ async function uploadImage(file, path) {
 async function uploadVideo(file, { maxDurationSeconds } = {}) {
   const res = await fetch('/api/upload/video', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
     body: JSON.stringify(maxDurationSeconds ? { maxDurationSeconds } : {}),
   })
   const json = await res.json()
