@@ -3043,7 +3043,14 @@ function FlittersAppInner({ currentUser }) {
   const [notifs, setNotifs] = useState([])
   const [viewingUser, setViewingUser] = useState(null)
   const [viewingPost, setViewingPost] = useState(null)
+  // The feed scrolls at the window level (no dedicated scroll container), and
+  // opening a post/profile swaps in a totally separate full-screen view that
+  // replaces the feed in the DOM entirely. So going "back" was landing back
+  // at the top instead of where you were — nothing was remembering the
+  // scroll position across that swap. This ref is that memory.
+  const feedScrollPosRef = useRef(0)
   const openPost = async(postId) => {
+    feedScrollPosRef.current = window.scrollY
     const {data} = await supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').eq('id',postId).single()
     if(data) setViewingPost({...data,user_liked:data.likes?.some(l=>l.user_id===currentUser.id),user_reposted:data.reposts?.some(r=>r.user_id===currentUser.id),likes_count:data.likes?.length||0,reposts_count:data.reposts?.length||0,comments_count:data.comments?.length||0})
     setHideNav(true)
@@ -3070,6 +3077,15 @@ function FlittersAppInner({ currentUser }) {
   useEffect(()=>{
     stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current,viewingReels:reelsRef.current,viewingPost}
   },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost])
+
+  // Restore the feed's scroll position once you're actually back on it. Wait
+  // a frame so the feed's DOM has repainted first — scrolling before that
+  // would target a page that isn't tall enough yet.
+  useEffect(()=>{
+    if(!viewingPost && !viewingUser && !showMyProfile){
+      requestAnimationFrame(()=>window.scrollTo(0, feedScrollPosRef.current))
+    }
+  },[viewingPost,viewingUser,showMyProfile])
 
   // Shared between the instant realtime listener below and the polling
   // backup further down, so an item that already got notified instantly
@@ -3719,6 +3735,7 @@ function FlittersAppInner({ currentUser }) {
 
   const handleUserClick = (user) => {
     if(!user?.id) return
+    feedScrollPosRef.current = window.scrollY
     if(user.id===currentUser.id){setShowMyProfile(true);return}
     setViewingUser(user)
   }
