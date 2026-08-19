@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
-import { uploadImage } from '@/lib/media/upload'
+import { uploadToR2 } from '@/lib/media/upload'
 import { BookOpen, Plus, X, ChevronLeft, Image as ImageIcon, Trash2 } from 'lucide-react'
 
 function timeAgo(ts) {
@@ -123,7 +123,7 @@ function CreateStoryModal({ supabase, currentUser, onClose, onCreated }) {
       let coverUrl = null
       if (coverFile) {
         const path = `stories/covers/${currentUser.id}-${Date.now()}-${coverFile.name}`
-        const { publicUrl } = await uploadImage(coverFile, path)
+        const { publicUrl } = await uploadToR2(coverFile, path)
         coverUrl = publicUrl
       }
       const { data, error: insertErr } = await supabase.from('stories')
@@ -248,7 +248,7 @@ function AddChapterModal({ story, chapterNumber, supabase, onClose, onAdded }) {
       for (let i = 0; i < files.length; i++) {
         setProgress(`Uploading image ${i+1} of ${files.length}...`)
         const path = `stories/${story.id}/ch${chapterNumber}-${Date.now()}-${i}-${files[i].file.name}`
-        const { publicUrl } = await uploadImage(files[i].file, path)
+        const { publicUrl } = await uploadToR2(files[i].file, path)
         urls.push(publicUrl)
       }
       setProgress('Publishing chapter...')
