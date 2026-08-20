@@ -12,10 +12,28 @@ export default function ResetPage() {
   const supabase = createClient()
 
   useEffect(() => {
-    // Supabase puts the session in the URL hash on redirect
-    supabase.auth.onAuthStateChange((event) => {
-      if (event === 'PASSWORD_RECOVERY') setReady(true)
-    })
+    let unsub = null
+    const check = async () => {
+      // This project's Supabase client uses PKCE flow, so a password-recovery
+      // link arrives as `?code=...` in the query string, not as a hash-based
+      // access_token — the old hash-only approach (below) could sit on
+      // "Checking link..." forever because that event never fires. Explicitly
+      // exchange the code for a session first, since that's what actually
+      // happens with this link format.
+      const code = new URLSearchParams(window.location.search).get('code')
+      if (code) {
+        const { error: exchangeErr } = await supabase.auth.exchangeCodeForSession(code)
+        if (!exchangeErr) { setReady(true); return }
+      }
+      // Fallback: some older/alternate link formats still use the
+      // hash-based flow — keep listening for that too.
+      const { data } = supabase.auth.onAuthStateChange((event) => {
+        if (event === 'PASSWORD_RECOVERY') setReady(true)
+      })
+      unsub = data?.subscription
+    }
+    check()
+    return () => unsub?.unsubscribe()
   }, [])
 
   const handleReset = async () => {
