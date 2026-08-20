@@ -21,6 +21,16 @@ export default function AuthPage() {
   const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
   const [step, setStep] = useState(1) // signup wizard step 1-7 (7 = OTP, email path only)
 
+  // forgot-password flow — matches the signup OTP pattern instead of an email
+  // link, since a link opens in whatever the device's default browser is
+  // (not necessarily the app/browser the reset was requested from), which
+  // broke reliably across contexts. A code typed back into the app has no
+  // such dependency.
+  const [forgotStep, setForgotStep] = useState('email') // 'email' | 'otp' | 'newpassword'
+  const [resetOtpCode, setResetOtpCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
+
   // step 1
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
@@ -58,7 +68,7 @@ export default function AuthPage() {
 
   const goToLogin = () => { setMode('login'); setError(''); setSuccess('') }
   const goToSignup = () => { setMode('signup'); setStep(1); setError(''); setSuccess('') }
-  const goToForgot = () => { setMode('forgot'); setError(''); setSuccess('') }
+  const goToForgot = () => { setMode('forgot'); setForgotStep('email'); setResetOtpCode(''); setNewPassword(''); setNewPasswordConfirm(''); setError(''); setSuccess('') }
 
   const handleAvatarPick = (file) => {
     if (!file) return
@@ -230,11 +240,44 @@ export default function AuthPage() {
       const trimmed = loginContact.trim()
       const usingEmail = isEmail(trimmed)
       if (!usingEmail) { setError('Password reset requires an email address. Please enter the email on your account.'); setLoading(false); return }
+      // redirectTo is kept as a fallback for anyone who ends up on the email
+      // link instead of the code (e.g. an email client that only shows the
+      // button) — the code below is the primary, reliable path now.
       const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
         redirectTo: window.location.origin + '/auth/reset'
       })
       if (error) throw error
-      setSuccess('Password reset link sent! Check your email inbox.')
+      setForgotStep('otp')
+      setSuccess(forgotStep === 'otp' ? 'Code resent! Check your inbox.' : '')
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const handleVerifyResetOtp = async () => {
+    if (!resetOtpCode.trim() || resetOtpCode.trim().length < 6) { setError('Enter the code from your email'); return }
+    setError(''); setLoading(true)
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: loginContact.trim(),
+        token: resetOtpCode.trim(),
+        type: 'recovery'
+      })
+      if (error) throw error
+      setError(''); setSuccess('')
+      setForgotStep('newpassword')
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const handleSetNewPassword = async () => {
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (newPassword !== newPasswordConfirm) { setError('Passwords do not match'); return }
+    setError(''); setLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      setSuccess('Password updated! Redirecting...')
+      setTimeout(() => { window.location.href = '/' }, 1200)
     } catch (e) { setError(e.message) }
     setLoading(false)
   }
@@ -321,21 +364,60 @@ export default function AuthPage() {
 
         {/* ---------- FORGOT ---------- */}
         {mode === 'forgot' && <>
-          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Reset Password</h1>
-          <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Enter your account email to receive a reset link</p>
+          {forgotStep === 'email' && <>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Reset Password</h1>
+            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Enter your account email — we'll send you a code</p>
 
-          <input style={inp} type="text" placeholder="Email address" value={loginContact} onChange={e => setLoginContact(e.target.value)} />
+            <input style={inp} type="text" placeholder="Email address" value={loginContact} onChange={e => setLoginContact(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleForgot()} />
 
-          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
-          {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
-          <button onClick={handleForgot} disabled={loading} style={primaryBtn}>
-            {loading ? 'Please wait...' : 'Send Reset Link'}
-          </button>
+            <button onClick={handleForgot} disabled={loading} style={primaryBtn}>
+              {loading ? 'Please wait...' : 'Send Code'}
+            </button>
 
-          <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
-            <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
-          </p>
+            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+              <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
+            </p>
+          </>}
+
+          {forgotStep === 'otp' && <>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Enter Code</h1>
+            <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              We sent a code to <strong style={{ color: '#fff' }}>{loginContact}</strong>. Enter it below.
+            </p>
+
+            <input style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={10} placeholder="0000000000" value={resetOtpCode} onChange={e => setResetOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyResetOtp()} />
+
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+
+            <button onClick={handleVerifyResetOtp} disabled={loading} style={primaryBtn}>
+              {loading ? 'Verifying...' : 'Verify Code'}
+            </button>
+
+            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+              {"Didn't get a code? "}<span onClick={handleForgot} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Resend</span>
+            </p>
+            <p style={{ textAlign: 'center', marginTop: 8, color: '#555', fontSize: 14 }}>
+              <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
+            </p>
+          </>}
+
+          {forgotStep === 'newpassword' && <>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>New Password</h1>
+            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Choose a new password for your account</p>
+
+            <input style={inp} type="password" placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+            <input style={inp} type="password" placeholder="Confirm new password" value={newPasswordConfirm} onChange={e => setNewPasswordConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSetNewPassword()} />
+
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+
+            <button onClick={handleSetNewPassword} disabled={loading} style={primaryBtn}>
+              {loading ? 'Saving...' : 'Set New Password'}
+            </button>
+          </>}
         </>}
 
         {/* ---------- SIGNUP WIZARD ---------- */}
