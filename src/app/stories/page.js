@@ -16,7 +16,11 @@ export default function StoriesPage() {
   const supabase = createClient()
   const [loading, setLoading] = useState(true)
   const [currentUser, setCurrentUser] = useState(null)
+  const [tab, setTab] = useState('library') // 'library' | 'discover' | 'mine'
   const [myStories, setMyStories] = useState([])
+  const [library, setLibrary] = useState([]) // followed stories, with unread info
+  const [discover, setDiscover] = useState([]) // all stories not created by you
+  const [followedIds, setFollowedIds] = useState({})
   const [showCreate, setShowCreate] = useState(false)
   const [openStory, setOpenStory] = useState(null) // story you're managing chapters for
 
@@ -26,7 +30,11 @@ export default function StoriesPage() {
       if (!session) { window.location.href = '/auth'; return }
       const { data: profile } = await supabase.from('profiles').select('*').eq('id', session.user.id).maybeSingle()
       setCurrentUser(profile)
-      await loadMyStories(session.user.id)
+      await Promise.all([
+        loadMyStories(session.user.id),
+        loadLibrary(session.user.id),
+        loadDiscover(session.user.id),
+      ])
       setLoading(false)
     }
     init()
@@ -35,6 +43,28 @@ export default function StoriesPage() {
   const loadMyStories = async (userId) => {
     const { data } = await supabase.from('stories').select('*,story_chapters(id,chapter_number,title,published_at)').eq('creator_id', userId).order('updated_at', { ascending: false })
     setMyStories(data || [])
+  }
+
+  const loadLibrary = async (userId) => {
+    const { data } = await supabase.from('story_follows').select('last_read_chapter,story:stories(*,creator:profiles(display_name,username),story_chapters(chapter_number))').eq('user_id', userId)
+    const rows = (data || []).filter(r => r.story).sort((a,b) => new Date(b.story.updated_at) - new Date(a.story.updated_at))
+    setLibrary(rows)
+    setFollowedIds(Object.fromEntries(rows.map(r => [r.story.id, true])))
+  }
+
+  const loadDiscover = async (userId) => {
+    const { data } = await supabase.from('stories').select('*,creator:profiles(display_name,username)').neq('creator_id', userId).order('updated_at', { ascending: false }).limit(40)
+    setDiscover(data || [])
+  }
+
+  const toggleFollow = async (storyId) => {
+    if (!currentUser) return
+    if (followedIds[storyId]) {
+      await supabase.from('story_follows').delete().eq('story_id', storyId).eq('user_id', currentUser.id)
+    } else {
+      await supabase.from('story_follows').insert({ story_id: storyId, user_id: currentUser.id })
+    }
+    await loadLibrary(currentUser.id)
   }
 
   if (loading) return (
@@ -59,33 +89,84 @@ export default function StoriesPage() {
         <span style={{fontWeight:800,fontSize:19,display:'flex',alignItems:'center',gap:8}}><BookOpen size={19}/> Stories</span>
       </div>
 
+      <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)'}}>
+        {[{id:'library',label:'Library'},{id:'discover',label:'Discover'},{id:'mine',label:'My Stories'}].map(t=>(
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:tab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:tab===t.id?'var(--text-primary)':'var(--text-muted)',fontWeight:tab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
+        ))}
+      </div>
+
       <div style={{padding:'16px'}}>
-        <p style={{color:'var(--text-quaternary)',fontSize:13,marginBottom:16}}>
-          Following other creators' stories and browsing all stories is coming soon — for now this is where you create and manage your own.
-        </p>
+        {tab==='library' && <>
+          {library.length===0 && <p style={{color:'var(--text-quaternary)',fontSize:14,padding:'30px 0',textAlign:'center'}}>You're not following any stories yet.<br/>Check Discover to find some.</p>}
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {library.map(({story,last_read_chapter})=>{
+              const latestChapter = story.story_chapters?.length ? Math.max(...story.story_chapters.map(c=>c.chapter_number)) : 0
+              const unread = latestChapter > (last_read_chapter||0)
+              return (
+                <a key={story.id} href={`/stories/${story.id}`} style={{display:'flex',gap:12,padding:12,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:16,textDecoration:'none',color:'var(--text-primary)'}}>
+                  <div style={{position:'relative',width:56,height:56,borderRadius:10,flexShrink:0,background:'var(--bg-card-3, rgba(255,255,255,0.08))',overflow:'hidden'}}>
+                    {story.cover_image_url && <img src={story.cover_image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>}
+                    {unread && <span style={{position:'absolute',top:4,right:4,width:9,height:9,borderRadius:'50%',background:'#5B9CF6',border:'2px solid var(--bg-card)'}}/>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:15}}>{story.title}</div>
+                    <div style={{color:'var(--text-tertiary)',fontSize:13,marginTop:2}}>by {story.creator?.display_name}</div>
+                    <div style={{color:unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,marginTop:2,fontWeight:unread?600:400}}>
+                      {unread ? `New chapter ${latestChapter}` : `Up to date · ${timeAgo(story.updated_at)}`}
+                    </div>
+                  </div>
+                </a>
+              )
+            })}
+          </div>
+        </>}
 
-        <button onClick={()=>setShowCreate(true)} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:20}}>
-          <Plus size={18}/> New Story
-        </button>
-
-        <p style={{color:'var(--text-secondary)',fontSize:13,fontWeight:600,marginBottom:10}}>MY STORIES</p>
-        {myStories.length===0 && <p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0',textAlign:'center'}}>You haven't started a story yet.</p>}
-        <div style={{display:'flex',flexDirection:'column',gap:10}}>
-          {myStories.map(story => (
-            <div key={story.id} onClick={()=>setOpenStory(story)} style={{display:'flex',gap:12,padding:12,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:16,cursor:'pointer'}}>
-              <div style={{width:56,height:56,borderRadius:10,flexShrink:0,background:'var(--bg-card-3, rgba(255,255,255,0.08))',overflow:'hidden'}}>
-                {story.cover_image_url && <img src={story.cover_image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>}
+        {tab==='discover' && <>
+          {discover.length===0 && <p style={{color:'var(--text-quaternary)',fontSize:14,padding:'30px 0',textAlign:'center'}}>No other stories published yet.</p>}
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {discover.map(story=>(
+              <div key={story.id} style={{display:'flex',gap:12,padding:12,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:16}}>
+                <a href={`/stories/${story.id}`} style={{display:'flex',gap:12,flex:1,minWidth:0,textDecoration:'none',color:'var(--text-primary)'}}>
+                  <div style={{width:56,height:56,borderRadius:10,flexShrink:0,background:'var(--bg-card-3, rgba(255,255,255,0.08))',overflow:'hidden'}}>
+                    {story.cover_image_url && <img src={story.cover_image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>}
+                  </div>
+                  <div style={{flex:1,minWidth:0}}>
+                    <div style={{fontWeight:700,fontSize:15}}>{story.title}</div>
+                    <div style={{color:'var(--text-tertiary)',fontSize:13,marginTop:2}}>by {story.creator?.display_name}</div>
+                    <div style={{color:'var(--text-quaternary)',fontSize:12,marginTop:2}}>{story.status==='completed'?'Completed':'Ongoing'}</div>
+                  </div>
+                </a>
+                <button onClick={()=>toggleFollow(story.id)} style={{alignSelf:'center',flexShrink:0,border:'none',borderRadius:12,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer',
+                  background: followedIds[story.id] ? 'var(--bg-card-3, rgba(255,255,255,0.08))' : 'linear-gradient(135deg,#5B9CF6,#845EF7)', color: followedIds[story.id] ? 'var(--text-primary)' : '#fff'}}>
+                  {followedIds[story.id] ? 'Following' : 'Follow'}
+                </button>
               </div>
-              <div style={{flex:1,minWidth:0}}>
-                <div style={{fontWeight:700,fontSize:15}}>{story.title}</div>
-                <div style={{color:'var(--text-tertiary)',fontSize:13,marginTop:2}}>
-                  {story.story_chapters?.length || 0} chapter{story.story_chapters?.length===1?'':'s'} · {story.status==='completed'?'Completed':'Ongoing'}
+            ))}
+          </div>
+        </>}
+
+        {tab==='mine' && <>
+          <button onClick={()=>setShowCreate(true)} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:20}}>
+            <Plus size={18}/> New Story
+          </button>
+          {myStories.length===0 && <p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0',textAlign:'center'}}>You haven't started a story yet.</p>}
+          <div style={{display:'flex',flexDirection:'column',gap:10}}>
+            {myStories.map(story => (
+              <div key={story.id} onClick={()=>setOpenStory(story)} style={{display:'flex',gap:12,padding:12,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:16,cursor:'pointer'}}>
+                <div style={{width:56,height:56,borderRadius:10,flexShrink:0,background:'var(--bg-card-3, rgba(255,255,255,0.08))',overflow:'hidden'}}>
+                  {story.cover_image_url && <img src={story.cover_image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>}
                 </div>
-                <div style={{color:'var(--text-quaternary)',fontSize:12,marginTop:2}}>Updated {timeAgo(story.updated_at)}</div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{fontWeight:700,fontSize:15}}>{story.title}</div>
+                  <div style={{color:'var(--text-tertiary)',fontSize:13,marginTop:2}}>
+                    {story.story_chapters?.length || 0} chapter{story.story_chapters?.length===1?'':'s'} · {story.status==='completed'?'Completed':'Ongoing'}
+                  </div>
+                  <div style={{color:'var(--text-quaternary)',fontSize:12,marginTop:2}}>Updated {timeAgo(story.updated_at)}</div>
+                </div>
               </div>
-            </div>
-          ))}
-        </div>
+            ))}
+          </div>
+        </>}
       </div>
 
       {showCreate && (

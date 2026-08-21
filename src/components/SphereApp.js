@@ -2392,6 +2392,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [showCreatePulse, setShowCreatePulse] = useState(false)
   const [showReels, setShowReels] = useState(false)
+  const [myStoriesLib, setMyStoriesLib] = useState([]) // followed stories, for the STORIES row
   const [groupName, setGroupName] = useState('')
   const [groupDesc, setGroupDesc] = useState('')
   const [groupTag, setGroupTag] = useState('')
@@ -2428,14 +2429,16 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   },[viewingGroup,viewingPulse,showCreatePulse,showCreateGroup])
 
   const loadAll = async () => {
-    const [{data:g},{data:p},{data:mp}] = await Promise.all([
+    const [{data:g},{data:p},{data:mp},{data:storyFollows}] = await Promise.all([
       supabase.from('groups').select('*,group_members(user_id)').order('created_at',{ascending:false}),
       supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}),
-      supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false})
+      supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
+      supabase.from('story_follows').select('last_read_chapter,story:stories(id,title,cover_image_url,updated_at,story_chapters(chapter_number))').eq('user_id',currentUser.id)
     ])
     setGroups(g||[])
     setPulses((p||[]).filter(x=>x.user_id!==currentUser.id))
     setMyPulse(mp||[])
+    setMyStoriesLib((storyFollows||[]).filter(r=>r.story).sort((a,b)=>new Date(b.story.updated_at)-new Date(a.story.updated_at)))
     const myIds = (g||[]).filter(x=>x.group_members?.some(m=>m.user_id===currentUser.id)).map(x=>x.id)
     loadUnreadGroups(myIds)
   }
@@ -2654,6 +2657,28 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         ))}
         {pulses.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0'}}>No pulses yet</p>}
       </div>
+
+      {myStoriesLib.length>0&&<>
+        <p style={{padding:'0 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>STORIES</p>
+        <div style={{display:'flex',gap:12,padding:'0 16px 20px',overflowX:'auto',scrollbarWidth:'none'}}>
+          {myStoriesLib.map(({story,last_read_chapter})=>{
+            const latestChapter = story.story_chapters?.length ? Math.max(...story.story_chapters.map(c=>c.chapter_number)) : 0
+            const unread = latestChapter > (last_read_chapter||0)
+            return (
+              <a key={story.id} href={`/stories/${story.id}`} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,textDecoration:'none',flexShrink:0}}>
+                <div style={{width:64,height:64,borderRadius:16,background:'var(--bg-card-3, rgba(255,255,255,0.08))',border:unread?'3px solid #5B9CF6':'2px solid var(--border-color-2)',overflow:'hidden'}}>
+                  {story.cover_image_url && <img src={story.cover_image_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>}
+                </div>
+                <span style={{color:'var(--text-subtle)',fontSize:11,maxWidth:64,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{story.title}</span>
+              </a>
+            )
+          })}
+          <a href="/stories" style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,textDecoration:'none',flexShrink:0}}>
+            <div style={{width:64,height:64,borderRadius:16,background:'var(--bg-card)',border:'2px dashed var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-tertiary)',fontSize:12,fontWeight:700}}>See all</div>
+            <span style={{color:'var(--text-subtle)',fontSize:11}}>Stories</span>
+          </a>
+        </div>
+      </>}
     </div>
   )
 }
