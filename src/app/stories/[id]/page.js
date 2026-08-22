@@ -78,7 +78,7 @@ export default function StoryDetailPage() {
 
   return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',paddingBottom:40}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(14px + env(safe-area-inset-top)) 16px 14px',display:'flex',alignItems:'center',gap:10}}>
         <a href="/stories" style={{color:'var(--text-primary)',display:'flex'}}><ChevronLeft size={24}/></a>
         <span style={{fontWeight:800,fontSize:18}}>Story</span>
       </div>

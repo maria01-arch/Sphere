@@ -60,7 +60,7 @@ export default function ChapterReaderPage() {
 
   return (
     <div style={{minHeight:'100dvh',background:'#000',color:'#fff'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',padding:'14px 16px',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'rgba(0,0,0,0.85)',backdropFilter:'blur(8px)',padding:'calc(14px + env(safe-area-inset-top)) 16px 14px',display:'flex',alignItems:'center',gap:10,borderBottom:'1px solid rgba(255,255,255,0.08)'}}>
         <a href={`/stories/${id}`} style={{color:'#fff',display:'flex'}}><ChevronLeft size={24}/></a>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:700,fontSize:15,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{story.title}</div>

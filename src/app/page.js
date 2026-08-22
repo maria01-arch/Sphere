@@ -6,20 +6,10 @@ import FlittersApp from '@/components/SphereApp'
 export default function Home() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
-  const [fadeOut, setFadeOut] = useState(false)
   const [failedToLoad, setFailedToLoad] = useState(false)
-  // The full animated splash is reserved for a person's very first-ever visit.
-  // Every reload after that shows a lightweight skeleton instead — starts
-  // false so server and client render the same thing on first paint (no
-  // hydration mismatch), then flips true almost immediately in the effect
-  // below if localStorage says this browser has already launched before.
-  const [useSkeleton, setUseSkeleton] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
-    const alreadyLaunched = typeof window !== 'undefined' && localStorage.getItem('flitters_launched')
-    if (alreadyLaunched) setUseSkeleton(true)
-
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
       if (!session) { window.location.href = '/auth'; return }
@@ -40,11 +30,8 @@ export default function Home() {
         return
       }
 
-      if (!alreadyLaunched) localStorage.setItem('flitters_launched', '1')
       setProfile(data)
-      // fade out loading screen smoothly
-      setFadeOut(true)
-      setTimeout(() => setLoading(false), 600)
+      setLoading(false)
     }
     init()
   }, [])
@@ -58,7 +45,10 @@ export default function Home() {
     </div>
   )
 
-  if (loading && useSkeleton) return (
+  // Skeleton is now the only loading state, on every load — the native app
+  // shell shows its own splash first, so this web-level animated splash was
+  // redundant on top of it.
+  if (loading) return (
     <div style={{ minHeight: '100dvh', background: '#090B10', padding: '58px 0 0' }}>
       {/* Header bar skeleton */}
       <div style={{ height: 58, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 16px', position: 'fixed', top: 0, left: 0, right: 0, background: 'rgba(9,11,16,0.9)' }}>
@@ -83,56 +73,5 @@ export default function Home() {
     </div>
   )
 
-  if (loading) return (
-    <div style={{
-      minHeight: '100dvh', background: '#090B10',
-      display: 'flex', flexDirection: 'column',
-      alignItems: 'center', justifyContent: 'center', gap: 24,
-      opacity: fadeOut ? 0 : 1,
-      transition: 'opacity 0.6s ease',
-    }}>
-      {/* Flitters Logo */}
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 12 }}>
-        <div style={{ animation: 'xspin 2.2s ease-in-out infinite' }}>
-          <img src="/flitters-mark.png" alt="Flitters" width="110" height="110" style={{ objectFit: 'contain' }} />
-        </div>
-
-        <div style={{ textAlign: 'center' }}>
-          <h1 style={{
-            fontWeight: 900, fontSize: 28, letterSpacing: 6, margin: 0,
-            background: 'linear-gradient(135deg,#A855F7,#06B6D4)',
-            WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent'
-          }}>FLITTERS</h1>
-          <p style={{ color: '#333', fontSize: 10, letterSpacing: 3, marginTop: 2 }}>SOCIAL MEDIA PLATFORM</p>
-        </div>
-      </div>
-
-      {/* Animated loading bar */}
-      <div style={{ width: 120, height: 2, background: 'rgba(255,255,255,0.05)', borderRadius: 2, overflow: 'hidden' }}>
-        <div style={{
-          height: '100%',
-          background: 'linear-gradient(90deg,#A855F7,#06B6D4)',
-          borderRadius: 2,
-          animation: 'xload 1.4s ease-in-out infinite',
-        }} />
-      </div>
-
-      <div style={{ color: '#333', fontSize: 11, letterSpacing: 2 }}>CONNECT. SHARE. FLIT.</div>
-
-      <style>{`
-        @keyframes xload {
-          0% { width:0%; margin-left:0%; }
-          50% { width:70%; margin-left:15%; }
-          100% { width:0%; margin-left:100%; }
-        }
-        @keyframes xspin {
-          0%, 100% { transform: scale(1) rotate(0deg); }
-          50% { transform: scale(1.06) rotate(6deg); }
-        }
-      `}</style>
-    </div>
-  )
-
   return <FlittersApp currentUser={profile} />
 }
-

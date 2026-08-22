@@ -84,7 +84,7 @@ export default function StoriesPage() {
 
   return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',paddingBottom:40}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(14px + env(safe-area-inset-top)) 16px 14px',display:'flex',alignItems:'center',gap:10}}>
         <a href="/" style={{color:'var(--text-primary)',display:'flex'}}><ChevronLeft size={24}/></a>
         <span style={{fontWeight:800,fontSize:19,display:'flex',alignItems:'center',gap:8}}><BookOpen size={19}/> Stories</span>
       </div>
@@ -266,7 +266,7 @@ function ChapterManager({ story, supabase, onBack }) {
 
   return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',paddingBottom:40}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'14px 16px',display:'flex',alignItems:'center',gap:10}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(14px + env(safe-area-inset-top)) 16px 14px',display:'flex',alignItems:'center',gap:10}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><ChevronLeft size={24}/></button>
         <span style={{fontWeight:800,fontSize:18}}>{story.title}</span>
       </div>
