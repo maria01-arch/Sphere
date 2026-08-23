@@ -9,7 +9,7 @@ import {
   Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
   Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
   Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
-  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile, BookOpen
+  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile, BookOpen, Volume2, VolumeX
 } from 'lucide-react'
 const supabase = createClient()
 
@@ -2028,7 +2028,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   return (
     <div className="screen-in-safe full-screen-height" style={{background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
-      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'12px 16px',display:'flex',alignItems:'center',gap:12}}>
+      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
           <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',overflow:'hidden'}}>
@@ -2116,6 +2116,11 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const [liked, setLiked] = useState({})
   const [likes, setLikes] = useState({})
   const [playing, setPlaying] = useState(true)
+  // Reels/ads autoplay muted by default (tap the speaker to unmute) — was
+  // previously hardcoded muted={false}. This restores the original muted-
+  // autoplay design, and separately is good practice regardless of any
+  // WebView issue: nobody wants unsolicited audio blasting on scroll.
+  const [reelMuted, setReelMuted] = useState(true)
   const [buffering, setBuffering] = useState(false)
   const [animDir, setAnimDir] = useState(null) // 'up' | 'down' | null
   const [animating, setAnimating] = useState(false)
@@ -2281,7 +2286,10 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
       {/* animated reel container */}
       {reels.length>0&&<div style={{...slideStyle,position:'absolute',inset:0}}>
         {isAdSlot&&currentAd?<>
-          <HlsVideo src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={false}/>
+          <HlsVideo src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={reelMuted}/>
+          <div style={{position:'absolute',top:16,right:12,cursor:'pointer',color:'#fff',zIndex:4}} onClick={(e)=>{e.stopPropagation();setReelMuted(m=>!m)}}>
+            {reelMuted ? <VolumeX size={22}/> : <Volume2 size={22}/>}
+          </div>
           <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
           <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
@@ -2301,7 +2309,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
             <div style={{width:48,height:48,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.15)',borderTopColor:'#fff',animation:'spin 0.8s linear infinite'}}/>
           </div>}
           <HlsVideo videoRef={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',zIndex:1,background:'#000'}}
-            loop playsInline autoPlay muted={false}
+            loop playsInline autoPlay muted={reelMuted}
             onWaiting={()=>setBuffering(true)}
             onPlaying={()=>setBuffering(false)}
             onCanPlay={()=>setBuffering(false)}
@@ -2341,6 +2349,9 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
             {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
               <Trash2 size={24}/>
             </div>}
+            <div style={{cursor:'pointer'}} onClick={(e)=>{e.stopPropagation();setReelMuted(m=>!m)}}>
+              {reelMuted ? <VolumeX size={24}/> : <Volume2 size={24}/>}
+            </div>
           </div>
 
           {currentIdx<reels.length-1&&<div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',color:'rgba(255,255,255,0.35)',fontSize:11,zIndex:4,display:'flex',flexDirection:'column',alignItems:'center',gap:2,pointerEvents:'none'}}>
@@ -2957,7 +2968,12 @@ function FlittersAppInner({ currentUser }) {
   }
   const [tab, setTab] = useState(getHashTab)
   const setTabWithHash = (t) => {
-    window.location.hash = t
+    // history.replaceState only updates the URL bar and never triggers
+    // browser navigation — assigning to location.hash does, and inside the
+    // Android WebView wrapper that was causing a full page reload (re-running
+    // the whole auth/profile fetch in page.js) on every single tab tap,
+    // which is what made tab switching feel like a full refresh.
+    window.history.replaceState(null, '', '#'+t)
     setTab(t)
     if(t==='messages') setDmView('list')
   }
@@ -4059,14 +4075,14 @@ function FlittersAppInner({ currentUser }) {
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
-            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(7px)',flexShrink:0}}>
+            <div style={{padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(7px)',flexShrink:0}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
-              <div onClick={()=>setViewingUser(selectedConv.other)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
+              <div onClick={()=>setViewingUser(selectedConv.other)} style={{cursor:'pointer',flexShrink:0}}>
                 <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
-                <div>
-                  <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
-                  <div style={{color:otherTyping?'#5B9CF6':(onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555'),fontSize:11}}>{otherTyping?'typing...':(onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline')}</div>
-                </div>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
+                <div style={{color:otherTyping?'#5B9CF6':(onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555'),fontSize:11}}>{otherTyping?'typing...':(onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline')}</div>
               </div>
             </div>
             <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,overflowY:'auto',height:0}}>
