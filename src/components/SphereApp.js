@@ -2028,7 +2028,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   return (
     <div className="screen-in-safe full-screen-height" style={{background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
-      <div style={{position:'fixed',top:0,left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+      <div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
         <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
           <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',overflow:'hidden'}}>
@@ -2961,6 +2961,30 @@ function FlittersAppInner({ currentUser }) {
   const [showAdmin, setShowAdmin] = useState(false)
   const ADMIN_ID = 'b29fa752-34f5-4a3e-a3e7-8178c2b176ae'
 
+  // Keeps --vvh (visible height) and --vv-top (how far the visible area has
+  // scrolled from the page's actual top) in sync with the real, live visual
+  // viewport. This exists because the `interactive-widget=resizes-visual`
+  // viewport meta setting — the standards-based fix for "keyboard drags
+  // fixed headers around" — isn't being honored by this app's WebView engine
+  // (GeckoView). Reading window.visualViewport directly works regardless of
+  // that, since it's a broadly-supported API independent of that newer meta
+  // tag. Full-screen overlays with a composer (DM chat, group chat, post
+  // detail) use these vars instead of inset:0/100dvh so they track the
+  // actual visible area rather than getting dragged along with whatever the
+  // browser does to scroll a focused input into view.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      document.documentElement.style.setProperty('--vvh', vv.height + 'px')
+      document.documentElement.style.setProperty('--vv-top', vv.offsetTop + 'px')
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
+  }, [])
+
   // URL-based navigation
   const getHashTab = () => {
     const h = window.location.hash.replace('#','')
@@ -3518,7 +3542,11 @@ function FlittersAppInner({ currentUser }) {
 
   useEffect(()=>{
     if(tab==='friends') {
-      setPeopleLoading(true)
+      // Only show the skeleton on the very first visit — a revisit already
+      // has data on screen, so refresh it silently instead of flashing the
+      // skeleton and making the tab feel like it's loading from scratch
+      // every single time.
+      if(people.length===0) setPeopleLoading(true)
       supabase.from('profiles').select('*').neq('id',currentUser.id).limit(40).then(({data})=>{setPeople(data||[]);setPeopleLoading(false)})
       // Load who current user already follows
       supabase.from('follows').select('following_id').eq('follower_id',currentUser.id).then(({data})=>{
@@ -3528,10 +3556,10 @@ function FlittersAppInner({ currentUser }) {
       })
     }
   },[tab])
-  useEffect(()=>{ if(tab==='messages'&&dmView==='list') loadConvos() },[tab])
+  useEffect(()=>{ if(tab==='messages'&&dmView==='list') loadConvos(conversations.length===0) },[tab])
 
-  const loadConvos = async() => {
-    setConvosLoading(true)
+  const loadConvos = async(showSkeleton=false) => {
+    if(showSkeleton) setConvosLoading(true)
     const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
     if(!parts?.length){setConversations([]);setConvosLoading(false);return}
     const results = await Promise.all(parts.map(async p=>{
@@ -3916,10 +3944,15 @@ function FlittersAppInner({ currentUser }) {
   if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
     <div className="screen-in-safe" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+      <div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={closePost} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Post</span>
       </div>
+      {/* Header moved from sticky-in-flow to fixed (matching DM/Group Chat) —
+          it no longer takes up space in normal flow, so this spacer keeps
+          content from starting underneath it. ~58px covers the header's
+          rendered height across devices without a real safe-area inset. */}
+      <div style={{height:'calc(58px + env(safe-area-inset-top))'}}/>
       <PostCard post={viewingPost} currentUser={currentUser} supabase={supabase} onUserClick={u=>{closePost();handleUserClick(u)}} onDelete={null} autoExpandComments sendPush={sendPush}/>
     </div>
   )
@@ -4073,7 +4106,7 @@ function FlittersAppInner({ currentUser }) {
           </>}
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
-          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',inset:0,zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
             <div style={{padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(7px)',flexShrink:0}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
@@ -4193,10 +4226,19 @@ function FlittersAppInner({ currentUser }) {
           </>}
         </>}
 
-        {tab==='pulse'&&<PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef} reelsRef={reelsRef}/>}
+        {/* Kept mounted always (visibility toggled via CSS) instead of
+            conditionally rendered — conditional rendering was unmounting
+            these on every tab switch, destroying their state, so coming
+            back always meant a full refetch and the loading skeleton again,
+            even on the 5th visit to the same tab. */}
+        <div style={{display: tab==='pulse' ? 'block' : 'none'}}>
+          <PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef} reelsRef={reelsRef}/>
+        </div>
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Search size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
-        {tab==='notifications'&&<NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>}
+        <div style={{display: tab==='notifications' ? 'block' : 'none'}}>
+          <NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>
+        </div>
       </div>
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}

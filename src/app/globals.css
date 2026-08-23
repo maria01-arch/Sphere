@@ -50,10 +50,12 @@ button:active,[role="button"]:active,.tappable:active{
 }
 
 /* Full-screen height that accounts for mobile browser chrome/keyboard resizing.
-   Falls back to 100vh on browsers that don't support dvh. */
+   Falls back to 100dvh, then 100vh, on browsers where the JS-tracked
+   --vvh custom property (set from window.visualViewport) isn't available yet. */
 .full-screen-height{
   height:100vh;
   height:100dvh;
+  height:var(--vvh, 100dvh);
 }
 @keyframes backdropFadeIn{
   from{opacity:0}
