@@ -2432,8 +2432,18 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   useEffect(()=>{
     if(autoOpenGroup){setViewingGroup(autoOpenGroup);if(onAutoOpenDone)onAutoOpenDone()}
   },[autoOpenGroup])
+  const [openedReelId, setOpenedReelId] = useState(null)
   useEffect(()=>{
-    if(pendingReelId){ setShowReels(true); onReelsOpened&&onReelsOpened() }
+    if(pendingReelId){
+      // Capture the value into local state first — telling the parent to
+      // clear pendingReelId (via onReelsOpened) can land in the same React
+      // batch as showReels becoming true, meaning ReelsView could end up
+      // reading pendingReelId after it's already been reset to null. Local
+      // state driven only by this effect can't be raced like that.
+      setOpenedReelId(pendingReelId)
+      setShowReels(true)
+      onReelsOpened&&onReelsOpened()
+    }
   },[pendingReelId])
   useEffect(()=>{
     onHideNav&&onHideNav(!!(viewingGroup||viewingPulse||showCreatePulse||showCreateGroup))
@@ -2507,7 +2517,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
 
   if(showReels){
     if(reelsRef) reelsRef.current = {closeReels:()=>{setShowReels(false);onHideNav&&onHideNav(false)}}
-    return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={pendingReelId} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false);if(reelsRef)reelsRef.current=null}}/>
+    return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={openedReelId} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false);if(reelsRef)reelsRef.current=null}}/>
   }
   if(reelsRef) reelsRef.current = null
 
@@ -3941,7 +3951,6 @@ function FlittersAppInner({ currentUser }) {
   if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
   if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>
   if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
-  if(viewingUser) return <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
   if(viewingPost) return (
     <div className="screen-in-safe" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
@@ -4286,6 +4295,19 @@ function FlittersAppInner({ currentUser }) {
           </div>
         </div>
       </div>}
+
+      {/* Rendered as an overlay (not an early return) specifically so that
+          opening a profile from within a reel — or Notifications, or
+          anywhere else — doesn't unmount whatever's underneath. It used to
+          be a top-level early return, which tore down the entire tree below
+          it, including PulseTab's internal reel-viewing state; going back
+          would then remount PulseTab fresh, landing on its default view
+          instead of the reel you were actually on. */}
+      {viewingUser && (
+        <div style={{position:'fixed',inset:0,zIndex:900,background:'var(--bg-app)'}}>
+          <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
+        </div>
+      )}
     </div>
   )
 }
