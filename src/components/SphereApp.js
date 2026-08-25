@@ -2446,8 +2446,8 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     }
   },[pendingReelId])
   useEffect(()=>{
-    onHideNav&&onHideNav(!!(viewingGroup||viewingPulse||showCreatePulse||showCreateGroup))
-  },[viewingGroup,viewingPulse,showCreatePulse,showCreateGroup])
+    onHideNav&&onHideNav(!!(viewingGroup||viewingPulse||showCreatePulse||showCreateGroup||showReels))
+  },[viewingGroup,viewingPulse,showCreatePulse,showCreateGroup,showReels])
 
   const loadAll = async () => {
     const [{data:g},{data:p},{data:mp},{data:storyFollows}] = await Promise.all([
@@ -3434,7 +3434,20 @@ function FlittersAppInner({ currentUser }) {
         setHideNav(false)
         return
       }
-      if(s.tab!=='home'){setTabWithHash('home');return}
+      if(s.tab!=='home'){
+        // Defensive cleanup: this fallback means none of the tracked
+        // overlays matched, but if one is still actually mounted underneath
+        // (stateRef can theoretically go stale — this exact class of bug is
+        // what caused the reel freeze), force-clear anything that could
+        // leave the app stuck. ReelsView locks body scroll while open and
+        // only unlocks it in its own unmount cleanup — if that never runs,
+        // scrolling stays broken app-wide even after switching tabs.
+        if(reelsRef.current?.closeReels) { reelsRef.current.closeReels(); reelsRef.current = null }
+        document.body.style.overflow = ''
+        document.body.style.overscrollBehavior = ''
+        setTabWithHash('home')
+        return
+      }
     }
     window.addEventListener('popstate',handlePop)
     return()=>window.removeEventListener('popstate',handlePop)
