@@ -2,17 +2,19 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import FlittersApp from '@/components/SphereApp'
+import LandingPage from '@/components/LandingPage'
 
 export default function Home() {
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
   const [failedToLoad, setFailedToLoad] = useState(false)
+  const [showLanding, setShowLanding] = useState(false)
   const supabase = createClient()
 
   useEffect(() => {
     const init = async () => {
       const { data: { session } } = await supabase.auth.getSession()
-      if (!session) { window.location.href = '/auth'; return }
+      if (!session) { setShowLanding(true); setLoading(false); return }
 
       // The profile row is created by a database trigger right after signup —
       // there can be a brief race where it hasn't landed yet. Retry a few times
@@ -35,6 +37,8 @@ export default function Home() {
     }
     init()
   }, [])
+
+  if (showLanding) return <LandingPage />
 
   if (failedToLoad) return (
     <div style={{ minHeight: '100dvh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
