@@ -97,8 +97,8 @@ button:active,[role="button"]:active,.tappable:active{
 }
 
 [data-theme="light"]{
-  --bg-app:linear-gradient(180deg,#FBF8F3 0%,#F7F1E7 55%,#F2EADC 100%);
-  --bg-header:rgba(251,248,243,0.94);
+  --bg-app:linear-gradient(180deg,#FCFCFB 0%,#F9F9F8 55%,#F6F6F5 100%);
+  --bg-header:rgba(252,252,251,0.94);
   --bg-card:rgba(91,140,246,0.06);
   --bg-card-2:rgba(91,140,246,0.09);
   --bg-card-3:rgba(91,140,246,0.045);

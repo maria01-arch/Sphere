@@ -65,7 +65,7 @@ export default function Home() {
     <div style={{ minHeight: '100dvh', background: 'var(--bg-app)', color: 'var(--text-primary)' }}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(10px + env(safe-area-inset-top)) 16px 10px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <div style={{width:36,height:36,borderRadius:'50%',background:'var(--bg-card-3)',animation:'skeletonPulse 1.4s ease-in-out infinite'}}/>
-        <div style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',display:'flex'}}>
+        <div style={{position:'absolute',left:'50%',top:0,bottom:0,transform:'translateX(-50%)',display:'flex',alignItems:'center'}}>
           <img src={FLITTERS_MARK} alt="Flitters" width="36" height="36" style={{objectFit:'contain'}}/>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8}}>

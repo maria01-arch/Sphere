@@ -14,6 +14,26 @@ import {
 } from 'lucide-react'
 const supabase = createClient()
 
+// Detects an @flittersai mention and, if found, asks the AI to reply as a
+// comment on the post — used after both posting and commenting, since you
+// can tag it either way.
+const AI_MENTION_RE = /@flittersai\b/i
+async function triggerAiMentionReply({ postId, postContent, mentionText, mentionCommentId }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = { 'Content-Type': 'application/json' }
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+    await fetch('/api/flittersai/mention-reply', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId, postContent, mentionText, mentionCommentId }),
+    })
+  } catch {
+    // Silent failure is acceptable here — this is a nice-to-have reply, not
+    // a core action the user is waiting on or needs an error for.
+  }
+}
+
 class ErrorBoundary extends (require('react').Component) {
   constructor(props) { super(props); this.state = {error:null} }
   static getDerivedStateFromError(e) { return {error:e} }
@@ -1428,15 +1448,17 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
           imageUrl = urlData.publicUrl
         } catch { /* image is optional on a reply — fall through without it */ }
       }
-      const { error } = await supabase.from('comments').insert({
+      const { data: newComment, error } = await supabase.from('comments').insert({
         post_id: post.id,
         user_id: currentUser.id,
         content: replyText.trim(),
         reply_to_comment_id: replyingTo?.id || null,
         image_url: imageUrl
-      })
+      }).select('id').single()
       if (!error) {
         setComments(c=>c+1)
+        const mentionedAi = AI_MENTION_RE.test(replyText)
+        const sentText = replyText.trim()
         setReplyText('')
         setReplyImage(null)
         setReplyImagePreview('')
@@ -1446,6 +1468,9 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
         if (post.user_id !== currentUser.id) {
           await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
           sendPush&&sendPush(post.user_id, 'New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+        }
+        if (mentionedAi) {
+          triggerAiMentionReply({ postId: post.id, postContent: post.content, mentionText: sentText, mentionCommentId: newComment?.id })
         }
       }
     } finally {
@@ -3747,6 +3772,9 @@ function FlittersAppInner({ currentUser }) {
           ))
         }
       }
+      if(handles.includes('flittersai')){
+        triggerAiMentionReply({ postId: data.id, postContent: composeText.trim() })
+      }
     }
     setComposeText(''); setComposeImage(null); setComposeImageUrl(null); setShowCompose(false)
   }
@@ -3989,7 +4017,7 @@ function FlittersAppInner({ currentUser }) {
         {/* Absolutely centered regardless of the avatar/icons on either side
             having different widths — space-between alone doesn't actually
             center a middle element unless both sides match exactly. */}
-        <div onClick={()=>window.location.reload()} style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',cursor:'pointer',userSelect:'none',display:'flex'}}>
+        <div onClick={()=>window.location.reload()} style={{position:'absolute',left:'50%',top:0,bottom:0,transform:'translateX(-50%)',display:'flex',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
           <img src={FLITTERS_MARK} alt="Flitters" width="36" height="36" style={{objectFit:'contain',filter:theme==='light'?'drop-shadow(0 0 1px rgba(0,0,0,0.5)) drop-shadow(0 0 1px rgba(0,0,0,0.5))':'none'}}/>
         </div>
         <div style={{display:'flex',alignItems:'center',gap:8,zIndex:1}}>
