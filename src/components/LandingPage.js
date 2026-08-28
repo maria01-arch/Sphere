@@ -1,4 +1,5 @@
 'use client'
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
 
 // Hero image lives at /public/landing-hero.jpg — swap the file directly to
 // change it, no code change needed. The slow pan/zoom below is pure CSS
@@ -30,7 +31,7 @@ export default function LandingPage() {
         padding: 'calc(32px + env(safe-area-inset-top)) 24px calc(40px + env(safe-area-inset-bottom))',
         textAlign: 'center', boxSizing: 'border-box',
       }}>
-        <img src="/flitters-mark.png" alt="Flitters" width={44} height={44} style={{ objectFit: 'contain' }} />
+        <img src={FLITTERS_MARK} alt="Flitters" width={44} height={44} style={{ objectFit: 'contain' }} />
 
         <div>
           <h1 style={{ color: '#fff', fontSize: 34, fontWeight: 800, lineHeight: 1.15, margin: 0, textShadow: '0 2px 12px rgba(0,0,0,0.4)' }}>

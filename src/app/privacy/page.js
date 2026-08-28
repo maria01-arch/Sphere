@@ -1,3 +1,4 @@
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
 export const metadata = { title: 'Privacy Policy — Flitters', description: 'Flitters Privacy Policy' }
 
 export default function PrivacyPolicy() {
@@ -16,7 +17,7 @@ export default function PrivacyPolicy() {
   return (
     <div style={s.page}>
       <div style={s.header}>
-        <img src="/flitters-mark.png" alt="Flitters" width={36} height={36} style={{objectFit:'contain'}}/>
+        <img src={FLITTERS_MARK} alt="Flitters" width={36} height={36} style={{objectFit:'contain'}}/>
         <span style={s.logoText}>Flitters</span>
       </div>
       <div style={s.body}>

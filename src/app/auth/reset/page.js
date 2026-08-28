@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
 
 export default function ResetPage() {
   const [password, setPassword] = useState('')
@@ -84,7 +85,7 @@ export default function ResetPage() {
     <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
       <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
-          <img src="/flitters-mark.png" alt="Flitters" width="40" height="40" style={{ objectFit: 'contain' }} />
+          <img src={FLITTERS_MARK} alt="Flitters" width="40" height="40" style={{ objectFit: 'contain' }} />
           <span style={{ fontWeight: 900, fontSize: 24, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</span>
         </div>
 

@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
 import { uploadMedia, uploadToR2 } from '@/lib/media/upload'
 import HlsVideo from './HlsVideo'
 import { useTheme } from '@/lib/theme'
@@ -3982,14 +3983,16 @@ function FlittersAppInner({ currentUser }) {
   return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',maxWidth:600,margin:'0 auto',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
       {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(10px + env(safe-area-inset-top)) 16px 10px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0}}>
+        <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0,zIndex:1}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
         </button>
-        <div onClick={()=>window.location.reload()} style={{display:'flex',alignItems:'center',gap:8,cursor:'pointer',userSelect:'none'}}>
-          <img src="/flitters-mark.png" alt="Flitters" width="36" height="36" style={{objectFit:'contain',filter:theme==='light'?'drop-shadow(0 0 1px rgba(0,0,0,0.5)) drop-shadow(0 0 1px rgba(0,0,0,0.5))':'none'}} loading="lazy"/>
-          <span style={{fontWeight:900,fontSize:18,background:'linear-gradient(135deg,#A855F7,#06B6D4)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',letterSpacing:'2px'}}>FLITTERS</span>
+        {/* Absolutely centered regardless of the avatar/icons on either side
+            having different widths — space-between alone doesn't actually
+            center a middle element unless both sides match exactly. */}
+        <div onClick={()=>window.location.reload()} style={{position:'absolute',left:'50%',top:'50%',transform:'translate(-50%,-50%)',cursor:'pointer',userSelect:'none',display:'flex'}}>
+          <img src={FLITTERS_MARK} alt="Flitters" width="36" height="36" style={{objectFit:'contain',filter:theme==='light'?'drop-shadow(0 0 1px rgba(0,0,0,0.5)) drop-shadow(0 0 1px rgba(0,0,0,0.5))':'none'}}/>
         </div>
-        <div style={{display:'flex',alignItems:'center',gap:8}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,zIndex:1}}>
           
           {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><Megaphone size={13}/> Ads</button>}
 <button onClick={()=>setShowSearch(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Search size={22}/></button>
@@ -4329,7 +4332,7 @@ export default function FlittersApp({ currentUser }) {
   if (!currentUser || !currentUser.id) {
     return (
       <div style={{ minHeight: '100dvh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
-        <img src="/flitters-mark.png" alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }}  loading="lazy"/>
+        <img src={FLITTERS_MARK} alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }}/>
         <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Something went wrong loading your account</p>
         <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Reload</button>
       </div>

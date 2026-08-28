@@ -1,6 +1,7 @@
 'use client'
 import { useState, useRef } from 'react'
 import { createClient } from '@/lib/supabase/client'
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
 import { Camera } from 'lucide-react'
 
 const COUNTRIES = [
@@ -12,7 +13,7 @@ const COUNTRIES = [
 ]
 
 const XLogo = ({ size = 52 }) => (
-  <img src="/flitters-mark.png" alt="Flitters" width={size} height={size} style={{ objectFit: 'contain' }} />
+  <img src={FLITTERS_MARK} alt="Flitters" width={size} height={size} style={{ objectFit: 'contain' }} />
 )
 
 const isEmail = (v) => v.includes('@')
