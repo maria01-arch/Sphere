@@ -23,14 +23,19 @@ async function triggerAiMentionReply({ postId, postContent, mentionText, mention
     const { data: { session } } = await supabase.auth.getSession()
     const headers = { 'Content-Type': 'application/json' }
     if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
-    await fetch('/api/flittersai/mention-reply', {
+    const res = await fetch('/api/flittersai/mention-reply', {
       method: 'POST',
       headers,
       body: JSON.stringify({ postId, postContent, mentionText, mentionCommentId }),
     })
-  } catch {
-    // Silent failure is acceptable here — this is a nice-to-have reply, not
-    // a core action the user is waiting on or needs an error for.
+    if (!res.ok) {
+      const errJson = await res.json().catch(()=>({}))
+      // Temporary: surfaced directly since this can't be reproduced/tested
+      // from outside the app — remove once confirmed working reliably.
+      alert('AI mention failed (' + res.status + '): ' + (errJson.error || 'unknown error'))
+    }
+  } catch (err) {
+    alert('AI mention request failed to send: ' + err.message)
   }
 }
 
@@ -1324,7 +1329,7 @@ function CommentThread({ comment, depth, onUserClick, onReply }) {
             <span onClick={()=>onUserClick(comment.author)} style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',cursor:'pointer'}}>{comment.author?.display_name}</span>
             <span style={{color:'var(--text-secondary)',fontSize:11}}>{timeAgo(comment.created_at)}</span>
           </div>
-          {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}>{comment.content}</p>}
+          {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}><TextWithMentions text={comment.content} supabase={supabase} onUserClick={onUserClick}/></p>}
           {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt="" loading="lazy"/>}
           <span onClick={()=>onReply(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,marginTop:6,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}><CornerUpLeft size={12}/> Reply</span>
         </div>
@@ -2400,7 +2405,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
                   <div style={{flex:1,maxWidth:'80%'}}>
                     <div style={{fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
                     <div style={{background:'rgba(255,255,255,0.09)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
-                      <span style={{fontSize:14,color:'rgba(255,255,255,0.92)',lineHeight:1.4}}>{c.content}</span>
+                      <span style={{fontSize:14,color:'rgba(255,255,255,0.92)',lineHeight:1.4}}><TextWithMentions text={c.content} supabase={supabase} onUserClick={onUserClick}/></span>
                     </div>
                   </div>
                 </div>
