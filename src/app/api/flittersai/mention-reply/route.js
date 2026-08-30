@@ -82,9 +82,15 @@ export async function POST(req) {
     // Service-role client needed here — RLS only allows inserting a comment as
     // yourself, but this comment needs to be authored by the AI account.
     const admin = createAdminClient()
+
+    const { data: aiProfile, error: aiLookupErr } = await admin.from('profiles').select('id').eq('username', 'flittersai').maybeSingle()
+    if (aiLookupErr || !aiProfile) {
+      return Response.json({ error: 'Flitters AI account not found — run /api/setup-ai-account once as admin first.' }, { status: 500 })
+    }
+
     const { data: comment, error: insertErr } = await admin.from('comments').insert({
       post_id: postId,
-      user_id: 'omnicore-ai',
+      user_id: aiProfile.id,
       content: replyText,
       reply_to_comment_id: mentionCommentId || null,
     }).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
@@ -93,7 +99,7 @@ export async function POST(req) {
 
     const { data: post } = await admin.from('posts').select('user_id').eq('id', postId).maybeSingle()
     if (post?.user_id && post.user_id !== user.id) {
-      await admin.from('notifications').insert({ user_id: post.user_id, actor_id: 'omnicore-ai', type: 'comment', post_id: postId })
+      await admin.from('notifications').insert({ user_id: post.user_id, actor_id: aiProfile.id, type: 'comment', post_id: postId })
     }
 
     return Response.json({ comment })
