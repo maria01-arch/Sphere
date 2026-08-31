@@ -17,7 +17,9 @@ const ADMIN_ID = 'b29fa752-34f5-4a3e-a3e7-8178c2b176ae'
 export async function GET(req) {
   try {
     const supabase = await createClient()
-    const { data: { user } } = await supabase.auth.getUser()
+    const authHeader = req.headers.get('authorization')
+    const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
+    const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser()
     if (!user || user.id !== ADMIN_ID) {
       return Response.json({ error: 'Not authorized' }, { status: 403 })
     }
