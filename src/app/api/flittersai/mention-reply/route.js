@@ -47,6 +47,7 @@ export async function POST(req) {
 
     let replyText = null
     let lastErr = null
+    let allRateLimited = true
     for (const model of MODELS) {
       try {
         const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -68,16 +69,29 @@ export async function POST(req) {
           })
         })
         if (!res.ok) {
+          if (res.status !== 429) allRateLimited = false
           const errBody = await res.text().catch(()=>'')
           throw new Error(`${model} failed: ${res.status} ${errBody.slice(0,200)}`)
         }
         const json = await res.json()
         replyText = json.choices?.[0]?.message?.content?.trim()
         if (replyText) break
-      } catch (err) { lastErr = err; continue }
+      } catch (err) {
+        lastErr = err
+        // Free-tier models share OpenRouter's rate limits — a brief pause
+        // before trying the next one avoids immediately tripping the same
+        // limit again on models that share a quota.
+        await new Promise(r => setTimeout(r, 400))
+        continue
+      }
     }
 
-    if (!replyText) return Response.json({ error: 'AI did not respond: ' + (lastErr?.message || 'unknown error') }, { status: 502 })
+    if (!replyText) {
+      const msg = allRateLimited
+        ? 'AI is rate-limited right now (OpenRouter free tier) — try again in a few minutes.'
+        : 'AI did not respond: ' + (lastErr?.message || 'unknown error')
+      return Response.json({ error: msg }, { status: 502 })
+    }
 
     // Service-role client needed here — RLS only allows inserting a comment as
     // yourself, but this comment needs to be authored by the AI account.

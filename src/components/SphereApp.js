@@ -1316,8 +1316,11 @@ function AdCard({ ad }) {
 }
 
 
-function CommentThread({ comment, depth, onUserClick, onReply }) {
+function CommentThread({ comment, depth, onUserClick, onReply, currentUser, onDelete, onReact }) {
   const hasChildren = comment.children && comment.children.length > 0
+  const reactions = comment.comment_reactions || []
+  const myReaction = reactions.find(r=>r.user_id===currentUser?.id)
+  const isOwn = comment.user_id === currentUser?.id
   return (
     <div style={{position:'relative',marginLeft:depth>0?18:0}}>
       {depth>0&&<div style={{position:'absolute',left:-14,top:0,bottom:hasChildren?14:20,width:2,background:'var(--border-color-2)'}}/>}
@@ -1331,13 +1334,19 @@ function CommentThread({ comment, depth, onUserClick, onReply }) {
           </div>
           {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}><TextWithMentions text={comment.content} supabase={supabase} onUserClick={onUserClick}/></p>}
           {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt="" loading="lazy"/>}
-          <span onClick={()=>onReply(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,marginTop:6,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}><CornerUpLeft size={12}/> Reply</span>
+          <div style={{display:'flex',alignItems:'center',gap:14,marginTop:6}}>
+            <span onClick={()=>onReply(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}><CornerUpLeft size={12}/> Reply</span>
+            <span onClick={()=>onReact(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,color:myReaction?'#FF4757':'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+              <Heart size={12} fill={myReaction?'#FF4757':'none'}/> {reactions.length>0?reactions.length:''}
+            </span>
+            {isOwn&&<span onClick={()=>onDelete(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer',marginLeft:'auto'}}><Trash2 size={12}/></span>}
+          </div>
         </div>
       </div>
       {hasChildren&&(
         <div>
           {comment.children.map(child=>(
-            <CommentThread key={child.id} comment={child} depth={depth+1} onUserClick={onUserClick} onReply={onReply}/>
+            <CommentThread key={child.id} comment={child} depth={depth+1} onUserClick={onUserClick} onReply={onReply} currentUser={currentUser} onDelete={onDelete} onReact={onReact}/>
           ))}
         </div>
       )}
@@ -1353,6 +1362,9 @@ function postCardPropsEqual(prev, next) {
 const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
+  const [showRepostMenu, setShowRepostMenu] = useState(false)
+  const [showQuoteModal, setShowQuoteModal] = useState(false)
+  const [quoteText, setQuoteText] = useState('')
   const [likes, setLikes] = useState(post.likes_count||0)
   const [reposts, setReposts] = useState(post.reposts_count||0)
   const [comments, setComments] = useState(post.comments_count||0)
@@ -1385,7 +1397,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   const loadComments = async(forceOpen) => {
     if(showComments && !forceOpen){setShowComments(false);return}
     setLoadingComments(true)
-    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
+    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url),comment_reactions(user_id,emoji)').eq('post_id',post.id).order('created_at',{ascending:true})
     setCommentsList(data||[])
     setLoadingComments(false)
     setShowComments(true)
@@ -1394,6 +1406,28 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   useEffect(() => {
     if (autoExpandComments) loadComments(true)
   }, [autoExpandComments])
+
+  const deleteComment = async (comment) => {
+    setCommentsList(prev => prev.filter(c => c.id !== comment.id))
+    setComments(c => Math.max(0, c-1))
+    await supabase.from('comments').delete().eq('id', comment.id)
+  }
+
+  const toggleCommentReaction = async (comment, emoji='❤️') => {
+    const mine = comment.comment_reactions?.find(r=>r.user_id===currentUser.id)
+    const patch = (list) => list.map(c => c.id!==comment.id ? c : {
+      ...c,
+      comment_reactions: mine && mine.emoji===emoji
+        ? (c.comment_reactions||[]).filter(r=>r.user_id!==currentUser.id)
+        : [...(c.comment_reactions||[]).filter(r=>r.user_id!==currentUser.id), {user_id:currentUser.id, emoji}]
+    })
+    setCommentsList(prev => patch(prev))
+    if (mine && mine.emoji===emoji) {
+      await supabase.from('comment_reactions').delete().eq('comment_id',comment.id).eq('user_id',currentUser.id)
+    } else {
+      await supabase.from('comment_reactions').upsert({comment_id:comment.id,user_id:currentUser.id,emoji},{onConflict:'comment_id,user_id'})
+    }
+  }
 
   const a = post.author||{}
   const color = a.avatar_color||getColor(a.id)
@@ -1422,14 +1456,14 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
     } finally { likeInFlight.current = false }
   }
 
-  const toggleRepost = async () => {
+  const toggleRepost = async (content=null) => {
     if (repostInFlight.current) return
     repostInFlight.current = true
     try {
       const next = !reposted
       setReposted(next); setReposts(r=>next?r+1:r-1)
       if (next) {
-        const {error} = await supabase.from('reposts').insert({post_id:post.id,user_id:currentUser.id})
+        const {error} = await supabase.from('reposts').insert({post_id:post.id,user_id:currentUser.id,content:content||null})
         if (error) { setReposted(!next); setReposts(r=>next?r-1:r+1) }
         else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'repost',post_id:post.id})
       } else {
@@ -1532,7 +1566,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
             <button onClick={()=>{setReplyingTo(null);setShowReply(v=>!v)}} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:(showComments||showReply)?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
               <MessageCircle size={16}/><span>{comments}</span>
             </button>
-            <button onClick={toggleRepost} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:reposted?'#00C9A7':'#555',fontSize:13,padding:'6px 0'}}>
+            <button onClick={()=>reposted?toggleRepost():setShowRepostMenu(true)} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:reposted?'#00C9A7':'#555',fontSize:13,padding:'6px 0'}}>
               <Repeat2 size={16}/><span>{reposts}</span>
             </button>
             <button onClick={toggleLike} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:liked?'#FF4757':'#555',fontSize:13,padding:'6px 0'}}>
@@ -1562,7 +1596,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
               </div>
               {loadingComments&&<RowSkeletonList count={2}/>}
               {buildCommentTree(commentsList).map(cm=>(
-                <CommentThread key={cm.id} comment={cm} depth={0} onUserClick={onUserClick} onReply={startReply}/>
+                <CommentThread key={cm.id} comment={cm} depth={0} onUserClick={onUserClick} onReply={startReply} currentUser={currentUser} onDelete={deleteComment} onReact={toggleCommentReaction}/>
               ))}
               {!loadingComments&&commentsList.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>No comments yet</p>}
             </div>
@@ -1595,6 +1629,42 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
           )}
         </div>
       </div>
+
+      {showRepostMenu && (
+        <div onClick={()=>setShowRepostMenu(false)} style={{position:'fixed',inset:0,zIndex:700,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 16px calc(20px + env(safe-area-inset-bottom))'}}>
+            <button onClick={()=>{setShowRepostMenu(false);toggleRepost()}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'14px 8px',background:'none',border:'none',color:'var(--text-primary)',fontSize:15,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
+              <Repeat2 size={20}/> Repost
+            </button>
+            <button onClick={()=>{setShowRepostMenu(false);setShowQuoteModal(true)}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'14px 8px',background:'none',border:'none',color:'var(--text-primary)',fontSize:15,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
+              <Pencil size={20}/> Quote (add your own text)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showQuoteModal && (
+        <div style={{position:'fixed',inset:0,zIndex:700,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+          <div style={{width:'100%',background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 16px calc(20px + env(safe-area-inset-bottom))'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+              <span style={{fontWeight:800,fontSize:17}}>Quote</span>
+              <button onClick={()=>{setShowQuoteModal(false);setQuoteText('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
+            </div>
+            <textarea value={quoteText} onChange={e=>setQuoteText(e.target.value)} placeholder="Add a comment..." autoFocus rows={3}
+              style={{width:'100%',boxSizing:'border-box',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:14,padding:'12px 14px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',marginBottom:12}}/>
+            <div style={{border:'1px solid var(--border-color-2)',borderRadius:14,padding:12,marginBottom:16,display:'flex',gap:10}}>
+              <Avatar url={post.author?.avatar_url} name={post.author?.display_name} color={post.author?.avatar_color||'#5B9CF6'} size={32}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13}}>{post.author?.display_name}</div>
+                <div style={{color:'var(--text-tertiary)',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{post.content}</div>
+              </div>
+            </div>
+            <button onClick={()=>{toggleRepost(quoteText.trim()||null);setShowQuoteModal(false);setQuoteText('')}} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+              Repost
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   )
 }, postCardPropsEqual)
@@ -3520,7 +3590,7 @@ function FlittersAppInner({ currentUser }) {
       followingIds.forEach(id=>{ affinityMap[id]=(affinityMap[id]||0)+3 })
 
       let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:150)
-      let repostsQuery = supabase.from('reposts').select('id,created_at,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
+      let repostsQuery = supabase.from('reposts').select('id,created_at,content,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
 
       if(feedType==='following'){
         if(!followingIds.size){ setPosts([]); setVisibleCount(10); setLoading(false); return }
@@ -3561,7 +3631,7 @@ function FlittersAppInner({ currentUser }) {
         const p=r.post
         const ageHours=(now-new Date(r.created_at).getTime())/3600000
         const recencyScore=recencyOf(ageHours)
-        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,sortTime:r.created_at,_score:recencyScore+followBoost(r.user?.id)+affinityOf(r.user?.id)}
+        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,quoteContent:r.content,sortTime:r.created_at,_score:recencyScore+followBoost(r.user?.id)+affinityOf(r.user?.id)}
       })
 
       // The score above decides WHICH posts are relevant enough to include
@@ -4084,6 +4154,7 @@ function FlittersAppInner({ currentUser }) {
                 <Repeat2 size={14}/>
                 <span><strong style={{color:'var(--text-subtle)'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
               </div>}
+              {post.isRepost&&post.quoteContent&&<p style={{margin:'6px 16px 0',color:'var(--text-primary)',fontSize:14,lineHeight:1.4,wordBreak:'break-word'}}>{post.quoteContent}</p>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
               
