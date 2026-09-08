@@ -3,6 +3,7 @@ import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
 import { uploadMedia, uploadToR2 } from '@/lib/media/upload'
+import { EMOJI_CATEGORIES } from '@/lib/emojiData'
 import HlsVideo from './HlsVideo'
 import { useTheme } from '@/lib/theme'
 import {
@@ -10,7 +11,8 @@ import {
   Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
   Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
   Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
-  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile, BookOpen, Volume2, VolumeX
+  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile, BookOpen, Volume2, VolumeX,
+  Mic, Play, Pause
 } from 'lucide-react'
 const supabase = createClient()
 
@@ -251,6 +253,138 @@ function StickerMedia({ url, size=132 }) {
     style={{width:size,height:size,objectFit:'contain',display:'block',...NO_CALLOUT_STYLE,pointerEvents:'auto'}}/>
 }
 
+// ── VOICE NOTES (shared by DM + GroupChat) ──────────────────────────────────
+// Tap-to-record rather than WhatsApp's press-and-hold-with-slide-to-cancel —
+// that gesture needs careful drag-distance tracking to feel right and this
+// is a wrapped WebView as much as a touch surface, so a plain tap to start /
+// tap to stop (with an explicit cancel button) is the more reliable choice,
+// same tradeoff Telegram Web and Instagram DM's web client make.
+function formatVoiceDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds||0))
+  const m = Math.floor(s/60)
+  const r = s%60
+  return m+':'+String(r).padStart(2,'0')
+}
+function useVoiceRecorder() {
+  const [recording, setRecording] = useState(false)
+  const [seconds, setSeconds] = useState(0)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const streamRef = useRef(null)
+  const timerRef = useRef(null)
+
+  const cleanup = () => {
+    if(timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = null
+    streamRef.current?.getTracks().forEach(t=>t.stop())
+    streamRef.current = null
+    mediaRecorderRef.current = null
+    setRecording(false)
+  }
+
+  const start = async () => {
+    if(typeof navigator==='undefined' || !navigator.mediaDevices?.getUserMedia) {
+      alert("Voice notes aren't supported in this browser/app.")
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true})
+      streamRef.current = stream
+      chunksRef.current = []
+      const mimeType = (typeof MediaRecorder!=='undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) ? 'audio/webm;codecs=opus' : 'audio/webm'
+      const mr = new MediaRecorder(stream, {mimeType})
+      mr.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data) }
+      mediaRecorderRef.current = mr
+      mr.start()
+      setSeconds(0)
+      setRecording(true)
+      timerRef.current = setInterval(()=>setSeconds(s=>s+1), 1000)
+    } catch(err) {
+      console.error('Voice note recording failed to start:', err)
+      alert("Couldn't access the microphone — check your browser/app permissions.")
+    }
+  }
+
+  // Resolves with {blob, duration} once the recorder has actually flushed
+  // its last data chunk — resolving eagerly (e.g. right after calling
+  // mr.stop()) can hand back a blob missing the tail end of the clip.
+  const stop = () => new Promise(resolve => {
+    const mr = mediaRecorderRef.current
+    if(!mr || mr.state==='inactive') { cleanup(); resolve(null); return }
+    const finalSeconds = seconds
+    mr.onstop = () => {
+      const blob = new Blob(chunksRef.current, {type: mr.mimeType||'audio/webm'})
+      cleanup()
+      resolve({blob, duration:finalSeconds})
+    }
+    mr.stop()
+  })
+
+  const cancel = () => {
+    const mr = mediaRecorderRef.current
+    if(mr && mr.state!=='inactive') { mr.onstop = null; mr.stop() }
+    chunksRef.current = []
+    cleanup()
+  }
+
+  useEffect(()=>()=>{ streamRef.current?.getTracks().forEach(t=>t.stop()) },[])
+
+  return { recording, seconds, start, stop, cancel }
+}
+
+// Recording-in-progress UI: replaces the whole composer row while active so
+// there's no ambiguity about what tapping will do.
+function VoiceRecordingBar({ seconds, onCancel, onSend }) {
+  return (
+    <div style={{padding:'10px 14px',display:'flex',gap:12,alignItems:'center'}}>
+      <style>{'@keyframes voiceRecPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:0.6}}'}</style>
+      <button onClick={onCancel} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'#F87171',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Trash2 size={18}/></button>
+      <div style={{flex:1,display:'flex',alignItems:'center',gap:8,color:'var(--text-primary)',fontSize:14}}>
+        <span style={{width:9,height:9,borderRadius:'50%',background:'#F87171',flexShrink:0,animation:'voiceRecPulse 1.2s ease-in-out infinite'}}/>
+        <span>Recording... {formatVoiceDuration(seconds)}</span>
+      </div>
+      <button onClick={onSend} style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+    </div>
+  )
+}
+
+// Playback bubble for a sent voice note — plain <audio> element driven by a
+// custom play/pause button + scrubber so it matches the rest of the chat's
+// styling instead of the browser's native (and inconsistent across
+// browsers/WebViews) <audio controls> widget.
+function VoiceMessagePlayer({ url, duration, own }) {
+  const audioRef = useRef(null)
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0) // 0-1
+  const [dur, setDur] = useState(duration||0)
+
+  const toggle = () => {
+    const a = audioRef.current
+    if(!a) return
+    if(playing) a.pause()
+    else a.play().catch(err=>console.error('Voice note playback failed:', err))
+  }
+
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:10,minWidth:180}}>
+      <audio ref={audioRef} src={url} preload="metadata"
+        onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}
+        onEnded={()=>{setPlaying(false);setProgress(0)}}
+        onLoadedMetadata={e=>{ if(isFinite(e.target.duration)) setDur(e.target.duration) }}
+        onTimeUpdate={e=>{ const d=e.target.duration; if(d) setProgress(e.target.currentTime/d) }}
+        style={{display:'none'}}/>
+      <button onClick={toggle} style={{width:34,height:34,borderRadius:'50%',border:'none',background:own?'rgba(255,255,255,0.25)':'var(--bg-card-2)',color:own?'#fff':'var(--text-primary)',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {playing?<Pause size={15}/>:<Play size={15} style={{marginLeft:2}}/>}
+      </button>
+      <div style={{flex:1,height:3,borderRadius:2,background:own?'rgba(255,255,255,0.3)':'var(--bg-card-3)',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',left:0,top:0,bottom:0,width:(progress*100)+'%',background:own?'#fff':'#5B9CF6',borderRadius:2}}/>
+      </div>
+      <span style={{fontSize:11,color:own?'rgba(255,255,255,0.85)':'var(--text-quaternary)',flexShrink:0,minWidth:30,textAlign:'right'}}>{formatVoiceDuration(dur)}</span>
+    </div>
+  )
+}
+
+
 // Single message row: avatar (for others) + bubble + reactions.
 // Bubble corners are uniform/rounded (no tail) — pill-style like Beeper.
 // Reply quotes render *inside* the bubble — WhatsApp-style — via ReplyQuoteInline.
@@ -282,6 +416,7 @@ const MessageBubble = memo(function MessageBubble({
   onJumpToReply, highlighted=false, rowId
 }) {
   const isSticker = msg.is_sticker && msg.sticker_url
+  const isVoice = msg.is_voice && msg.voice_url
   // Long-press handlers live on the bubble/sticker element itself, not the
   // full-width row — otherwise tapping empty space next to a bubble (the
   // rest of the flex row) would also trigger the action sheet.
@@ -310,6 +445,15 @@ const MessageBubble = memo(function MessageBubble({
               {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
             </div>
           </div>
+        ):isVoice?(
+          <div {...pressHandlers} style={{padding:'10px 14px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
+            <VoiceMessagePlayer url={msg.voice_url} duration={msg.voice_duration} own={own}/>
+            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
+            </div>
+          </div>
         ):(
           <div {...pressHandlers} style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:own?'#fff':'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
@@ -330,6 +474,29 @@ const MessageBubble = memo(function MessageBubble({
     </div>
   )
 }, messageBubblePropsEqual)
+
+// ── EMOJI GRID (shared by DM + GroupChat, embedded in the combined tray below) ──
+// Flat category-tab + grid layout. Selecting an emoji doesn't close the
+// tray — WhatsApp/Telegram-style — so picking several in a row is one tap
+// each instead of reopening the picker every time.
+function EmojiGrid({ onSelect }) {
+  const [activeCat, setActiveCat] = useState(EMOJI_CATEGORIES[0].id)
+  const cat = EMOJI_CATEGORIES.find(c=>c.id===activeCat) || EMOJI_CATEGORIES[0]
+  return (
+    <>
+      <div style={{display:'flex',alignItems:'center',gap:4,padding:'8px 10px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
+        {EMOJI_CATEGORIES.map(c=>(
+          <button key={c.id} onClick={()=>setActiveCat(c.id)} title={c.label} style={{flexShrink:0,width:32,height:32,borderRadius:10,border:'none',background:activeCat===c.id?'rgba(91,156,246,0.2)':'transparent',fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{c.icon}</button>
+        ))}
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:8,display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,alignContent:'start'}}>
+        {cat.emojis.map((e,i)=>(
+          <button key={cat.id+i} onClick={()=>onSelect(e)} style={{aspectRatio:'1',background:'none',border:'none',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8}}>{e}</button>
+        ))}
+      </div>
+    </>
+  )
+}
 
 // ── STICKER TRAY (shared by DM + GroupChat) ─────────────────────────────────
 // Sticker packs are shared/public (anyone can browse & send from any pack,
@@ -501,7 +668,8 @@ function StickerSaveModal({ packs, defaultPackId, onCancel, onConfirm, saving })
   )
 }
 
-function StickerTray({ currentUser, supabase, onSelect, onClose }) {
+function StickerTray({ currentUser, supabase, onSelect, onEmojiSelect, onClose }) {
+  const [mode, setMode] = useState('emoji') // 'emoji' | 'sticker' — emoji first since it's the more universal default
   const [packs, setPacks] = useState([])
   const [activePack, setActivePack] = useState(null)
   const [stickers, setStickers] = useState([])
@@ -578,12 +746,16 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
   return (
     <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:160,height:280,display:'flex',flexDirection:'column',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
-        {packs.length>1&&packs.map(p=>(
+        <button onClick={()=>setMode('emoji')} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:mode==='emoji'?'rgba(91,156,246,0.2)':'var(--bg-card)',color:mode==='emoji'?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><Smile size={14}/> Emoji</button>
+        <button onClick={()=>setMode('sticker')} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:mode==='sticker'?'rgba(91,156,246,0.2)':'var(--bg-card)',color:mode==='sticker'?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><span style={{fontSize:14,lineHeight:1}}>🖼️</span> Stickers</button>
+        {mode==='sticker'&&packs.length>1&&packs.map(p=>(
           <button key={p.id} onClick={()=>setActivePack(p.id)} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:activePack===p.id?'rgba(91,156,246,0.2)':'var(--bg-card)',color:activePack===p.id?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{p.name}</button>
         ))}
-        {packs.length<=1&&<span style={{color:'var(--text-secondary)',fontSize:13,fontWeight:700}}>{packs[0]?.name||'My Stickers'}</span>}
         <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',flexShrink:0,display:'flex'}}><X size={18}/></button>
       </div>
+      {mode==='emoji' ? (
+        <EmojiGrid onSelect={onEmojiSelect}/>
+      ) : (
       <div style={{flex:1,overflowY:'auto',padding:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,alignContent:'start'}}>
         {setupError?(
           <p style={{gridColumn:'span 4',color:'#F87171',fontSize:13,lineHeight:1.5}}>{setupError}</p>
@@ -598,6 +770,7 @@ function StickerTray({ currentUser, supabase, onSelect, onClose }) {
         {!loading&&stickers.length===0&&<p style={{gridColumn:'span 3',color:'var(--text-quaternary)',fontSize:12,alignSelf:'center'}}>No stickers here yet — tap + to add your own image or short video clip.</p>}
         </>)}
       </div>
+      )}
       {trimFile&&<VideoTrimModal file={trimFile}
         onCancel={()=>setTrimFile(null)}
         onConfirm={(blob)=>{
@@ -1784,6 +1957,8 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [editName, setEditName] = useState(group.name)
   const [sendingImg, setSendingImg] = useState(false)
   const [showStickerTray, setShowStickerTray] = useState(false)
+  const gcVoice = useVoiceRecorder()
+  const [sendingVoice, setSendingVoice] = useState(false)
   const imgRef = useRef(null)
   const [editDesc, setEditDesc] = useState(group.description||'')
   const [editJoinMode, setEditJoinMode] = useState(group.join_mode||'open')
@@ -1952,6 +2127,35 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       if(isMissingColumnError(error)) alert('Stickers need one-time setup — run supabase_migration_reply_and_stickers.sql in Supabase first.')
       else alert('Sticker failed to send: '+(error?.message||'unknown error'))
     }
+  }
+
+  const sendVoiceNote = async () => {
+    const result = await gcVoice.stop()
+    if(!result || result.duration<1) return // too short to be a real note (also covers the "stop pressed instantly" case)
+    setSendingVoice(true)
+    const path = 'voice/'+group.id+'_'+currentUser.id+'_'+Date.now()+'.webm'
+    let urlData
+    try { urlData = await uploadToR2(new File([result.blob],'voice.webm',{type:result.blob.type||'audio/webm'}), path) }
+    catch(err) { alert('Voice note upload failed: '+err.message); setSendingVoice(false); return }
+    const voiceUrl = urlData.publicUrl
+    const tempId = 'temp_voice_'+Date.now()
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    setMessages(prev=>[...prev,tempMsg])
+    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,id:inserted.id,created_at:inserted.created_at}:m))
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', is_voice:true, voice_url:voiceUrl, voice_duration:result.duration, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+    } else {
+      console.error('Voice note send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Voice notes need one-time setup — run supabase_migration_voice_notes.sql in Supabase first.')
+      else alert('Voice note failed to send: '+(error?.message||'unknown error'))
+    }
+    setSendingVoice(false)
   }
 
   const promoteToAdmin = async (member) => {
@@ -2221,14 +2425,22 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
         {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
         <ReplyComposerBar text={replyTo} onCancel={()=>{setReplyTo(null);setReplyToId(null)}}/>
-        {showStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendSticker} onClose={()=>setShowStickerTray(false)}/>}
+        {showStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendSticker} onEmojiSelect={e=>setMsgText(t=>t+e)} onClose={()=>setShowStickerTray(false)}/>}
+        {gcVoice.recording ? (
+          <VoiceRecordingBar seconds={gcVoice.seconds} onCancel={gcVoice.cancel} onSend={sendVoiceNote}/>
+        ) : (
         <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
           <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
           <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
           <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
         <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder="Message group..." style={{flex:1,minWidth:0,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
-          <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+          {msgText.trim() ? (
+            <button onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+          ) : (
+            <button onClick={gcVoice.start} disabled={sendingVoice} style={{width:46,height:46,borderRadius:'50%',background:'var(--bg-card-3)',border:'none',cursor:'pointer',color:'var(--text-primary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingVoice?<Loader2 size={19} className="xspin"/>:<Mic size={19}/>}</button>
+          )}
         </div>
+        )}
       </div>
     </div>
   )
@@ -3193,6 +3405,8 @@ function FlittersAppInner({ currentUser }) {
   }
   const [sendingDMImg, setSendingDMImg] = useState(false)
   const [showDMStickerTray, setShowDMStickerTray] = useState(false)
+  const dmVoice = useVoiceRecorder()
+  const [sendingDMVoice, setSendingDMVoice] = useState(false)
   const [fullscreenImg, setFullscreenImg] = useState(null)
   const [unreadDM, setUnreadDM] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
@@ -3334,7 +3548,7 @@ function FlittersAppInner({ currentUser }) {
             notifiedIdsRef.current.add(m.id)
             const {data:sender} = await supabase.from('profiles').select('display_name').eq('id',m.sender_id).maybeSingle()
             const name = sender?.display_name || 'Someone'
-            const body = m.is_sticker ? `${name} sent you a sticker` : `${name}: ${(m.content||'').slice(0,100)}`
+            const body = m.is_sticker ? `${name} sent you a sticker` : m.is_voice ? `${name} sent a voice message` : `${name}: ${(m.content||'').slice(0,100)}`
             showLocalNotif('Flitters', body)
           })
           .subscribe()
@@ -3392,7 +3606,7 @@ function FlittersAppInner({ currentUser }) {
               notifiedIds.add(m.id)
               if(m.sender_id === currentUser.id) continue
               const name = m.sender?.display_name || 'Someone'
-              const body = m.is_sticker ? `${name} sent you a sticker` : `${name}: ${(m.content||'').slice(0,100)}`
+              const body = m.is_sticker ? `${name} sent you a sticker` : m.is_voice ? `${name} sent a voice message` : `${name}: ${(m.content||'').slice(0,100)}`
               showLocalNotif('Flitters', body)
             }
           }
@@ -3413,7 +3627,7 @@ function FlittersAppInner({ currentUser }) {
               notifiedIds.add(m.id)
               if(m.sender_id === currentUser.id) continue
               const name = m.sender?.display_name || 'Someone'
-              const body = m.is_sticker ? `${name} sent a sticker in ${m.group?.name||'a group'}` : `${name} in ${m.group?.name||'a group'}: ${(m.content||'').slice(0,100)}`
+              const body = m.is_sticker ? `${name} sent a sticker in ${m.group?.name||'a group'}` : m.is_voice ? `${name} sent a voice message in ${m.group?.name||'a group'}` : `${name} in ${m.group?.name||'a group'}: ${(m.content||'').slice(0,100)}`
               showLocalNotif('Flitters', body)
             }
           }
@@ -3720,7 +3934,14 @@ function FlittersAppInner({ currentUser }) {
       const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
       if(!op) return null
       const {data:prof} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').eq('id',op.user_id).single()
-      const {data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      let {data:lastMsg, error:lastMsgErr} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if(lastMsgErr && isMissingColumnError(lastMsgErr)) {
+        // is_voice column doesn't exist yet (supabase_migration_voice_notes.sql
+        // not run) — fall back so the conversation list still loads instead of
+        // every conversation losing its last-message preview.
+        console.warn('is_voice column missing, retrying without it — run supabase_migration_voice_notes.sql', lastMsgErr)
+        ;({data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle())
+      }
       const {count:unreadCount} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
       return {id, other:prof, last:lastMsg, unread:(unreadCount||0)>0}
     }))
@@ -4045,6 +4266,40 @@ function FlittersAppInner({ currentUser }) {
     }
   }
 
+  const sendDMVoiceNote = async () => {
+    if(!selectedConv?.id) return
+    const result = await dmVoice.stop()
+    if(!result || result.duration<1) return
+    setSendingDMVoice(true)
+    const path = 'voice/dm_'+selectedConv.id+'_'+Date.now()+'.webm'
+    let urlData
+    try { urlData = await uploadToR2(new File([result.blob],'voice.webm',{type:result.blob.type||'audio/webm'}), path) }
+    catch(err) { alert('Voice note upload failed: '+err.message); setSendingDMVoice(false); return }
+    const voiceUrl = urlData.publicUrl
+    const tempId = 'tmp_voice'+Date.now()
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    const {data:inserted,error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+      dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, sender_id:currentUser.id, content:'', is_voice:true, voice_url:voiceUrl, voice_duration:result.duration, created_at:inserted.created_at,
+        sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+        message_reactions:[]
+      }})
+      if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+        sendPush(selectedConv.other.id, (currentUser.display_name||'New message'), (currentUser.display_name||'Someone')+' sent a voice message')
+      }
+      loadConvos()
+    } else {
+      console.error('Voice note send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Voice notes need one-time setup — run supabase_migration_voice_notes.sql in Supabase first.')
+      else alert('Voice note failed to send: '+(error?.message||'unknown error'))
+    }
+    setSendingDMVoice(false)
+  }
+
   const showLocalNotif = (title, body) => {
     try {
       if(typeof Notification === 'undefined') return
@@ -4230,6 +4485,8 @@ function FlittersAppInner({ currentUser }) {
                     {conv.last
                       ? (conv.last.is_sticker
                           ? (conv.last.sender_id===currentUser.id?'You sent a sticker':(conv.other?.display_name||'They')+' sent a sticker')
+                          : conv.last.is_voice
+                          ? (conv.last.sender_id===currentUser.id?'You sent a voice message':(conv.other?.display_name||'They')+' sent a voice message')
                           : (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content)
                       : 'Tap to chat'}
                   </p>
@@ -4331,18 +4588,24 @@ function FlittersAppInner({ currentUser }) {
             </div>
             <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
               <ReplyComposerBar text={dmReplyTo} onCancel={()=>{setDmReplyTo(null);setDmReplyToId(null)}}/>
-              {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onClose={()=>setShowDMStickerTray(false)}/>}
+              {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onEmojiSelect={e=>setMsgText(t=>t+e)} onClose={()=>setShowDMStickerTray(false)}/>}
               {dmBlocked ? (
                 <div style={{padding:'16px 14px',display:'flex',alignItems:'center',justifyContent:'center',gap:8,color:'var(--text-quaternary)',fontSize:13}}>
                   <Ban size={15}/> You can't message this conversation
                 </div>
+              ) : dmVoice.recording ? (
+                <VoiceRecordingBar seconds={dmVoice.seconds} onCancel={dmVoice.cancel} onSend={sendDMVoiceNote}/>
               ) : (
               <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
               <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
               <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,minWidth:0,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
-              <button onClick={sendMsg} disabled={!msgText.trim()} style={{width:46,height:46,borderRadius:'50%',background:msgText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',cursor:msgText.trim()?'pointer':'not-allowed',color:msgText.trim()?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+              {msgText.trim() ? (
+                <button onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+              ) : (
+                <button onClick={dmVoice.start} disabled={sendingDMVoice} style={{width:46,height:46,borderRadius:'50%',background:'var(--bg-card-3)',border:'none',cursor:'pointer',color:'var(--text-primary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMVoice?<Loader2 size={19} className="xspin"/>:<Mic size={19}/>}</button>
+              )}
               </div>
               )}
             </div>
