@@ -1406,6 +1406,10 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
     const {data, error} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
     if (error) {
       console.error('loadComments failed:', error)
+      // TEMPORARY DEBUG — remove once the real cause is confirmed. Surfaces
+      // the actual Postgres/PostgREST error on-screen since phone browsers
+      // make the console hard to reach.
+      alert('loadComments error: ' + (error.message || JSON.stringify(error)) + (error.hint ? '\nhint: '+error.hint : '') + (error.details ? '\ndetails: '+error.details : ''))
       setCommentsList([])
       setLoadingComments(false)
       setShowComments(true)
@@ -1416,6 +1420,8 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
       const {data: reactions, error: reactErr} = await supabase.from('comment_reactions').select('comment_id,user_id,emoji').in('comment_id', comments.map(c=>c.id))
       if (reactErr) {
         console.error('loadComments: fetching comment_reactions failed (comments still shown):', reactErr)
+        // TEMPORARY DEBUG — same reason as above.
+        alert('comment_reactions error (comments still shown): ' + (reactErr.message || JSON.stringify(reactErr)) + (reactErr.hint ? '\nhint: '+reactErr.hint : ''))
       } else {
         const byComment = {}
         for (const r of (reactions||[])) (byComment[r.comment_id] ||= []).push({user_id:r.user_id, emoji:r.emoji})
