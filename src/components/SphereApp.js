@@ -1397,8 +1397,32 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   const loadComments = async(forceOpen) => {
     if(showComments && !forceOpen){setShowComments(false);return}
     setLoadingComments(true)
-    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url),comment_reactions(user_id,emoji)').eq('post_id',post.id).order('created_at',{ascending:true})
-    setCommentsList(data||[])
+    // Comments and their reactions are fetched separately and merged here on
+    // purpose. Nesting comment_reactions(...) inside one embedded select made
+    // the entire query — real comments included — fail together any time
+    // that embed had a problem (e.g. PostgREST's schema cache not yet aware
+    // of the comment_reactions relationship). Splitting them means a broken
+    // reactions fetch can never wipe out comments that already loaded fine.
+    const {data, error} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
+    if (error) {
+      console.error('loadComments failed:', error)
+      setCommentsList([])
+      setLoadingComments(false)
+      setShowComments(true)
+      return
+    }
+    const comments = data || []
+    if (comments.length) {
+      const {data: reactions, error: reactErr} = await supabase.from('comment_reactions').select('comment_id,user_id,emoji').in('comment_id', comments.map(c=>c.id))
+      if (reactErr) {
+        console.error('loadComments: fetching comment_reactions failed (comments still shown):', reactErr)
+      } else {
+        const byComment = {}
+        for (const r of (reactions||[])) (byComment[r.comment_id] ||= []).push({user_id:r.user_id, emoji:r.emoji})
+        for (const c of comments) c.comment_reactions = byComment[c.id] || []
+      }
+    }
+    setCommentsList(comments)
     setLoadingComments(false)
     setShowComments(true)
   }
