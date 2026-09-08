@@ -107,7 +107,7 @@ export async function POST(req) {
       user_id: aiProfile.id,
       content: replyText,
       reply_to_comment_id: mentionCommentId || null,
-    }).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
+    }).select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_url,avatar_color)').single()
 
     if (insertErr) return Response.json({ error: 'Insert failed: ' + insertErr.message }, { status: 500 })
 

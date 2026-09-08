@@ -1265,7 +1265,7 @@ function ReelPreviewCard({ supabase, onOpen }) {
   const [reel, setReel] = useState(null)
   useEffect(()=>{
     let cancelled = false
-    supabase.from('reels').select('id,video_url,caption,author:profiles(display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}).limit(20).then(({data})=>{
+    supabase.from('reels').select('id,video_url,caption,author:profiles!user_id(display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}).limit(20).then(({data})=>{
       if(cancelled||!data?.length) return
       setReel(data[Math.floor(Math.random()*data.length)])
     })
@@ -1403,13 +1403,13 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
     // that embed had a problem (e.g. PostgREST's schema cache not yet aware
     // of the comment_reactions relationship). Splitting them means a broken
     // reactions fetch can never wipe out comments that already loaded fine.
-    const {data, error} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
+    // comments now has two FK paths to profiles (its own user_id, and a
+    // second one PostgREST traces through comment_reactions) — !comments_user_id_fkey
+    // tells it explicitly which one we mean, or the whole query is rejected
+    // with an "ambiguous relationship" error and no comments load at all.
+    const {data, error} = await supabase.from('comments').select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
     if (error) {
       console.error('loadComments failed:', error)
-      // TEMPORARY DEBUG — remove once the real cause is confirmed. Surfaces
-      // the actual Postgres/PostgREST error on-screen since phone browsers
-      // make the console hard to reach.
-      alert('loadComments error: ' + (error.message || JSON.stringify(error)) + (error.hint ? '\nhint: '+error.hint : '') + (error.details ? '\ndetails: '+error.details : ''))
       setCommentsList([])
       setLoadingComments(false)
       setShowComments(true)
@@ -1420,8 +1420,6 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
       const {data: reactions, error: reactErr} = await supabase.from('comment_reactions').select('comment_id,user_id,emoji').in('comment_id', comments.map(c=>c.id))
       if (reactErr) {
         console.error('loadComments: fetching comment_reactions failed (comments still shown):', reactErr)
-        // TEMPORARY DEBUG — same reason as above.
-        alert('comment_reactions error (comments still shown): ' + (reactErr.message || JSON.stringify(reactErr)) + (reactErr.hint ? '\nhint: '+reactErr.hint : ''))
       } else {
         const byComment = {}
         for (const r of (reactions||[])) (byComment[r.comment_id] ||= []).push({user_id:r.user_id, emoji:r.emoji})
@@ -1815,7 +1813,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
         let alreadyHave = false
         setMessages(prev=>{ alreadyHave = prev.some(m=>m.id===payload.new.id); return prev })
         if(alreadyHave) return // broadcast already delivered this one — skip the extra round trip
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
         if(data) setMessages(prev=>{
           const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
           return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
@@ -1858,7 +1856,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
 
   const loadAll = async () => {
     const [{data:msgs},{data:mems},{data:reqs}] = await Promise.all([
-      supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
+      supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
       supabase.from('group_members').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id),
       supabase.from('group_join_requests').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id).eq('status','pending')
     ])
@@ -1898,7 +1896,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
       }})
       // one-time delayed fetch to sync with DB - merges not overwrites
       setTimeout(async()=>{
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
         if(data) setMessages(prev=>{
           const temps = prev.filter(m=>m.id.toString().startsWith('temp_'))
           const confirmedIds = new Set(data.map(m=>m.id))
@@ -2285,7 +2283,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   },[playing])
 
   const loadReels = async() => {
-    const {data} = await supabase.from('reels').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color,verified,is_authentic),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
+    const {data} = await supabase.from('reels').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color,verified,is_authentic),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
     if(!data) return
     setReels(data)
     const likedMap={}, likesMap={}
@@ -2328,7 +2326,8 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const openComments = async(reel) => {
     setShowComments(true)
     setComments([]) // clear stale comments from a previously viewed reel immediately
-    const {data} = await supabase.from('comments').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
+    const {data, error} = await supabase.from('comments').select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
+    if (error) console.error('openComments (reel) failed:', error)
     setComments(data||[])
     setCommentCounts(p=>({...p,[reel.id]:data?.length||0}))
   }
@@ -2341,7 +2340,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
     const optimistic = {id:'tmp_'+Date.now(),reel_id:reel.id,user_id:currentUser.id,content:text,author:{id:currentUser.id,display_name:currentUser.display_name,username:currentUser.username,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
     setComments(p=>[...p,optimistic])
     setCommentCounts(p=>({...p,[reel.id]:(p[reel.id]||0)+1}))
-    const {data:c} = await supabase.from('comments').insert({reel_id:reel.id,user_id:currentUser.id,content:text}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
+    const {data:c} = await supabase.from('comments').insert({reel_id:reel.id,user_id:currentUser.id,content:text}).select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_url,avatar_color)').single()
     // replace optimistic with real
     if(c) setComments(p=>p.map(x=>x.id===optimistic.id?c:x))
   }
@@ -2352,7 +2351,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
     let urlData
     try { urlData = await uploadMedia(videoFile) }
     catch(err){alert('Upload failed: '+err.message);setUploading(false);return}
-    const {data:reel} = await supabase.from('reels').insert({user_id:currentUser.id,video_url:urlData.publicUrl,caption:caption.trim()}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
+    const {data:reel} = await supabase.from('reels').insert({user_id:currentUser.id,video_url:urlData.publicUrl,caption:caption.trim()}).select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').single()
     if(reel){ setReels(prev=>[reel,...prev]); setLikes(p=>({...p,[reel.id]:0})); setLiked(p=>({...p,[reel.id]:false})) }
     setVideoFile(null); setCaption(''); setShowUpload(false); setUploading(false)
   }
@@ -2583,8 +2582,8 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   const loadAll = async () => {
     const [{data:g},{data:p},{data:mp},{data:storyFollows}] = await Promise.all([
       supabase.from('groups').select('*,group_members(user_id)').order('created_at',{ascending:false}),
-      supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}),
-      supabase.from('pulses').select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
+      supabase.from('pulses').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}),
+      supabase.from('pulses').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
       supabase.from('story_follows').select('last_read_chapter,story:stories(id,title,cover_image_url,updated_at,story_chapters(chapter_number))').eq('user_id',currentUser.id)
     ])
     setGroups(g||[])
@@ -2633,7 +2632,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
   const createPulse = async () => {
     if(!pulseText.trim()) return
     setSaving(true)
-    const {data} = await supabase.from('pulses').insert({user_id:currentUser.id,content:pulseText.trim(),bg_color:pulseBg}).select('*,author:profiles(id,display_name,username,avatar_url,avatar_color)').single()
+    const {data} = await supabase.from('pulses').insert({user_id:currentUser.id,content:pulseText.trim(),bg_color:pulseBg}).select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').single()
     if(data) { setMyPulse(prev=>[data,...(Array.isArray(prev)?prev:[])].filter(Boolean)); setPulseText(''); setShowCreatePulse(false) }
     setSaving(false)
   }
@@ -3260,7 +3259,7 @@ function FlittersAppInner({ currentUser }) {
   const feedScrollPosRef = useRef(0)
   const openPost = async(postId) => {
     feedScrollPosRef.current = window.scrollY
-    const {data} = await supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').eq('id',postId).single()
+    const {data} = await supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').eq('id',postId).single()
     if(data) setViewingPost({...data,user_liked:data.likes?.some(l=>l.user_id===currentUser.id),user_reposted:data.reposts?.some(r=>r.user_id===currentUser.id),likes_count:data.likes?.length||0,reposts_count:data.reposts?.length||0,comments_count:data.comments?.length||0})
     setHideNav(true)
   }
@@ -3619,8 +3618,8 @@ function FlittersAppInner({ currentUser }) {
       ;(commentedData||[]).forEach(c=>{ const uid=c.posts?.user_id; if(uid){ affinityMap[uid]=(affinityMap[uid]||0)+2 } })
       followingIds.forEach(id=>{ affinityMap[id]=(affinityMap[id]||0)+3 })
 
-      let postsQuery = supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:150)
-      let repostsQuery = supabase.from('reposts').select('id,created_at,content,user:profiles(*),post:posts(*,author:profiles(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
+      let postsQuery = supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:150)
+      let repostsQuery = supabase.from('reposts').select('id,created_at,content,user:profiles!user_id(*),post:posts(*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
 
       if(feedType==='following'){
         if(!followingIds.size){ setPosts([]); setVisibleCount(10); setLoading(false); return }
@@ -3688,7 +3687,7 @@ function FlittersAppInner({ currentUser }) {
   useEffect(()=>{
     const ch = supabase.channel('new-posts').on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'},async(payload)=>{
       if(payload.new.user_id===currentUser.id) return
-      const {data} = await supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').eq('id',payload.new.id).single()
+      const {data} = await supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').eq('id',payload.new.id).single()
       if(data) setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
     }).subscribe()
     return()=>supabase.removeChannel(ch)
@@ -3743,7 +3742,7 @@ function FlittersAppInner({ currentUser }) {
       supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
     }
     const fetchMessages = async() => {
-      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
       // Preserve any not-yet-confirmed optimistic bubble for *this* conversation
       // instead of wiping it — a slow insert shouldn't make a just-sent message
       // vanish before its confirmation (or failure) comes back.
@@ -3764,7 +3763,7 @@ function FlittersAppInner({ currentUser }) {
         if(payload.new.sender_id !== currentUser.id) supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',payload.new.id).then(()=>{})
         return
       }
-      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
       if(data) {
         setMessages(prev=>{
           // remove any optimistic temp message that matches, avoid duplicates
@@ -3779,7 +3778,7 @@ function FlittersAppInner({ currentUser }) {
     }).on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},(payload)=>{
       setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,read_at:payload.new.read_at}:m))
     }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
-      const {data} = await supabase.from('messages').select('*,sender:profiles(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
       if(data) setMessages(prev=>{
         const pending = prev.filter(m=>m.id.toString().startsWith('tmp')&&m.conversation_id===selectedConv.id)
         return [...data,...pending]
@@ -3843,7 +3842,7 @@ function FlittersAppInner({ currentUser }) {
       const [{data:people},{data:postsRes}] = await Promise.all([
         supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').neq('id',currentUser.id)
           .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`).limit(20),
-        supabase.from('posts').select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)')
+        supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)')
           .ilike('content',`%${q}%`).order('created_at',{ascending:false}).limit(20),
       ])
       setGsPeople(people||[])
@@ -3864,7 +3863,7 @@ function FlittersAppInner({ currentUser }) {
       catch(err) { alert('Image upload failed: '+err.message); return }
       imageUrl = urlData.publicUrl
     }
-    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles(*),likes(user_id),reposts(user_id),comments(id)').single()
+    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').single()
     if(data) {
       setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
       // detect @mentions and notify tagged users
