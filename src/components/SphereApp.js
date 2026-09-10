@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
-import { uploadToR2, uploadVideoChunked } from '@/lib/media/upload'
+import { uploadToR2, uploadVideoChunked, getVideoDuration } from '@/lib/media/upload'
 import { EMOJI_CATEGORIES } from '@/lib/emojiData'
 import HlsVideo from './HlsVideo'
 import { useTheme } from '@/lib/theme'
@@ -1454,7 +1454,7 @@ function ReelPreviewCard({ supabase, onOpen }) {
         <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700}}>Reels</span>
       </div>
       <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--bg-card-8)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24}}>▶️</div>
+        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--bg-card-8)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'}}><Play size={22} fill="#fff" color="#fff" style={{marginLeft:3}}/></div>
       </div>
       <div style={{position:'absolute',bottom:10,left:12,right:12,display:'flex',alignItems:'center',gap:8}}>
         <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={26}/>
@@ -2454,6 +2454,9 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const [showUpload, setShowUpload] = useState(false)
   const [caption, setCaption] = useState('')
   const [videoFile, setVideoFile] = useState(null)
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState(null)
+  const [videoDuration, setVideoDuration] = useState(null)
+  const [videoIssue, setVideoIssue] = useState('')
   const [uploadProgress, setUploadProgress] = useState(0)
   const [liked, setLiked] = useState({})
   const [likes, setLikes] = useState({})
@@ -2558,20 +2561,45 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
     if(c) setComments(p=>p.map(x=>x.id===optimistic.id?c:x))
   }
 
+  // Free accounts get short-form only; is_authentic (verified) accounts can
+  // post up to a minute. Defined once here so the picker's inline check and
+  // the actual upload always agree.
+  const REEL_MAX_DURATION = currentUser.is_authentic ? 60 : 20
+  const REEL_MAX_SIZE_MB = currentUser.is_authentic ? 100 : 40
+
+  useEffect(()=>()=>{ if(videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl) },[videoPreviewUrl])
+
+  const pickVideoFile = async (file) => {
+    if(!file) return
+    if(videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+    setVideoFile(file)
+    setVideoPreviewUrl(URL.createObjectURL(file))
+    setVideoDuration(null)
+    setVideoIssue('')
+    try {
+      const duration = await getVideoDuration(file)
+      setVideoDuration(duration)
+      if(duration > REEL_MAX_DURATION + 0.5) setVideoIssue(`This is ${Math.round(duration)}s — trim it to ${REEL_MAX_DURATION}s or under.`)
+      else if(file.size > REEL_MAX_SIZE_MB*1024*1024) setVideoIssue(`This file is ${(file.size/1024/1024).toFixed(1)}MB — the limit here is ${REEL_MAX_SIZE_MB}MB.`)
+    } catch(err) {
+      setVideoIssue(err.message||"Couldn't read that video file.")
+    }
+  }
+
+  const clearVideoFile = () => {
+    if(videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+    setVideoFile(null); setVideoPreviewUrl(null); setVideoDuration(null); setVideoIssue('')
+  }
+
   const uploadReel = async() => {
-    if(!videoFile) return
+    if(!videoFile || videoIssue) return
     setUploading(true)
     setUploadProgress(0)
-    // Free accounts get short-form only; is_authentic (verified) accounts
-    // can post up to a minute. Everything lives in R2 now — no Cloudflare
-    // Stream, so there's no fixed monthly cost regardless of tier.
-    const maxDurationSeconds = currentUser.is_authentic ? 60 : 20
-    const maxSizeBytes = (currentUser.is_authentic ? 100 : 40) * 1024 * 1024
     const ext = (videoFile.name.split('.').pop()||'mp4').toLowerCase()
     const path = 'reels/'+currentUser.id+'_'+Date.now()+'.'+ext
     let urlData
     try {
-      urlData = await uploadVideoChunked(videoFile, path, { maxDurationSeconds, maxSizeBytes, onProgress:setUploadProgress })
+      urlData = await uploadVideoChunked(videoFile, path, { maxDurationSeconds:REEL_MAX_DURATION, maxSizeBytes:REEL_MAX_SIZE_MB*1024*1024, onProgress:setUploadProgress })
     } catch(err) {
       alert(err.message||'Upload failed')
       setUploading(false)
@@ -2579,7 +2607,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
     }
     const {data:reel} = await supabase.from('reels').insert({user_id:currentUser.id,video_url:urlData.publicUrl,caption:caption.trim()}).select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').single()
     if(reel){ setReels(prev=>[reel,...prev]); setLikes(p=>({...p,[reel.id]:0})); setLiked(p=>({...p,[reel.id]:false})) }
-    setVideoFile(null); setCaption(''); setShowUpload(false); setUploading(false); setUploadProgress(0)
+    clearVideoFile(); setCaption(''); setShowUpload(false); setUploading(false); setUploadProgress(0)
   }
 
   const deleteReel = async(reel) => {
@@ -2610,23 +2638,49 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
 
   if(showUpload) return (
     <div style={{position:'fixed',inset:0,zIndex:400,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
-      <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid var(--border-color)'}}>
-        <button onClick={()=>setShowUpload(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
+      <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
+        <button onClick={()=>{setShowUpload(false);clearVideoFile();setCaption('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Reel</span>
-        <button onClick={uploadReel} disabled={!videoFile||uploading} style={{background:videoFile?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-2)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{uploading?'Uploading...':'Post'}</button>
+        <button onClick={uploadReel} disabled={!videoFile||!!videoIssue||uploading} style={{background:(videoFile&&!videoIssue)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-2)',border:'none',borderRadius:20,padding:'8px 20px',color:(videoFile&&!videoIssue)?'#fff':'var(--text-quaternary)',fontWeight:700,cursor:(videoFile&&!videoIssue&&!uploading)?'pointer':'default',fontSize:14}}>{uploading?Math.round(uploadProgress*100)+'%':'Post'}</button>
       </div>
-      <div style={{flex:1,padding:20,display:'flex',flexDirection:'column',gap:16}}>
-        <div onClick={()=>fileRef.current?.click()} style={{height:200,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:8}}>
-          {videoFile?<><Clapperboard size={36}/><span style={{color:'#00C9A7',fontSize:14}}>{videoFile.name}</span></>:<><Video size={36}/><span style={{color:'var(--text-secondary)',fontSize:14}}>Tap to select video</span></>}
+      <div style={{flex:1,overflowY:'auto',padding:20,display:'flex',flexDirection:'column',gap:16}}>
+        <input ref={fileRef} type="file" accept="video/*" onChange={e=>{pickVideoFile(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
+
+        {!videoFile ? (
+          <div onClick={()=>fileRef.current?.click()} style={{aspectRatio:'9/13',maxHeight:'52vh',background:'linear-gradient(165deg,var(--bg-card-4),var(--bg-card))',border:'1.5px dashed var(--border-color-2)',borderRadius:20,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:14,margin:'0 auto',width:'100%'}}>
+            <div style={{width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,rgba(91,156,246,0.18),rgba(132,94,247,0.18))',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <Video size={28} color="#5B9CF6"/>
+            </div>
+            <div style={{textAlign:'center'}}>
+              <p style={{color:'var(--text-primary)',fontSize:15,fontWeight:600,margin:0}}>Select a video</p>
+              <p style={{color:'var(--text-quaternary)',fontSize:12,margin:'4px 0 0'}}>{currentUser.is_authentic ? 'Verified accounts can post up to 60s' : 'Free accounts can post up to 20s'}</p>
+            </div>
+          </div>
+        ) : (
+          <div style={{position:'relative',aspectRatio:'9/13',maxHeight:'52vh',borderRadius:20,overflow:'hidden',background:'#000',margin:'0 auto',width:'100%'}}>
+            <video src={videoPreviewUrl} muted loop autoPlay playsInline style={{width:'100%',height:'100%',objectFit:'contain'}}/>
+            <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:14,padding:'6px 12px',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><Pencil size={12}/> Change</button>
+            {videoDuration!=null&&<div style={{position:'absolute',bottom:10,left:10,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',borderRadius:10,padding:'3px 9px',color:'#fff',fontSize:12,fontWeight:600}}>{formatVoiceDuration(videoDuration)} / {REEL_MAX_DURATION}s</div>}
+            {uploading&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10}}>
+              <Loader2 size={30} className="xspin"/>
+              <div style={{width:'60%',height:5,borderRadius:3,background:'rgba(255,255,255,0.25)',overflow:'hidden'}}>
+                <div style={{height:'100%',width:(uploadProgress*100)+'%',background:'#fff',transition:'width 0.2s'}}/>
+              </div>
+            </div>}
+          </div>
+        )}
+
+        {videoIssue&&(
+          <div style={{display:'flex',alignItems:'flex-start',gap:8,background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:12,padding:'10px 12px'}}>
+            <AlertTriangle size={16} color="#F87171" style={{flexShrink:0,marginTop:1}}/>
+            <span style={{color:'#F87171',fontSize:13,lineHeight:1.4}}>{videoIssue}</span>
+          </div>
+        )}
+
+        <div>
+          <textarea value={caption} onChange={e=>setCaption(e.target.value.slice(0,280))} placeholder="Write a caption..." rows={3} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box'}}/>
+          <p style={{textAlign:'right',color:'var(--text-quaternary)',fontSize:11,margin:'4px 2px 0'}}>{caption.length}/280</p>
         </div>
-        <input ref={fileRef} type="file" accept="video/*" onChange={e=>setVideoFile(e.target.files[0])} style={{display:'none'}}/>
-        <p style={{color:'var(--text-quaternary)',fontSize:12,margin:0,textAlign:'center'}}>
-          {currentUser.is_authentic ? 'Verified accounts can post up to 60s.' : 'Free accounts can post up to 20s — get verified for longer reels.'}
-        </p>
-        {uploading&&<div style={{height:6,borderRadius:3,background:'var(--bg-card-3)',overflow:'hidden'}}>
-          <div style={{height:'100%',width:(uploadProgress*100)+'%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',transition:'width 0.2s'}}/>
-        </div>}
-        <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Write a caption..." rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
       </div>
     </div>
   )
@@ -2670,7 +2724,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           {buffering&&<div style={{position:'absolute',inset:0,zIndex:2,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
             <div style={{width:48,height:48,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.15)',borderTopColor:'#fff',animation:'spin 0.8s linear infinite'}}/>
           </div>}
-          <HlsVideo videoRef={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'cover',zIndex:1,background:'#000'}}
+          <HlsVideo videoRef={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'contain',zIndex:1,background:'#000'}}
             loop playsInline autoPlay muted={reelMuted}
             onWaiting={()=>setBuffering(true)}
             onPlaying={()=>setBuffering(false)}
@@ -2679,7 +2733,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           {/* gradient overlay */}
           <div style={{position:'absolute',inset:0,zIndex:2,background:'linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 45%)',pointerEvents:'none'}}/>
           {!playing&&<div style={{position:'absolute',inset:0,zIndex:3,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
-            <div style={{width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.5)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:32}}>▶️</div>
+            <div style={{width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'}}><Play size={30} fill="#fff" color="#fff" style={{marginLeft:4}}/></div>
           </div>}
 
           {/* author + caption */}
