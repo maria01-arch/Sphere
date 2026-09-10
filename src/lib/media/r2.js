@@ -1,4 +1,4 @@
-import { S3Client, PutObjectCommand } from '@aws-sdk/client-s3'
+import { S3Client, PutObjectCommand, GetObjectCommand, DeleteObjectsCommand } from '@aws-sdk/client-s3'
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner'
 
 // Cloudflare R2 is S3-compatible, so the regular AWS S3 SDK talks to it
@@ -81,4 +81,41 @@ export async function uploadImageDirect(key, bytes, contentType) {
   })
   await client().send(command)
   return { publicUrl: `${PUBLIC_BASE_URL}/${key}` }
+}
+
+// ── Chunked video upload (see /api/upload/video-chunk + video-finish) ──────
+// Videos are too big to fit through a single Vercel function call (hard
+// 4.5MB request body cap, can't be raised) but real S3/R2 multipart upload
+// needs every part except the last to be >=5MB — the two limits are
+// mutually exclusive if a browser is sending each part through our own
+// server. So this isn't R2's multipart API at all: each chunk is just an
+// ordinary small object under a temporary key, and "finishing" the upload
+// means fetching them back in order, concatenating in memory, and writing
+// the result as one normal object. A 60-second reel is at most a few tens
+// of MB, so holding the whole thing in memory for one reassembly pass is
+// cheap and well within a serverless function's limits.
+export async function uploadChunkDirect(uploadId, index, bytes) {
+  const key = `tmp-uploads/${uploadId}/${String(index).padStart(6,'0')}`
+  await client().send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: key, Body: bytes }))
+}
+
+export async function finishChunkedUpload(uploadId, totalChunks, finalKey, contentType) {
+  const buffers = []
+  for (let i = 0; i < totalChunks; i++) {
+    const key = `tmp-uploads/${uploadId}/${String(i).padStart(6,'0')}`
+    const res = await client().send(new GetObjectCommand({ Bucket: BUCKET_NAME, Key: key }))
+    buffers.push(Buffer.from(await res.Body.transformToByteArray()))
+  }
+  const full = Buffer.concat(buffers)
+  await client().send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: finalKey, Body: full, ContentType: contentType || 'application/octet-stream' }))
+  // Best-effort cleanup — if this fails the temp objects just sit there
+  // (harmless, tiny, and R2 has no expiring-object lifecycle rule set up
+  // yet), so it's not worth failing the whole upload over.
+  try {
+    await client().send(new DeleteObjectsCommand({
+      Bucket: BUCKET_NAME,
+      Delete: { Objects: Array.from({length:totalChunks},(_,i)=>({Key:`tmp-uploads/${uploadId}/${String(i).padStart(6,'0')}`})) }
+    }))
+  } catch (err) { console.error('Chunked upload temp cleanup failed (non-fatal):', err) }
+  return { publicUrl: `${PUBLIC_BASE_URL}/${finalKey}` }
 }

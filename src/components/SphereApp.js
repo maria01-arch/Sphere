@@ -2,7 +2,7 @@
 import { useEffect, useState, useRef, useCallback, memo } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
-import { uploadMedia, uploadToR2 } from '@/lib/media/upload'
+import { uploadToR2, uploadVideoChunked } from '@/lib/media/upload'
 import { EMOJI_CATEGORIES } from '@/lib/emojiData'
 import HlsVideo from './HlsVideo'
 import { useTheme } from '@/lib/theme'
@@ -2454,6 +2454,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const [showUpload, setShowUpload] = useState(false)
   const [caption, setCaption] = useState('')
   const [videoFile, setVideoFile] = useState(null)
+  const [uploadProgress, setUploadProgress] = useState(0)
   const [liked, setLiked] = useState({})
   const [likes, setLikes] = useState({})
   const [playing, setPlaying] = useState(true)
@@ -2560,12 +2561,25 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const uploadReel = async() => {
     if(!videoFile) return
     setUploading(true)
+    setUploadProgress(0)
+    // Free accounts get short-form only; is_authentic (verified) accounts
+    // can post up to a minute. Everything lives in R2 now — no Cloudflare
+    // Stream, so there's no fixed monthly cost regardless of tier.
+    const maxDurationSeconds = currentUser.is_authentic ? 60 : 20
+    const maxSizeBytes = (currentUser.is_authentic ? 100 : 40) * 1024 * 1024
+    const ext = (videoFile.name.split('.').pop()||'mp4').toLowerCase()
+    const path = 'reels/'+currentUser.id+'_'+Date.now()+'.'+ext
     let urlData
-    try { urlData = await uploadMedia(videoFile) }
-    catch(err){alert('Upload failed: '+err.message);setUploading(false);return}
+    try {
+      urlData = await uploadVideoChunked(videoFile, path, { maxDurationSeconds, maxSizeBytes, onProgress:setUploadProgress })
+    } catch(err) {
+      alert(err.message||'Upload failed')
+      setUploading(false)
+      return
+    }
     const {data:reel} = await supabase.from('reels').insert({user_id:currentUser.id,video_url:urlData.publicUrl,caption:caption.trim()}).select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').single()
     if(reel){ setReels(prev=>[reel,...prev]); setLikes(p=>({...p,[reel.id]:0})); setLiked(p=>({...p,[reel.id]:false})) }
-    setVideoFile(null); setCaption(''); setShowUpload(false); setUploading(false)
+    setVideoFile(null); setCaption(''); setShowUpload(false); setUploading(false); setUploadProgress(0)
   }
 
   const deleteReel = async(reel) => {
@@ -2606,6 +2620,12 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           {videoFile?<><Clapperboard size={36}/><span style={{color:'#00C9A7',fontSize:14}}>{videoFile.name}</span></>:<><Video size={36}/><span style={{color:'var(--text-secondary)',fontSize:14}}>Tap to select video</span></>}
         </div>
         <input ref={fileRef} type="file" accept="video/*" onChange={e=>setVideoFile(e.target.files[0])} style={{display:'none'}}/>
+        <p style={{color:'var(--text-quaternary)',fontSize:12,margin:0,textAlign:'center'}}>
+          {currentUser.is_authentic ? 'Verified accounts can post up to 60s.' : 'Free accounts can post up to 20s — get verified for longer reels.'}
+        </p>
+        {uploading&&<div style={{height:6,borderRadius:3,background:'var(--bg-card-3)',overflow:'hidden'}}>
+          <div style={{height:'100%',width:(uploadProgress*100)+'%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',transition:'width 0.2s'}}/>
+        </div>}
         <textarea value={caption} onChange={e=>setCaption(e.target.value)} placeholder="Write a caption..." rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
       </div>
     </div>
@@ -3221,7 +3241,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
       const ext = mediaFile.name.split('.').pop()
       const path = 'ads/'+Date.now()+'.'+ext
       let urlData
-      try { urlData = mediaFile.type.startsWith('video/') ? await uploadMedia(mediaFile) : await uploadToR2(mediaFile, path) }
+      try { urlData = mediaFile.type.startsWith('video/') ? await uploadVideoChunked(mediaFile, path, {maxDurationSeconds:300, maxSizeBytes:200*1024*1024}) : await uploadToR2(mediaFile, path) }
       catch(err) { alert('Upload failed: '+err.message); setSaving(false); return }
       if(adType==='reel') videoUrl = urlData.publicUrl
       else imageUrl = urlData.publicUrl

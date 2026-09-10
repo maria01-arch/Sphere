@@ -18,22 +18,12 @@ async function authHeader() {
 //   const {data:urlData} = supabase.storage.from('avatars').getPublicUrl(path)
 //
 // Usage:
-//   const { publicUrl } = await uploadMedia(file, 'avatars/'+uid+'.png')
+//   const { publicUrl } = await uploadToR2(file, 'avatars/'+uid+'.png')
 //
-// Images go to Cloudflare R2, videos go to Cloudflare Stream. The file
-// itself is sent straight from the browser to Cloudflare — our server only
-// hands out a one-time upload URL.
-export async function uploadMedia(file, path) {
-  if (!file) throw new Error('No file selected')
-  const isVideo = file.type?.startsWith('video/')
-  return isVideo ? uploadVideo(file) : uploadImage(file, path)
-}
-
-// Exposed directly (bypassing the video/image auto-routing in uploadMedia)
-// for cases like stickers: short looping clips that are small enough to
-// just live as a plain file in R2 rather than go through Stream's
-// transcode pipeline, so they keep working with the app's existing
-// file-extension-based "is this a video sticker" check.
+// Everything (images, stickers, voice notes, reels) lives in R2 — no
+// Cloudflare Stream. R2 has zero egress fees and a generous free tier, so
+// there's no fixed monthly cost the way Stream's storage billing has, which
+// matters a lot for a pre-revenue app.
 export async function uploadToR2(file, path) {
   return uploadImage(file, path)
 }
@@ -52,19 +42,65 @@ async function uploadImage(file, path) {
   return { publicUrl: json.publicUrl }
 }
 
-async function uploadVideo(file, { maxDurationSeconds } = {}) {
-  const res = await fetch('/api/upload/video', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', ...(await authHeader()) },
-    body: JSON.stringify(maxDurationSeconds ? { maxDurationSeconds } : {}),
+// Reads how long a video file is without uploading it anywhere — used to
+// enforce the free/verified duration caps before spending any bandwidth.
+export function getVideoDuration(file) {
+  return new Promise((resolve, reject) => {
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    video.onloadedmetadata = () => {
+      URL.revokeObjectURL(video.src)
+      resolve(video.duration)
+    }
+    video.onerror = () => {
+      URL.revokeObjectURL(video.src)
+      reject(new Error("Couldn't read that video file — it may be corrupted or an unsupported format."))
+    }
+    video.src = URL.createObjectURL(file)
   })
-  const json = await res.json()
-  if (!res.ok) throw new Error(json.error || 'Could not start upload')
+}
 
-  const form = new FormData()
-  form.append('file', file)
-  const put = await fetch(json.uploadUrl, { method: 'POST', body: form })
-  if (!put.ok) throw new Error('Video upload failed')
+const CHUNK_SIZE = 3.5 * 1024 * 1024 // comfortably under Vercel's fixed 4.5MB request-body limit
 
-  return { publicUrl: json.publicUrl, thumbnailUrl: json.thumbnailUrl }
+// Uploads a video straight to R2 in small chunks (see api/upload/video-chunk
+// + video-finish for why — Vercel's per-request body limit and S3/R2's
+// multipart-upload minimum part size are mutually exclusive, so this uses a
+// simpler custom scheme instead of real multipart upload). Validates
+// duration and file size against the caller's limits before doing any
+// network work at all.
+export async function uploadVideoChunked(file, path, { maxDurationSeconds, maxSizeBytes, onProgress } = {}) {
+  if (maxDurationSeconds) {
+    const duration = await getVideoDuration(file)
+    if (duration > maxDurationSeconds + 0.5) { // small grace period for container rounding
+      throw new Error(`That video is ${Math.round(duration)}s — the limit here is ${maxDurationSeconds}s.`)
+    }
+  }
+  if (maxSizeBytes && file.size > maxSizeBytes) {
+    throw new Error(`That file is ${(file.size/1024/1024).toFixed(1)}MB — the limit here is ${(maxSizeBytes/1024/1024).toFixed(0)}MB. Try a shorter or lower-resolution clip.`)
+  }
+
+  const uploadId = (crypto.randomUUID?.() || (Date.now()+'-'+Math.random().toString(36).slice(2))).replace(/[^a-zA-Z0-9_-]/g,'')
+  const totalChunks = Math.max(1, Math.ceil(file.size / CHUNK_SIZE))
+  const headers = await authHeader()
+
+  for (let i = 0; i < totalChunks; i++) {
+    const chunk = file.slice(i*CHUNK_SIZE, Math.min((i+1)*CHUNK_SIZE, file.size))
+    const form = new FormData()
+    form.append('uploadId', uploadId)
+    form.append('index', String(i))
+    form.append('chunk', chunk)
+    const res = await fetch('/api/upload/video-chunk', { method: 'POST', headers, body: form })
+    const json = await res.json()
+    if (!res.ok) throw new Error(json.error || `Upload failed on part ${i+1}/${totalChunks}`)
+    onProgress?.((i+1)/totalChunks)
+  }
+
+  const finishRes = await fetch('/api/upload/video-finish', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', ...headers },
+    body: JSON.stringify({ uploadId, totalChunks, path, contentType: file.type || 'video/mp4' }),
+  })
+  const finishJson = await finishRes.json()
+  if (!finishRes.ok) throw new Error(finishJson.error || 'Could not finish video upload')
+  return { publicUrl: finishJson.publicUrl }
 }
