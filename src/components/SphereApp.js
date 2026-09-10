@@ -1436,6 +1436,8 @@ function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl })
 // ── POST CARD ──────────────────────────────────────────────────────────────
 function ReelPreviewCard({ supabase, onOpen }) {
   const [reel, setReel] = useState(null)
+  const videoRef = useRef(null)
+  const wrapRef = useRef(null)
   useEffect(()=>{
     let cancelled = false
     supabase.from('reels').select('id,video_url,caption,author:profiles!user_id(display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}).limit(20).then(({data})=>{
@@ -1444,10 +1446,25 @@ function ReelPreviewCard({ supabase, onOpen }) {
     })
     return ()=>{cancelled=true}
   },[])
+  // Autoplay (always muted here — this is just a feed teaser, not the real
+  // Reels experience) once the card is mostly on screen, pause once it
+  // scrolls away, same as Instagram/TikTok feed previews.
+  useEffect(()=>{
+    const el = wrapRef.current
+    if(!el) return
+    const obs = new IntersectionObserver(([entry])=>{
+      const video = videoRef.current
+      if(!video) return
+      if(entry.isIntersecting) video.play?.().catch(()=>{}) // autoplay can reject if the browser hasn't decided this counts as a user-initiated context yet — harmless, the poster frame just stays put
+      else video.pause?.()
+    }, { threshold: 0.6 })
+    obs.observe(el)
+    return ()=>obs.disconnect()
+  },[reel])
   if(!reel) return null
   return (
-    <div onClick={()=>onOpen(reel.id)} style={{margin:'10px 16px',borderRadius:18,overflow:'hidden',position:'relative',cursor:'pointer',height:200,background:'#000'}}>
-      <HlsVideo src={reel.video_url} muted playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
+    <div ref={wrapRef} onClick={()=>onOpen(reel.id)} style={{margin:'10px 16px',borderRadius:18,overflow:'hidden',position:'relative',cursor:'pointer',height:200,background:'#000'}}>
+      <HlsVideo videoRef={videoRef} src={reel.video_url} muted loop playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
       <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
       <div style={{position:'absolute',top:12,left:12,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.5)',borderRadius:14,padding:'4px 10px'}}>
         <Clapperboard size={13}/>
@@ -2465,7 +2482,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   // previously hardcoded muted={false}. This restores the original muted-
   // autoplay design, and separately is good practice regardless of any
   // WebView issue: nobody wants unsolicited audio blasting on scroll.
-  const [reelMuted, setReelMuted] = useState(true)
+  const [reelMuted, setReelMuted] = useState(false) // unmuted by default in the actual Reels tab — muted-by-default only applies to the feed teaser card, which never changes this state at all
   const [buffering, setBuffering] = useState(false)
   const [animDir, setAnimDir] = useState(null) // 'up' | 'down' | null
   const [animating, setAnimating] = useState(false)

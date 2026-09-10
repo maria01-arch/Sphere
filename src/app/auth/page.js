@@ -1,8 +1,8 @@
 'use client'
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
-import { Camera } from 'lucide-react'
+import { Camera, Check, X as XIcon, Loader2 } from 'lucide-react'
 
 const COUNTRIES = [
   'Nigeria','United States','United Kingdom','Canada','Ghana','South Africa','Kenya','Egypt',
@@ -35,6 +35,9 @@ export default function AuthPage() {
   // step 1
   const [displayName, setDisplayName] = useState('')
   const [username, setUsername] = useState('')
+  // 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+  const [usernameStatus, setUsernameStatus] = useState('idle')
+  const usernameCheckRef = useRef(0) // guards against a slow older check overwriting a newer one's result
   // step 2
   const [dob, setDob] = useState('')
   const [country, setCountry] = useState('')
@@ -67,6 +70,27 @@ export default function AuthPage() {
 
   const totalSteps = 6
 
+  // Live username-availability check while typing, debounced — catches a
+  // taken username here instead of at the very end of the wizard, where it
+  // used to surface as an opaque "Database error saving new user" only
+  // after the account-creation call had already failed.
+  useEffect(() => {
+    const trimmed = username.trim().toLowerCase()
+    if (!trimmed) { setUsernameStatus('idle'); return }
+    if (trimmed.length < 3) { setUsernameStatus('invalid'); return }
+    if (!/^[a-z0-9_]+$/.test(trimmed)) { setUsernameStatus('invalid'); return }
+
+    setUsernameStatus('checking')
+    const myCheck = ++usernameCheckRef.current
+    const timer = setTimeout(async () => {
+      const { data, error } = await supabase.from('profiles').select('id').eq('username', trimmed).maybeSingle()
+      if (myCheck !== usernameCheckRef.current) return // a newer keystroke already started its own check
+      if (error) { setUsernameStatus('idle'); return } // fail open — don't block signup over a flaky check; the DB unique constraint is still the real backstop
+      setUsernameStatus(data ? 'taken' : 'available')
+    }, 450)
+    return () => clearTimeout(timer)
+  }, [username])
+
   const goToLogin = () => { setMode('login'); setError(''); setSuccess('') }
   const goToSignup = () => { setMode('signup'); setStep(1); setError(''); setSuccess('') }
   const goToForgot = () => { setMode('forgot'); setForgotStep('email'); setResetOtpCode(''); setNewPassword(''); setNewPasswordConfirm(''); setError(''); setSuccess('') }
@@ -82,6 +106,9 @@ export default function AuthPage() {
     if (step === 1) {
       if (!displayName.trim()) return 'Please enter your full name'
       if (!username.trim() || username.trim().length < 3) return 'Username must be at least 3 characters'
+      if (usernameStatus === 'invalid') return 'Usernames can only contain letters, numbers, and underscores'
+      if (usernameStatus === 'taken') return 'That username is already taken'
+      if (usernameStatus === 'checking') return 'Still checking that username — one sec'
       return ''
     }
     if (step === 2) {
@@ -190,7 +217,17 @@ export default function AuthPage() {
         return
       }
     } catch (e) {
-      setError(e.message)
+      const msg = e.message || ''
+      // Covers the rare race where someone else grabs the same username
+      // between the live check above and this actual signup call — same
+      // friendly message instead of the raw Postgres/trigger error text.
+      if (/duplicate key|already exists|profiles_username/i.test(msg)) {
+        setError('That username was just taken — please pick another.')
+        setUsernameStatus('taken')
+        setStep(1)
+      } else {
+        setError(msg)
+      }
     }
     setLoading(false)
   }
@@ -436,7 +473,17 @@ export default function AuthPage() {
             <label style={label}>Full name</label>
             <input style={inp} placeholder="e.g. Ada Lovelace" value={displayName} onChange={e => setDisplayName(e.target.value)} />
             <label style={label}>Username</label>
-            <input style={inp} placeholder="e.g. adalovelace" value={username} onChange={e => setUsername(e.target.value.replace(/\s/g, ''))} />
+            <div style={{position:'relative'}}>
+              <input style={{...inp,paddingRight:36}} placeholder="e.g. adalovelace" value={username} onChange={e => setUsername(e.target.value.replace(/\s/g, ''))} />
+              <div style={{position:'absolute',right:12,top:13,display:'flex'}}>
+                {usernameStatus==='checking'&&<Loader2 size={17} color="#888" className="xspin"/>}
+                {usernameStatus==='available'&&<Check size={17} color="#4ADE80"/>}
+                {(usernameStatus==='taken'||usernameStatus==='invalid')&&<XIcon size={17} color="#F87171"/>}
+              </div>
+            </div>
+            {usernameStatus==='taken'&&<p style={{color:'#F87171',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is already taken</p>}
+            {usernameStatus==='available'&&<p style={{color:'#4ADE80',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is available</p>}
+            {usernameStatus==='invalid'&&username.trim().length>=3&&<p style={{color:'#F87171',fontSize:12,margin:'-8px 0 12px'}}>Only letters, numbers, and underscores</p>}
           </>}
 
           {step === 2 && <>
