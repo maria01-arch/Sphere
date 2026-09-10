@@ -20,6 +20,10 @@ const supabase = createClient()
 // comment on the post — used after both posting and commenting, since you
 // can tag it either way.
 const AI_MENTION_RE = /@flittersai\b/i
+// Solid "read-receipt blue" for the sender's own chat bubbles — replaces
+// the old blue/purple gradient, matching the flatter WhatsApp/Messenger
+// bubble look rather than the gradient used elsewhere in the app's UI.
+const TICK_BLUE = '#0B93F6'
 async function triggerAiMentionReply({ postId, postContent, mentionText, mentionCommentId }) {
   try {
     const { data: { session } } = await supabase.auth.getSession()
@@ -94,7 +98,81 @@ const QUICK_REACTIONS = [
   '🥰','😆','🤤','😷','🤢','🤮','👋','🖤','💙','💚'
 ]
 
-function TextWithMentions({ text, supabase, onUserClick }) {
+// Strips trailing punctuation a sentence would naturally have right after a
+// URL ("check http://x.com!" shouldn't swallow the "!" into the link).
+function splitTrailingPunct(url) {
+  const m = url.match(/^(.*?)([.,!?;:'"\)\]\}]*)$/)
+  return [m[1], m[2]]
+}
+const URL_TOKEN_RE = /^https?:\/\//i
+const URL_TOKEN_RE2 = /^www\.[a-zA-Z0-9]/i
+function isUrlToken(token) { return URL_TOKEN_RE.test(token) || URL_TOKEN_RE2.test(token) }
+function urlHref(cleanToken) { return URL_TOKEN_RE.test(cleanToken) ? cleanToken : 'https://'+cleanToken }
+
+// First URL found in a block of text, normalized to an absolute href — used
+// to decide whether to attach a LinkPreviewCard below a message/post.
+function getFirstUrl(text) {
+  if(!text) return null
+  const m = text.match(/(https?:\/\/[^\s]+|www\.[a-zA-Z0-9][^\s]*)/i)
+  if(!m) return null
+  const [clean] = splitTrailingPunct(m[0])
+  return urlHref(clean)
+}
+
+// Renders plain text with any URLs turned into clickable, colored links.
+// Deliberately doesn't handle @mentions — that's TextWithMentions' job for
+// feed content; chat bubbles use this directly since they don't have a
+// mention feature.
+function Linkify({ text, color='#5B9CF6' }) {
+  if(!text) return null
+  const parts = text.split(/(https?:\/\/[^\s]+|www\.[a-zA-Z0-9][^\s]*)/g)
+  return <>{parts.map((part,i)=>{
+    if(isUrlToken(part)) {
+      const [clean, trail] = splitTrailingPunct(part)
+      return <span key={i}><a href={urlHref(clean)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{color,textDecoration:'underline',wordBreak:'break-all'}}>{clean}</a>{trail}</span>
+    }
+    return <span key={i}>{part}</span>
+  })}</>
+}
+
+// In-memory only — a link's metadata doesn't change within a session, and
+// re-fetching every time a message scrolls back into view would be wasteful.
+const linkPreviewCache = new Map()
+function LinkPreviewCard({ url, own }) {
+  const [data, setData] = useState(()=>linkPreviewCache.get(url)||null)
+  const [failed, setFailed] = useState(false)
+  useEffect(()=>{
+    if(!url) return
+    if(linkPreviewCache.has(url)) { setData(linkPreviewCache.get(url)); return }
+    let cancelled = false
+    fetch('/api/link-preview?url='+encodeURIComponent(url)).then(r=>r.json()).then(json=>{
+      if(cancelled) return
+      if(json.error || (!json.title && !json.image)) { setFailed(true); return }
+      linkPreviewCache.set(url, json)
+      setData(json)
+    }).catch(()=>{ if(!cancelled) setFailed(true) })
+    return ()=>{cancelled=true}
+  },[url])
+  // No skeleton/loading state on purpose — most links either resolve in a
+  // few hundred ms or never resolve at all (blocked, broken, no og tags),
+  // and a permanent "loading" card for the latter would look broken.
+  if(!url || failed || !data) return null
+  return (
+    <a href={data.url||url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+      style={{display:'block',marginTop:8,borderRadius:12,overflow:'hidden',textDecoration:'none',
+        background:own?'rgba(255,255,255,0.15)':'var(--bg-card-2)',
+        border:own?'1px solid rgba(255,255,255,0.25)':'1px solid var(--border-color-2)'}}>
+      {data.image&&<img src={data.image} alt="" loading="lazy" style={{width:'100%',maxHeight:160,objectFit:'cover',display:'block'}}/>}
+      <div style={{padding:'8px 10px'}}>
+        {data.title&&<div style={{color:own?'#fff':'var(--text-primary)',fontSize:13,fontWeight:700,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{data.title}</div>}
+        {data.description&&<div style={{color:own?'rgba(255,255,255,0.8)':'var(--text-quaternary)',fontSize:12,marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{data.description}</div>}
+        {data.domain&&<div style={{color:own?'rgba(255,255,255,0.65)':'var(--text-quaternary)',fontSize:11}}>{data.domain}</div>}
+      </div>
+    </a>
+  )
+}
+
+function TextWithMentions({ text, supabase, onUserClick, linkColor='#5B9CF6' }) {
   if(!text) return null
   const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
   return <>{parts.map((part,i)=>{
@@ -106,7 +184,7 @@ function TextWithMentions({ text, supabase, onUserClick }) {
         if(data) onUserClick(data)
       }} style={{color:'#5B9CF6',fontWeight:600,cursor:'pointer'}}>{part}</span>
     }
-    return <span key={i}>{part}</span>
+    return <Linkify key={i} text={part} color={linkColor}/>
   })}</>
 }
 
@@ -446,7 +524,7 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           </div>
         ):isVoice?(
-          <div {...pressHandlers} style={{padding:'10px 14px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
+          <div {...pressHandlers} style={{padding:'8px 12px',borderRadius:16,background:own?TICK_BLUE:'var(--bg-card-7)',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
             <VoiceMessagePlayer url={msg.voice_url} duration={msg.voice_duration} own={own}/>
             <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
@@ -455,10 +533,11 @@ const MessageBubble = memo(function MessageBubble({
             </div>
           </div>
         ):(
-          <div {...pressHandlers} style={{padding:msg.image_url?'6px':'11px 15px',borderRadius:20,background:own?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-7)',color:own?'#fff':'var(--text-primary)',fontSize:15,lineHeight:1.5,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
+          <div {...pressHandlers} style={{padding:msg.image_url?'4px':'7px 11px',borderRadius:16,background:own?TICK_BLUE:'var(--bg-card-7)',color:own?'#fff':'var(--text-primary)',fontSize:14,lineHeight:1.4,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
             {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
-            {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:14,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:msg.content}
-            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 8px 6px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+            {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:12,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:<Linkify text={msg.content} color={own?'#D6ECFF':'#5B9CF6'}/>}
+            {!msg.image_url&&msg.content&&<LinkPreviewCard url={getFirstUrl(msg.content)} own={own}/>}
+            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 6px 4px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
               <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
               {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
             </div>
@@ -1779,6 +1858,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
             {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><Trash2 size={15}/></button>}
           </div>
           {post.content&&<p onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
+          {!post.image_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
           {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
           <div style={{display:'flex'}}>
             <button onClick={()=>{setReplyingTo(null);setShowReply(v=>!v)}} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:(showComments||showReply)?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
