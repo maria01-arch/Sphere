@@ -11,6 +11,15 @@ create table if not exists public.announcements (
   created_by uuid references public.profiles(id) on delete set null
 );
 
+-- message doubles as the bold headline; these three are optional extras for
+-- the X/Twitter-style promo-card look (description line + a CTA button that
+-- links wherever the admin sets). Added as a separate ALTER so this file is
+-- safe to re-run even if you already created the table before this existed.
+alter table public.announcements
+  add column if not exists description text,
+  add column if not exists button_text text,
+  add column if not exists button_url text;
+
 alter table public.announcements enable row level security;
 
 -- Same trust model as the existing `ads` table: readable by everyone,

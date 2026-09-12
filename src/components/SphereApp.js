@@ -3419,6 +3419,9 @@ function AdminPanel({ currentUser, supabase, onBack }) {
 
   const [announcements, setAnnouncements] = useState([])
   const [annMessage, setAnnMessage] = useState('')
+  const [annDescription, setAnnDescription] = useState('')
+  const [annButtonText, setAnnButtonText] = useState('')
+  const [annButtonUrl, setAnnButtonUrl] = useState('')
   const [annDurationHours, setAnnDurationHours] = useState(24)
   const [annSaving, setAnnSaving] = useState(false)
 
@@ -3430,12 +3433,22 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   }
 
   const createAnnouncement = async() => {
-    if(!annMessage.trim()) { alert('Announcement message required'); return }
+    if(!annMessage.trim()) { alert('Headline required'); return }
+    if((annButtonText.trim() && !annButtonUrl.trim()) || (!annButtonText.trim() && annButtonUrl.trim())) {
+      alert('Fill in both the button text and its link, or leave both empty'); return
+    }
     setAnnSaving(true)
     const expiresAt = new Date(Date.now() + annDurationHours*60*60*1000).toISOString()
-    const {error} = await supabase.from('announcements').insert({ message: annMessage.trim(), expires_at: expiresAt, created_by: currentUser.id })
+    const {error} = await supabase.from('announcements').insert({
+      message: annMessage.trim(),
+      description: annDescription.trim()||null,
+      button_text: annButtonText.trim()||null,
+      button_url: annButtonUrl.trim()||null,
+      expires_at: expiresAt,
+      created_by: currentUser.id
+    })
     if(error) alert('Error: '+error.message)
-    else { setAnnMessage(''); loadAnnouncements() }
+    else { setAnnMessage(''); setAnnDescription(''); setAnnButtonText(''); setAnnButtonUrl(''); loadAnnouncements() }
     setAnnSaving(false)
   }
 
@@ -3555,7 +3568,12 @@ function AdminPanel({ currentUser, supabase, onBack }) {
 
       {adminTab==='announcements'&&<>
         <div style={{padding:16,display:'flex',flexDirection:'column',gap:10,borderBottom:'1px solid var(--border-color)'}}>
-          <textarea value={annMessage} onChange={e=>setAnnMessage(e.target.value)} placeholder="Announcement message — shown to everyone at the top of the home feed" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+          <input value={annMessage} onChange={e=>setAnnMessage(e.target.value)} placeholder="Headline — e.g. See posts in any language" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+          <textarea value={annDescription} onChange={e=>setAnnDescription(e.target.value)} placeholder="Description (optional) — e.g. Update your settings to add any language you want." rows={2} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+          <div style={{display:'flex',gap:10}}>
+            <input value={annButtonText} onChange={e=>setAnnButtonText(e.target.value)} placeholder="Button text (optional)" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+            <input value={annButtonUrl} onChange={e=>setAnnButtonUrl(e.target.value)} placeholder="Button link (optional)" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+          </div>
           <div style={{display:'flex',gap:8,alignItems:'center'}}>
             <span style={{color:'var(--text-tertiary)',fontSize:13}}>Show for</span>
             <select value={annDurationHours} onChange={e=>setAnnDurationHours(Number(e.target.value))} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 10px',color:'var(--text-primary)',fontSize:14}}>
@@ -3567,6 +3585,14 @@ function AdminPanel({ currentUser, supabase, onBack }) {
             </select>
             <button onClick={createAnnouncement} disabled={annSaving||!annMessage.trim()} style={{marginLeft:'auto',background:annMessage.trim()?'linear-gradient(135deg,#F7B731,#FF6B35)':'var(--bg-card-3)',border:'none',borderRadius:20,padding:'8px 18px',color:annMessage.trim()?'var(--text-primary)':'var(--text-quaternary)',fontWeight:700,cursor:annMessage.trim()?'pointer':'default'}}>{annSaving?'Posting...':'Post'}</button>
           </div>
+          {(annMessage.trim()||annDescription.trim())&&(
+            <div style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',borderRadius:12,padding:'14px 16px'}}>
+              <p style={{color:'rgba(255,255,255,0.7)',fontSize:10,fontWeight:700,letterSpacing:0.5,textTransform:'uppercase',margin:'0 0 8px'}}>Preview</p>
+              <h3 style={{color:'#fff',fontSize:16,fontWeight:800,margin:'0 0 4px',lineHeight:1.25}}>{annMessage||'Headline goes here'}</h3>
+              {annDescription&&<p style={{color:'rgba(255,255,255,0.85)',fontSize:13,lineHeight:1.4,margin:'0 0 10px'}}>{annDescription}</p>}
+              {annButtonText&&annButtonUrl&&<span style={{display:'inline-block',background:'#fff',color:'#111',fontWeight:700,fontSize:12.5,padding:'7px 16px',borderRadius:20}}>{annButtonText}</span>}
+            </div>
+          )}
         </div>
         {announcements.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No announcements yet</p></div>}
         {announcements.map(ann=>{
@@ -3580,7 +3606,9 @@ function AdminPanel({ currentUser, supabase, onBack }) {
                   <button onClick={()=>deleteAnnouncement(ann)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,cursor:'pointer'}}>Delete</button>
                 </div>
               </div>
-              <p style={{color:'var(--text-subtle)',fontSize:13,margin:0,wordBreak:'break-word'}}>{ann.message}</p>
+              <p style={{color:'var(--text-primary)',fontSize:14,fontWeight:700,margin:'0 0 2px',wordBreak:'break-word'}}>{ann.message}</p>
+              {ann.description&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:'0 0 4px',wordBreak:'break-word'}}>{ann.description}</p>}
+              {ann.button_text&&ann.button_url&&<p style={{color:'#5B9CF6',fontSize:12,margin:0}}>🔗 {ann.button_text} → {ann.button_url}</p>}
             </div>
           )
         })}
@@ -3589,10 +3617,12 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   )
 }
 
-// Shown once at the top of the home feed per announcement — dismissing it
-// is remembered in localStorage keyed by the announcement's own id, so a
-// new announcement from the admin panel will show again even if the person
-// dismissed a previous one, but the same one never reappears once closed.
+// Card-style announcement, matching the X/Twitter promo-card look — bold
+// headline, a lighter description line, and an optional pill button that
+// links wherever the admin points it. Dismissing it is remembered in
+// localStorage keyed by the announcement's own id, so a new announcement
+// will show again even if the person dismissed a previous one, but the same
+// one never reappears once closed.
 function AnnouncementBanner({ supabase }) {
   const [ann, setAnn] = useState(null)
   const [dismissed, setDismissed] = useState(false)
@@ -3611,10 +3641,11 @@ function AnnouncementBanner({ supabase }) {
     setDismissed(true)
   }
   return (
-    <div style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',padding:'12px 16px',display:'flex',alignItems:'flex-start',gap:10,position:'relative'}}>
-      <Megaphone size={18} color="#fff" style={{flexShrink:0,marginTop:1}}/>
-      <p style={{color:'#fff',fontSize:13.5,lineHeight:1.45,margin:0,flex:1,wordBreak:'break-word'}}>{ann.message}</p>
-      <button onClick={close} style={{background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'50%',width:22,height:22,flexShrink:0,cursor:'pointer',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}><X size={13}/></button>
+    <div style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',padding:'18px 44px 18px 18px',position:'relative'}}>
+      <button onClick={close} style={{position:'absolute',top:14,right:14,background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'50%',width:24,height:24,cursor:'pointer',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}><X size={14}/></button>
+      <h3 style={{color:'#fff',fontSize:18,fontWeight:800,margin:'0 0 4px',lineHeight:1.25,wordBreak:'break-word'}}>{ann.message}</h3>
+      {ann.description&&<p style={{color:'rgba(255,255,255,0.85)',fontSize:13.5,lineHeight:1.45,margin:'0 0 14px',wordBreak:'break-word'}}>{ann.description}</p>}
+      {ann.button_text&&ann.button_url&&<a href={ann.button_url} target="_blank" rel="noopener noreferrer" style={{display:'inline-block',background:'#fff',color:'#111',fontWeight:700,fontSize:13.5,padding:'9px 20px',borderRadius:24,textDecoration:'none',marginTop:ann.description?0:2}}>{ann.button_text}</a>}
     </div>
   )
 }
