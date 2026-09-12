@@ -1628,6 +1628,30 @@ function postCardPropsEqual(prev, next) {
     prev.currentUser?.id === next.currentUser?.id &&
     prev.autoExpandComments === next.autoExpandComments
 }
+// Compact, non-interactive preview of a reshared post — used only inside a
+// quote-repost (a repost with the reposter's own caption added). Deliberately
+// plain-text (no clickable mentions/links inside it): the whole card is one
+// tap target that opens the original post, matching how Twitter/Bluesky
+// quote-cards behave rather than nesting a second set of interactive
+// elements inside an already-interactive feed entry.
+function QuotedPostPreview({ post, onOpen, onUserClick }) {
+  const a = post.author || {}
+  const color = a.avatar_color || getColor(a.id)
+  return (
+    <div onClick={()=>onOpen&&onOpen(post.id)} style={{border:'1px solid var(--border-color-2)',borderRadius:14,padding:12,cursor:onOpen?'pointer':'default',marginBottom:12,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:6}}>
+        <Avatar url={a.avatar_url} name={a.display_name} color={color} size={22}/>
+        <button onClick={e=>{e.stopPropagation();onUserClick&&onUserClick(a)}} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:13}}>{a.display_name}</button>
+        {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:14,height:14,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><img src="/flitters-logo-white.svg" alt="Verified" width={8} height={8} style={{objectFit:'contain',display:'block'}}/></span>}
+        <span style={{color:'var(--text-faint)'}}>·</span>
+        <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
+      </div>
+      {post.content&&<p style={{color:'var(--text-secondary)',fontSize:13.5,lineHeight:1.45,margin:'0 0 8px',wordBreak:'break-word',display:'-webkit-box',WebkitLineClamp:4,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{post.content}</p>}
+      {post.image_url&&<img src={post.image_url} alt="" loading="lazy" style={{width:'100%',maxHeight:220,objectFit:'cover',borderRadius:10,display:'block'}}/>}
+    </div>
+  )
+}
+
 const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
@@ -1729,6 +1753,16 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   const a = post.author||{}
   const color = a.avatar_color||getColor(a.id)
   const isOwn = a.id === currentUser.id
+  // A quote-repost (a repost with the reposter's own caption) shows the
+  // reposter as the header author and their caption as the body text — the
+  // original post becomes a compact QuotedPostPreview card instead of being
+  // rendered in full, so it reads as "their card, your caption" rather than
+  // looking like an indistinguishable duplicate of a normal post.
+  const isQuote = post.isRepost && !!post.quoteContent
+  const headerUser = isQuote ? (post.reposter||{}) : a
+  const headerColor = isQuote ? (headerUser.avatar_color||getColor(headerUser.id)) : color
+  const headerTime = isQuote ? (post.sortTime||post.created_at) : post.created_at
+  const bodyText = isQuote ? post.quoteContent : post.content
 
   const likeInFlight = useRef(false)
   const repostInFlight = useRef(false)
@@ -1844,22 +1878,27 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   return (
     <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
       <div style={{display:'flex',gap:12}}>
-        <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',flexShrink:0}}>
-          <Avatar url={a.avatar_url} name={a.display_name} color={color} size={44}/>
+        <button onClick={()=>onUserClick(headerUser)} style={{background:'none',border:'none',padding:0,cursor:'pointer',flexShrink:0}}>
+          <Avatar url={headerUser.avatar_url} name={headerUser.display_name} color={headerColor} size={44}/>
         </button>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:6,justifyContent:'space-between'}}>
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
-              <button onClick={()=>onUserClick(a)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{a.display_name}</button>
-              {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{a.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+              <button onClick={()=>onUserClick(headerUser)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{headerUser.display_name}</button>
+              {isQuote&&<span title="Reposted with comment" style={{display:'inline-flex',color:'var(--text-tertiary)'}}><Repeat2 size={13}/></span>}
+              {headerUser.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{headerUser.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
               <span style={{color:'var(--text-faint)'}}>·</span>
-              <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
+              <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(headerTime)}</span>
             </div>
             {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><Trash2 size={15}/></button>}
           </div>
-          {post.content&&<p onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}}><TextWithMentions text={post.content} supabase={supabase} onUserClick={onUserClick}/></p>}
-          {!post.image_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
-          {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
+          {bodyText&&<p onClick={()=>!autoExpandComments && onOpenPost && !isQuote && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost&&!isQuote)?'pointer':'default'}}><TextWithMentions text={bodyText} supabase={supabase} onUserClick={onUserClick}/></p>}
+          {isQuote ? (
+            <QuotedPostPreview post={post} onOpen={onOpenPost} onUserClick={onUserClick}/>
+          ) : (<>
+            {!post.image_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
+            {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
+          </>)}
           <div style={{display:'flex'}}>
             <button onClick={()=>{setReplyingTo(null);setShowReply(v=>!v)}} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:(showComments||showReply)?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
               <MessageCircle size={16}/><span>{comments}</span>
@@ -3367,6 +3406,7 @@ function FlittersAI({ currentUser, onClose }) {
 }
 
 function AdminPanel({ currentUser, supabase, onBack }) {
+  const [adminTab, setAdminTab] = useState('ads') // 'ads' | 'announcements'
   const [ads, setAds] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [advertiserName, setAdvertiserName] = useState('')
@@ -3377,7 +3417,38 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   const [saving, setSaving] = useState(false)
   const fileRef = useRef(null)
 
-  useEffect(()=>{ loadAds() },[])
+  const [announcements, setAnnouncements] = useState([])
+  const [annMessage, setAnnMessage] = useState('')
+  const [annDurationHours, setAnnDurationHours] = useState(24)
+  const [annSaving, setAnnSaving] = useState(false)
+
+  useEffect(()=>{ loadAds(); loadAnnouncements() },[])
+
+  const loadAnnouncements = async() => {
+    const {data} = await supabase.from('announcements').select('*').order('created_at',{ascending:false})
+    setAnnouncements(data||[])
+  }
+
+  const createAnnouncement = async() => {
+    if(!annMessage.trim()) { alert('Announcement message required'); return }
+    setAnnSaving(true)
+    const expiresAt = new Date(Date.now() + annDurationHours*60*60*1000).toISOString()
+    const {error} = await supabase.from('announcements').insert({ message: annMessage.trim(), expires_at: expiresAt, created_by: currentUser.id })
+    if(error) alert('Error: '+error.message)
+    else { setAnnMessage(''); loadAnnouncements() }
+    setAnnSaving(false)
+  }
+
+  const endAnnouncementNow = async(ann) => {
+    await supabase.from('announcements').update({expires_at: new Date().toISOString()}).eq('id',ann.id)
+    loadAnnouncements()
+  }
+
+  const deleteAnnouncement = async(ann) => {
+    if(!window.confirm('Delete this announcement?')) return
+    await supabase.from('announcements').delete().eq('id',ann.id)
+    setAnnouncements(prev=>prev.filter(a=>a.id!==ann.id))
+  }
 
   const loadAds = async() => {
     const {data} = await supabase.from('ads').select('*').order('created_at',{ascending:false})
@@ -3452,9 +3523,15 @@ function AdminPanel({ currentUser, supabase, onBack }) {
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
-        <span style={{fontWeight:700,fontSize:17,flex:1}}>Ad Manager</span>
-        <button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>{adminTab==='ads'?'Ad Manager':'Announcements'}</span>
+        {adminTab==='ads'&&<button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>}
       </div>
+      <div style={{display:'flex',borderBottom:'1px solid var(--border-color)'}}>
+        <button onClick={()=>setAdminTab('ads')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='ads'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='ads'?'#fff':'#555',fontWeight:adminTab==='ads'?700:500,fontSize:14,cursor:'pointer'}}>Ads</button>
+        <button onClick={()=>setAdminTab('announcements')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='announcements'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='announcements'?'#fff':'#555',fontWeight:adminTab==='announcements'?700:500,fontSize:14,cursor:'pointer'}}>Announcements</button>
+      </div>
+
+      {adminTab==='ads'&&<>
       {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No ads yet</p></div>}
       {ads.map(ad=>(
         <div key={ad.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
@@ -3474,6 +3551,70 @@ function AdminPanel({ currentUser, supabase, onBack }) {
           {ad.content&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:0}}>{ad.content}</p>}
         </div>
       ))}
+      </>}
+
+      {adminTab==='announcements'&&<>
+        <div style={{padding:16,display:'flex',flexDirection:'column',gap:10,borderBottom:'1px solid var(--border-color)'}}>
+          <textarea value={annMessage} onChange={e=>setAnnMessage(e.target.value)} placeholder="Announcement message — shown to everyone at the top of the home feed" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <span style={{color:'var(--text-tertiary)',fontSize:13}}>Show for</span>
+            <select value={annDurationHours} onChange={e=>setAnnDurationHours(Number(e.target.value))} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 10px',color:'var(--text-primary)',fontSize:14}}>
+              <option value={1}>1 hour</option>
+              <option value={6}>6 hours</option>
+              <option value={24}>1 day</option>
+              <option value={72}>3 days</option>
+              <option value={168}>7 days</option>
+            </select>
+            <button onClick={createAnnouncement} disabled={annSaving||!annMessage.trim()} style={{marginLeft:'auto',background:annMessage.trim()?'linear-gradient(135deg,#F7B731,#FF6B35)':'var(--bg-card-3)',border:'none',borderRadius:20,padding:'8px 18px',color:annMessage.trim()?'var(--text-primary)':'var(--text-quaternary)',fontWeight:700,cursor:annMessage.trim()?'pointer':'default'}}>{annSaving?'Posting...':'Post'}</button>
+          </div>
+        </div>
+        {announcements.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No announcements yet</p></div>}
+        {announcements.map(ann=>{
+          const isLive = new Date(ann.expires_at) > new Date()
+          return (
+            <div key={ann.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6,gap:10}}>
+                <span style={{color:isLive?'#00C9A7':'#555',fontSize:12,flexShrink:0}}>{isLive?'● Live until '+new Date(ann.expires_at).toLocaleString():'○ Ended'}</span>
+                <div style={{display:'flex',gap:8,flexShrink:0}}>
+                  {isLive&&<button onClick={()=>endAnnouncementNow(ann)} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,cursor:'pointer'}}>End now</button>}
+                  <button onClick={()=>deleteAnnouncement(ann)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,cursor:'pointer'}}>Delete</button>
+                </div>
+              </div>
+              <p style={{color:'var(--text-subtle)',fontSize:13,margin:0,wordBreak:'break-word'}}>{ann.message}</p>
+            </div>
+          )
+        })}
+      </>}
+    </div>
+  )
+}
+
+// Shown once at the top of the home feed per announcement — dismissing it
+// is remembered in localStorage keyed by the announcement's own id, so a
+// new announcement from the admin panel will show again even if the person
+// dismissed a previous one, but the same one never reappears once closed.
+function AnnouncementBanner({ supabase }) {
+  const [ann, setAnn] = useState(null)
+  const [dismissed, setDismissed] = useState(false)
+  useEffect(()=>{
+    let cancelled = false
+    supabase.from('announcements').select('*').gt('expires_at', new Date().toISOString()).order('created_at',{ascending:false}).limit(1).maybeSingle().then(({data})=>{
+      if(cancelled || !data) return
+      try { if(localStorage.getItem('dismissed_announcement_'+data.id)) return } catch(e){}
+      setAnn(data)
+    })
+    return ()=>{cancelled=true}
+  },[])
+  if(!ann || dismissed) return null
+  const close = () => {
+    try { localStorage.setItem('dismissed_announcement_'+ann.id, '1') } catch(e){}
+    setDismissed(true)
+  }
+  return (
+    <div style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',padding:'12px 16px',display:'flex',alignItems:'flex-start',gap:10,position:'relative'}}>
+      <Megaphone size={18} color="#fff" style={{flexShrink:0,marginTop:1}}/>
+      <p style={{color:'#fff',fontSize:13.5,lineHeight:1.45,margin:0,flex:1,wordBreak:'break-word'}}>{ann.message}</p>
+      <button onClick={close} style={{background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'50%',width:22,height:22,flexShrink:0,cursor:'pointer',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}><X size={13}/></button>
     </div>
   )
 }
@@ -4596,6 +4737,7 @@ function FlittersAppInner({ currentUser }) {
 
       <div style={{paddingBottom:110}}>
         {tab==='home'&&<>
+          <AnnouncementBanner supabase={supabase}/>
           <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(7px)'}}>
             {[{id:'foryou',label:'For You'},{id:'following',label:'Following'},{id:'global',label:'Global'}].map(t=>(
               <button key={t.id} onClick={()=>setFeedTab(t.id)} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:feedTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:feedTab===t.id?'#fff':'#555',fontWeight:feedTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
@@ -4605,11 +4747,10 @@ function FlittersAppInner({ currentUser }) {
           {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Globe size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters!'}</p></div>}
           {posts.slice(0,visibleCount).map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
-              {post.isRepost&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
+              {post.isRepost&&!post.quoteContent&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
                 <Repeat2 size={14}/>
                 <span><strong style={{color:'var(--text-subtle)'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
               </div>}
-              {post.isRepost&&post.quoteContent&&<p style={{margin:'6px 16px 0',color:'var(--text-primary)',fontSize:14,lineHeight:1.4,wordBreak:'break-word'}}>{post.quoteContent}</p>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
               
