@@ -1549,9 +1549,6 @@ function ReelPreviewCard({ supabase, onOpen }) {
         <Clapperboard size={13}/>
         <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700}}>Reels</span>
       </div>
-      <div style={{position:'absolute',inset:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
-        <div style={{width:56,height:56,borderRadius:'50%',background:'var(--bg-card-8)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'}}><Play size={22} fill="#fff" color="#fff" style={{marginLeft:3}}/></div>
-      </div>
       <div style={{position:'absolute',bottom:10,left:12,right:12,display:'flex',alignItems:'center',gap:8}}>
         <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={26}/>
         <span style={{color:'var(--text-primary)',fontSize:13,fontWeight:600,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
@@ -1650,6 +1647,26 @@ function QuotedPostPreview({ post, onOpen, onUserClick }) {
       {post.image_url&&<img src={post.image_url} alt="" loading="lazy" style={{width:'100%',maxHeight:220,objectFit:'cover',borderRadius:10,display:'block'}}/>}
     </div>
   )
+}
+
+// Long-press to do something extra (here: expand an image) without hijacking
+// the plain tap, which keeps doing whatever it already did (opening the
+// post). didFire() lets the click handler that follows a touch/mouse-up know
+// whether the long-press already handled this interaction, so it can bail
+// out instead of also firing.
+function useLongPress(onLongPress, delay=500) {
+  const timerRef = useRef(null)
+  const firedRef = useRef(false)
+  const start = () => {
+    firedRef.current = false
+    timerRef.current = setTimeout(()=>{ firedRef.current = true; onLongPress() }, delay)
+  }
+  const clear = () => clearTimeout(timerRef.current)
+  return {
+    onTouchStart:start, onTouchEnd:clear, onTouchMove:clear,
+    onMouseDown:start, onMouseUp:clear, onMouseLeave:clear,
+    didFire: () => firedRef.current
+  }
 }
 
 const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
@@ -1758,11 +1775,17 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   // original post becomes a compact QuotedPostPreview card instead of being
   // rendered in full, so it reads as "their card, your caption" rather than
   // looking like an indistinguishable duplicate of a normal post.
-  const isQuote = post.isRepost && !!post.quoteContent
+  // Every repost — with or without an added caption — now uses the same
+  // "reposter's header + compact original-post card" layout. A plain repost
+  // just has no caption text to show, so only the header + QuotedPostPreview
+  // render below it.
+  const isQuote = !!post.isRepost
   const headerUser = isQuote ? (post.reposter||{}) : a
   const headerColor = isQuote ? (headerUser.avatar_color||getColor(headerUser.id)) : color
   const headerTime = isQuote ? (post.sortTime||post.created_at) : post.created_at
   const bodyText = isQuote ? post.quoteContent : post.content
+  const [fullscreenImg, setFullscreenImg] = useState(null)
+  const imageLongPress = useLongPress(()=>setFullscreenImg(post.image_url))
 
   const likeInFlight = useRef(false)
   const repostInFlight = useRef(false)
@@ -1897,7 +1920,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
             <QuotedPostPreview post={post} onOpen={onOpenPost} onUserClick={onUserClick}/>
           ) : (<>
             {!post.image_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
-            {post.image_url&&<img onClick={()=>!autoExpandComments && onOpenPost && onOpenPost(post.id)} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default'}} alt="post" loading="lazy"/>}
+            {post.image_url&&<img {...imageLongPress} onClick={(e)=>{ if(imageLongPress.didFire()){e.preventDefault();return} !autoExpandComments && onOpenPost && onOpenPost(post.id) }} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default',WebkitTouchCallout:'none',userSelect:'none'}} alt="post" loading="lazy"/>}
           </>)}
           <div style={{display:'flex'}}>
             <button onClick={()=>{setReplyingTo(null);setShowReply(v=>!v)}} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:(showComments||showReply)?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
@@ -2002,6 +2025,8 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
           </div>
         </div>
       )}
+
+      {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
     </div>
   )
 }, postCardPropsEqual)
@@ -4778,10 +4803,6 @@ function FlittersAppInner({ currentUser }) {
           {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Globe size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters!'}</p></div>}
           {posts.slice(0,visibleCount).map((post,i)=>(
             <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
-              {post.isRepost&&!post.quoteContent&&<div onClick={()=>handleUserClick(post.reposter)} style={{display:'flex',alignItems:'center',gap:8,padding:'10px 16px 0',color:'var(--text-tertiary)',fontSize:13,cursor:'pointer'}}>
-                <Repeat2 size={14}/>
-                <span><strong style={{color:'var(--text-subtle)'}}>{post.reposter?.id===currentUser.id?'You':post.reposter?.display_name}</strong> reposted</span>
-              </div>}
               <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
               {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
               

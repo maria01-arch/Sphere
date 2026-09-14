@@ -320,31 +320,12 @@ export default function AuthPage() {
     setLoading(false)
   }
 
-  const handleDiscordSignIn = async () => {
-    setError(''); setLoading(true)
-    try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'discord',
-        options: { redirectTo: window.location.origin + '/auth/callback' }
-      })
-      if (error) throw error
-    } catch (e) { setError(e.message); setLoading(false) }
-  }
-
   const inp = { width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', color: '#fff', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
   const label = { color: '#888', fontSize: 12, display: 'block', marginBottom: 6, marginTop: 2 }
   const primaryBtn = { width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 4 }
   const secondaryBtn = { width: '100%', padding: '14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10 }
   const skipBtn = { width: '100%', padding: '12px', background: 'none', border: 'none', color: '#666', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 6 }
-  const discordBtn = { width: '100%', padding: '13px', background: '#5865F2', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 10 }
   const switchLink = { textAlign: 'center', marginTop: 2, marginBottom: 14, color: '#888', fontSize: 13, cursor: 'pointer' }
-
-  const DiscordIcon = () => (
-    <svg width="20" height="20" viewBox="0 0 245 240" fill="#fff">
-      <path d="M104.4 103.9c-5.7 0-10.2 5-10.2 11.1s4.6 11.1 10.2 11.1c5.7 0 10.2-5 10.2-11.1.1-6.1-4.5-11.1-10.2-11.1zM140.9 103.9c-5.7 0-10.2 5-10.2 11.1s4.6 11.1 10.2 11.1c5.7 0 10.2-5 10.2-11.1s-4.5-11.1-10.2-11.1z"/>
-      <path d="M189.5 20h-134C44.3 20 35 29.3 35 40.8v159.8c0 11.5 9.3 20.8 20.5 20.8h113.4l-5.3-18.5 12.8 11.9 12.1 11.2 21.5 19V40.8c0-11.5-9.3-20.8-20.5-20.8zm-38.6 130.6s-3.6-4.3-6.6-8.1c13.1-3.7 18.1-11.9 18.1-11.9-4.1 2.7-8 4.6-11.5 5.9-5 2.1-9.8 3.5-14.5 4.3-9.6 1.8-18.4 1.3-25.9-.1-5.7-1.1-10.6-2.7-14.7-4.3-2.3-.9-4.8-2-7.3-3.4-.3-.2-.6-.3-.9-.5-.2-.1-.3-.2-.4-.3-1.8-1-2.8-1.7-2.8-1.7s4.8 8 17.5 11.8c-3 3.8-6.7 8.3-6.7 8.3-22.1-.7-30.5-15.2-30.5-15.2 0-32.2 14.4-58.3 14.4-58.3 14.4-10.8 28.1-10.5 28.1-10.5l1 1.2c-18 5.2-26.3 13.1-26.3 13.1s2.2-1.2 5.9-2.9c10.7-4.7 19.2-6 22.7-6.3.6-.1 1.1-.2 1.7-.2 6.1-.8 13-1 20.2-.2 9.5 1.1 19.7 3.9 30.1 9.6 0 0-7.9-7.5-24.9-12.7l1.4-1.6s13.7-.3 28.1 10.5c0 0 14.4 26.1 14.4 58.3 0 0-8.5 14.5-30.6 15.2z"/>
-    </svg>
-  )
 
   const stepTitles = {
     1: 'Your name',
@@ -372,16 +353,6 @@ export default function AuthPage() {
         {mode === 'login' && <>
           <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Welcome back</h1>
           <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Sign in to your account</p>
-
-          <button onClick={handleDiscordSignIn} disabled={loading} style={discordBtn}>
-            <DiscordIcon /> Continue with Discord
-          </button>
-
-          <div style={{ display: 'flex', alignItems: 'center', gap: 12, margin: '18px 0' }}>
-            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
-            <span style={{ color: '#444', fontSize: 12 }}>or</span>
-            <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.08)' }} />
-          </div>
 
           <input style={inp} type="text" placeholder="Email or phone number" value={loginContact} onChange={e => setLoginContact(e.target.value)} />
           <input style={inp} type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
