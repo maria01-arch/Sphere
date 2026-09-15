@@ -12,7 +12,7 @@ import {
   Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
   Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
   Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile, BookOpen, Volume2, VolumeX,
-  Mic, Play, Pause
+  Mic, Play, Pause, ShoppingBag, Tag, PackageX, CircleDollarSign
 } from 'lucide-react'
 const supabase = createClient()
 
@@ -2971,44 +2971,265 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   )
 }
 
-function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpenDone, onHideNav, pendingReelId, onReelsOpened, viewingGroupRef, reelsRef }) {
-  const [groups, setGroups] = useState([])
+const STORE_CATEGORIES = ['Electronics','Fashion','Services','Food','Home','Vehicles','Other']
+
+// Mini Store — everyone can browse and message a seller; only is_authentic
+// (verified) accounts can list something (enforced both here, by hiding the
+// "Sell" action, and at the database level via RLS, since hiding a button
+// is never real access control on its own).
+function StoreSection({ currentUser, supabase, onUserClick, onMessageUser }) {
+  const [listings, setListings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [category, setCategory] = useState('All')
+  const [search, setSearch] = useState('')
+  const [view, setView] = useState('browse') // 'browse' | 'create' | 'mine' | 'detail'
+  const [selected, setSelected] = useState(null)
+  const [myListings, setMyListings] = useState([])
+
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [price, setPrice] = useState('')
+  const [formCategory, setFormCategory] = useState(STORE_CATEGORIES[0])
+  const [ctaText, setCtaText] = useState('')
+  const [ctaUrl, setCtaUrl] = useState('')
+  const [imageFile, setImageFile] = useState(null)
+  const [imagePreview, setImagePreview] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const fileRef = useRef(null)
+
+  useEffect(()=>{ loadListings() },[])
+  useEffect(()=>()=>{ if(imagePreview) URL.revokeObjectURL(imagePreview) },[imagePreview])
+
+  const loadListings = async () => {
+    setLoading(true)
+    const {data} = await supabase.from('store_listings').select('*,seller:profiles!seller_id(id,display_name,username,avatar_url,avatar_color,is_authentic,verified)').order('created_at',{ascending:false})
+    setListings(data||[])
+    setLoading(false)
+  }
+
+  const loadMyListings = async () => {
+    const {data} = await supabase.from('store_listings').select('*').eq('seller_id',currentUser.id).order('created_at',{ascending:false})
+    setMyListings(data||[])
+  }
+
+  const pickImage = (file) => {
+    if(!file) return
+    if(imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(file)
+    setImagePreview(URL.createObjectURL(file))
+  }
+
+  const resetForm = () => {
+    setTitle('');setDescription('');setPrice('');setFormCategory(STORE_CATEGORIES[0]);setCtaText('');setCtaUrl('')
+    if(imagePreview) URL.revokeObjectURL(imagePreview)
+    setImageFile(null);setImagePreview(null)
+  }
+
+  const createListing = async () => {
+    if(!title.trim()) { alert('Title required'); return }
+    if((ctaText.trim() && !ctaUrl.trim()) || (!ctaText.trim() && ctaUrl.trim())) { alert('Fill in both the button text and its link, or leave both empty'); return }
+    setSaving(true)
+    let imageUrl = null
+    if(imageFile) {
+      try {
+        const ext = (imageFile.name.split('.').pop()||'jpg').toLowerCase()
+        const path = 'store/'+currentUser.id+'_'+Date.now()+'.'+ext
+        const urlData = await uploadToR2(imageFile, path)
+        imageUrl = urlData.publicUrl
+      } catch(err) { alert('Image upload failed: '+err.message); setSaving(false); return }
+    }
+    const {data,error} = await supabase.from('store_listings').insert({
+      seller_id: currentUser.id, title: title.trim(), description: description.trim()||null,
+      price: price.trim()||null, category: formCategory, image_url: imageUrl,
+      cta_text: ctaText.trim()||null, cta_url: ctaUrl.trim()||null,
+    }).select('*,seller:profiles!seller_id(id,display_name,username,avatar_url,avatar_color,is_authentic,verified)').single()
+    if(data) {
+      setListings(prev=>[data,...prev])
+      resetForm()
+      setView('browse')
+    } else alert('Error: '+(error?.message||'could not create listing — make sure you\'re verified (is_authentic).'))
+    setSaving(false)
+  }
+
+  const updateStatus = async (listing, status) => {
+    await supabase.from('store_listings').update({status, updated_at:new Date().toISOString()}).eq('id',listing.id)
+    setMyListings(prev=>prev.map(l=>l.id===listing.id?{...l,status}:l))
+    setListings(prev=>prev.map(l=>l.id===listing.id?{...l,status}:l))
+  }
+
+  const deleteListing = async (listing) => {
+    if(!window.confirm('Delete this listing permanently?')) return
+    await supabase.from('store_listings').delete().eq('id',listing.id)
+    setMyListings(prev=>prev.filter(l=>l.id!==listing.id))
+    setListings(prev=>prev.filter(l=>l.id!==listing.id))
+  }
+
+  const filtered = listings.filter(l=>
+    (category==='All'||l.category===category) &&
+    (!search.trim() || l.title.toLowerCase().includes(search.trim().toLowerCase()) || (l.description||'').toLowerCase().includes(search.trim().toLowerCase()))
+  )
+
+  if(view==='create') return (
+    <div style={{minHeight:'60vh'}}>
+      <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>{setView('browse');resetForm()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>List a Product</span>
+        <button onClick={createListing} disabled={saving||!title.trim()} style={{background:title.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',borderRadius:20,padding:'8px 18px',color:title.trim()?'#fff':'var(--text-quaternary)',fontWeight:700,cursor:title.trim()?'pointer':'default'}}>{saving?'Posting...':'Post'}</button>
+      </div>
+      <div style={{padding:16,display:'flex',flexDirection:'column',gap:12}}>
+        <input ref={fileRef} type="file" accept="image/*" onChange={e=>{pickImage(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
+        {imagePreview ? (
+          <div style={{position:'relative',borderRadius:14,overflow:'hidden',height:200,background:'#000'}}>
+            <img src={imagePreview} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
+            <button onClick={()=>fileRef.current?.click()} style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,0.55)',border:'none',borderRadius:14,padding:'6px 12px',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer'}}>Change</button>
+          </div>
+        ) : (
+          <div onClick={()=>fileRef.current?.click()} style={{height:160,borderRadius:14,border:'1.5px dashed var(--border-color-2)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:8,cursor:'pointer',color:'var(--text-tertiary)'}}>
+            <ImageIcon size={28}/>
+            <span style={{fontSize:13}}>Add a photo</span>
+          </div>
+        )}
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Product or service name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Description (optional)" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+        <input value={price} onChange={e=>setPrice(e.target.value)} placeholder="Price — e.g. $25, ₦15,000, Contact for price" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+        <div>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Category</p>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {STORE_CATEGORIES.map(c=>(
+              <button key={c} onClick={()=>setFormCategory(c)} style={{padding:'6px 14px',borderRadius:14,border:'none',background:formCategory===c?'rgba(91,156,246,0.2)':'var(--bg-card)',color:formCategory===c?'#5B9CF6':'var(--text-secondary)',fontSize:13,fontWeight:600,cursor:'pointer'}}>{c}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <input value={ctaText} onChange={e=>setCtaText(e.target.value)} placeholder="Button text (optional) — e.g. Order Now" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+          <input value={ctaUrl} onChange={e=>setCtaUrl(e.target.value)} placeholder="Button link (optional)" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+        </div>
+        <p style={{color:'var(--text-quaternary)',fontSize:12,margin:0}}>Buyers can always message you directly too — this button is for an extra action like a payment link, WhatsApp order line, or website.</p>
+      </div>
+    </div>
+  )
+
+  if(view==='mine') return (
+    <div style={{minHeight:'60vh'}}>
+      <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setView('browse')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>My Listings</span>
+      </div>
+      {myListings.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><ShoppingBag size={40} color="var(--text-quaternary)"/><p style={{color:'var(--text-secondary)',marginTop:10}}>You haven't listed anything yet</p></div>}
+      {myListings.map(l=>(
+        <div key={l.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',gap:12}}>
+          <div style={{width:56,height:56,borderRadius:10,background:'var(--bg-card)',overflow:'hidden',flexShrink:0}}>
+            {l.image_url&&<img src={l.image_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2,flexWrap:'wrap'}}>
+              <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{l.title}</span>
+              {l.status==='sold'&&<span style={{fontSize:10,fontWeight:700,color:'#00C9A7',background:'rgba(0,201,167,0.12)',borderRadius:6,padding:'1px 6px'}}>SOLD</span>}
+              {l.status==='out_of_stock'&&<span style={{fontSize:10,fontWeight:700,color:'#F7B731',background:'rgba(247,183,49,0.12)',borderRadius:6,padding:'1px 6px'}}>OUT OF STOCK</span>}
+            </div>
+            {l.price&&<p style={{color:'var(--text-secondary)',fontSize:13,margin:'0 0 8px'}}>{l.price}</p>}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {l.status!=='sold'&&<button onClick={()=>updateStatus(l,'sold')} style={{background:'rgba(0,201,167,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#00C9A7',fontSize:11,fontWeight:700,cursor:'pointer'}}>Mark Sold</button>}
+              {l.status!=='out_of_stock'&&<button onClick={()=>updateStatus(l,'out_of_stock')} style={{background:'rgba(247,183,49,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#F7B731',fontSize:11,fontWeight:700,cursor:'pointer'}}>Out of Stock</button>}
+              {l.status!=='active'&&<button onClick={()=>updateStatus(l,'active')} style={{background:'rgba(91,156,246,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#5B9CF6',fontSize:11,fontWeight:700,cursor:'pointer'}}>Relist</button>}
+              <button onClick={()=>deleteListing(l)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#FF4757',fontSize:11,fontWeight:700,cursor:'pointer'}}>Delete</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  if(view==='detail'&&selected) {
+    const l = selected
+    return (
+      <div style={{minHeight:'60vh'}}>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+          <button onClick={()=>setView('browse')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+          <span style={{fontWeight:700,fontSize:17,flex:1}}>Listing</span>
+        </div>
+        {l.image_url&&<div style={{position:'relative'}}>
+          <img src={l.image_url} style={{width:'100%',maxHeight:280,objectFit:'cover',display:'block'}} alt=""/>
+          {l.status!=='active'&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{color:'#fff',fontWeight:800,fontSize:20,letterSpacing:1,border:'2px solid #fff',padding:'6px 20px',borderRadius:10,transform:'rotate(-8deg)'}}>{l.status==='sold'?'SOLD':'OUT OF STOCK'}</span></div>}
+        </div>}
+        <div style={{padding:16}}>
+          <h2 style={{color:'var(--text-primary)',fontSize:19,fontWeight:800,margin:'0 0 4px'}}>{l.title}</h2>
+          {l.price&&<p style={{color:'#5B9CF6',fontSize:17,fontWeight:700,margin:'0 0 10px'}}>{l.price}</p>}
+          {l.description&&<p style={{color:'var(--text-secondary)',fontSize:14,lineHeight:1.5,margin:'0 0 16px',wordBreak:'break-word'}}>{l.description}</p>}
+          <div onClick={()=>onUserClick(l.seller)} style={{display:'flex',alignItems:'center',gap:10,padding:'12px',background:'var(--bg-card)',borderRadius:14,cursor:'pointer',marginBottom:16}}>
+            <Avatar url={l.seller?.avatar_url} name={l.seller?.display_name} color={l.seller?.avatar_color||getColor(l.seller?.id)} size={40}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{l.seller?.display_name}</div>
+              <div style={{color:'var(--text-quaternary)',fontSize:12}}>@{l.seller?.username}</div>
+            </div>
+            <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={()=>onMessageUser(l.seller)} style={{flex:1,background:'var(--bg-card-3)',border:'none',borderRadius:14,padding:'13px',color:'var(--text-primary)',fontWeight:700,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><MessageCircle size={16}/> Message</button>
+            {l.cta_text&&l.cta_url&&l.status==='active'&&<a href={l.cta_url} target="_blank" rel="noopener noreferrer" style={{flex:1,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'13px',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',textDecoration:'none',textAlign:'center'}}>{l.cta_text}</a>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{padding:'4px 16px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span style={{fontWeight:800,fontSize:18,display:'inline-flex',alignItems:'center',gap:6}}><ShoppingBag size={17}/> Store</span>
+        <div style={{display:'flex',gap:8}}>
+          {currentUser.is_authentic&&<button onClick={()=>{loadMyListings();setView('mine')}} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'6px 12px',color:'var(--text-secondary)',cursor:'pointer',fontWeight:700,fontSize:12}}>My Listings</button>}
+          {currentUser.is_authentic ? (
+            <button onClick={()=>setView('create')} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'6px 14px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ Sell</button>
+          ) : (
+            <span title="Verified accounts only" style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'6px 12px',color:'var(--text-quaternary)',fontWeight:600,fontSize:12,display:'inline-flex',alignItems:'center',gap:5}}><Lock size={12}/> Sell</span>
+          )}
+        </div>
+      </div>
+      <div style={{padding:'0 16px 10px'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the store..." style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:24,padding:'10px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+      </div>
+      <div style={{display:'flex',gap:8,padding:'0 16px 14px',overflowX:'auto',scrollbarWidth:'none'}}>
+        {['All',...STORE_CATEGORIES].map(c=>(
+          <button key={c} onClick={()=>setCategory(c)} style={{flexShrink:0,padding:'6px 14px',borderRadius:14,border:'none',background:category===c?'rgba(91,156,246,0.2)':'var(--bg-card)',color:category===c?'#5B9CF6':'var(--text-secondary)',fontSize:13,fontWeight:600,cursor:'pointer'}}>{c}</button>
+        ))}
+      </div>
+      {loading&&<div style={{padding:'40px',textAlign:'center'}}><Loader2 size={28} className="xspin" color="var(--text-quaternary)"/></div>}
+      {!loading&&filtered.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><ShoppingBag size={40} color="var(--text-quaternary)"/><p style={{color:'var(--text-secondary)',marginTop:10}}>{search.trim()||category!=='All'?'No matching listings':'No listings yet'}{currentUser.is_authentic&&!search.trim()&&category==='All'?' — be the first to sell something!':''}</p></div>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,padding:'0 16px 20px'}}>
+        {filtered.map(l=>(
+          <div key={l.id} onClick={()=>{setSelected(l);setView('detail')}} style={{borderRadius:14,overflow:'hidden',background:'var(--bg-card)',cursor:'pointer',position:'relative'}}>
+            <div style={{aspectRatio:'1',background:'var(--bg-card-2)',position:'relative'}}>
+              {l.image_url?<img src={l.image_url} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} alt="" loading="lazy"/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><ShoppingBag size={28} color="var(--text-quaternary)"/></div>}
+              {l.status!=='active'&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{color:'#fff',fontWeight:800,fontSize:11,letterSpacing:0.5,border:'1.5px solid #fff',padding:'3px 10px',borderRadius:6}}>{l.status==='sold'?'SOLD':'OUT OF STOCK'}</span></div>}
+            </div>
+            <div style={{padding:'8px 10px'}}>
+              <p style={{color:'var(--text-primary)',fontSize:13,fontWeight:700,margin:'0 0 2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.title}</p>
+              {l.price&&<p style={{color:'#5B9CF6',fontSize:13,fontWeight:700,margin:0}}>{l.price}</p>}
+              <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4}}>
+                <Avatar url={l.seller?.avatar_url} name={l.seller?.display_name} color={l.seller?.avatar_color||getColor(l.seller?.id)} size={14}/>
+                <span style={{color:'var(--text-quaternary)',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.seller?.display_name}</span>
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function PulseTab({ currentUser, supabase, onUserClick, pendingReelId, onReelsOpened, reelsRef, onMessageUser }) {
   const [pulses, setPulses] = useState([])
   const [myPulse, setMyPulse] = useState([])
   const [viewingPulse, setViewingPulse] = useState(null)
-  const [viewingGroup, setViewingGroup] = useState(null)
-  const [showCreateGroup, setShowCreateGroup] = useState(false)
   const [showCreatePulse, setShowCreatePulse] = useState(false)
   const [showReels, setShowReels] = useState(false)
-  const [myStoriesLib, setMyStoriesLib] = useState([]) // followed stories, for the STORIES row
-  const [groupName, setGroupName] = useState('')
-  const [groupDesc, setGroupDesc] = useState('')
-  const [groupTag, setGroupTag] = useState('')
-  const [joinMode, setJoinMode] = useState('open')
-  const [groupSearch, setGroupSearch] = useState('')
-  const [searchedGroups, setSearchedGroups] = useState([])
   const [pulseText, setPulseText] = useState('')
   const [pulseBg, setPulseBg] = useState('#5B9CF6')
   const [saving, setSaving] = useState(false)
   const COLORS = ['#5B9CF6','#845EF7','#FF6B35','#00C9A7','#FF4757','#F7B731','#FD79A8','#A29BFE']
-  const [unreadGroups, setUnreadGroups] = useState({})
-
-  const loadUnreadGroups = async (myGroupIds) => {
-    if(!myGroupIds.length) { setUnreadGroups({}); return }
-    const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id).in('group_id',myGroupIds)
-    if(!mems?.length) return
-    const map = {}
-    await Promise.all(mems.map(async m=>{
-      const {count} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',m.group_id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
-      if(count>0) map[m.group_id] = true
-    }))
-    setUnreadGroups(map)
-  }
 
   useEffect(()=>{ loadAll() },[])
-  useEffect(()=>{
-    if(autoOpenGroup){setViewingGroup(autoOpenGroup);if(onAutoOpenDone)onAutoOpenDone()}
-  },[autoOpenGroup])
   const [openedReelId, setOpenedReelId] = useState(null)
   useEffect(()=>{
     if(pendingReelId){
@@ -3022,58 +3243,14 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
       onReelsOpened&&onReelsOpened()
     }
   },[pendingReelId])
-  useEffect(()=>{
-    onHideNav&&onHideNav(!!(viewingGroup||viewingPulse||showCreatePulse||showCreateGroup||showReels))
-  },[viewingGroup,viewingPulse,showCreatePulse,showCreateGroup,showReels])
 
   const loadAll = async () => {
-    const [{data:g},{data:p},{data:mp},{data:storyFollows}] = await Promise.all([
-      supabase.from('groups').select('*,group_members(user_id)').order('created_at',{ascending:false}),
+    const [{data:p},{data:mp}] = await Promise.all([
       supabase.from('pulses').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}),
       supabase.from('pulses').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
-      supabase.from('story_follows').select('last_read_chapter,story:stories(id,title,cover_image_url,updated_at,story_chapters(chapter_number))').eq('user_id',currentUser.id)
     ])
-    setGroups(g||[])
     setPulses((p||[]).filter(x=>x.user_id!==currentUser.id))
     setMyPulse(mp||[])
-    setMyStoriesLib((storyFollows||[]).filter(r=>r.story).sort((a,b)=>new Date(b.story.updated_at)-new Date(a.story.updated_at)))
-    const myIds = (g||[]).filter(x=>x.group_members?.some(m=>m.user_id===currentUser.id)).map(x=>x.id)
-    loadUnreadGroups(myIds)
-  }
-
-  const searchGroups = async (q) => {
-    setGroupSearch(q)
-    if(!q.trim()){setSearchedGroups([]);return}
-    const {data} = await supabase.from('groups').select('*,group_members(user_id)').ilike('tag',q.trim().toLowerCase()+'%').limit(10)
-    setSearchedGroups(data||[])
-  }
-
-  const joinGroupByTag = async (group) => {
-    const isMember = group.group_members?.some(m=>m.user_id===currentUser.id)
-    if(isMember){setViewingGroup(group);return}
-    if(group.join_mode==='open'){
-      await supabase.from('group_members').insert({group_id:group.id,user_id:currentUser.id})
-      setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
-    } else {
-      const {error} = await supabase.from('group_join_requests').insert({group_id:group.id,user_id:currentUser.id})
-      if(!error) alert('Join request sent! Waiting for admin approval.')
-      else alert('Request already sent or you are already a member.')
-    }
-    loadAll()
-  }
-
-  const createGroup = async () => {
-    if(!groupName.trim()) return
-    setSaving(true)
-    const tag = groupTag.trim().toLowerCase().replace(/[^a-z0-9_]/g,'')
-    if(!tag){setSaving(false);alert('Please enter a valid group tag');return}
-    const {data} = await supabase.from('groups').insert({name:groupName.trim(),description:groupDesc.trim(),creator_id:currentUser.id,cover_color:pulseBg,tag,join_mode:joinMode}).select().single()
-    if(data) {
-      await supabase.from('group_members').insert({group_id:data.id,user_id:currentUser.id})
-      setGroups(g=>[{...data,group_members:[{user_id:currentUser.id}]},...g])
-      setGroupName(''); setGroupDesc(''); setGroupTag(''); setJoinMode('open'); setShowCreateGroup(false)
-    }
-    setSaving(false)
   }
 
   const createPulse = async () => {
@@ -3084,24 +3261,16 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     setSaving(false)
   }
 
-  const joinGroup = async (group) => {
-    const isMember = group.group_members?.some(m=>m.user_id===currentUser.id)
-    if(isMember) { setViewingGroup(group); return }
-    await supabase.from('group_members').insert({group_id:group.id,user_id:currentUser.id})
-    setGroups(g=>g.map(x=>x.id===group.id?{...x,group_members:[...(x.group_members||[]),{user_id:currentUser.id}]}:x))
-    setViewingGroup({...group,group_members:[...(group.group_members||[]),{user_id:currentUser.id}]})
-  }
-
   if(showReels){
-    if(reelsRef) reelsRef.current = {closeReels:()=>{setShowReels(false);onHideNav&&onHideNav(false)}}
-    return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={openedReelId} onClose={()=>{setShowReels(false);onHideNav&&onHideNav(false);if(reelsRef)reelsRef.current=null}}/>
+    if(reelsRef) reelsRef.current = {closeReels:()=>{setShowReels(false)}}
+    return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={openedReelId} onClose={()=>{setShowReels(false);if(reelsRef)reelsRef.current=null}}/>
   }
   if(reelsRef) reelsRef.current = null
 
   if(viewingPulse) {
     const allPulses=[...(Array.isArray(myPulse)?myPulse:[]),...pulses]
     const currentIdx=allPulses.findIndex(p=>p.id===viewingPulse.id)
-    const goNext=()=>{ if(currentIdx<allPulses.length-1)setViewingPulse(allPulses[currentIdx+1]); else{setViewingPulse(null);onHideNav&&onHideNav(false)} }
+    const goNext=()=>{ if(currentIdx<allPulses.length-1)setViewingPulse(allPulses[currentIdx+1]); else{setViewingPulse(null)} }
     const goPrev=()=>{ if(currentIdx>0)setViewingPulse(allPulses[currentIdx-1]) }
   return (
     <div style={{position:'fixed',inset:0,zIndex:300,background:viewingPulse.bg_color||'#090B10',display:'flex',flexDirection:'column'}}>
@@ -3115,7 +3284,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
       </div>
       <style>{'@keyframes progress{from{width:0}to{width:100%}}'}</style>
       <div style={{padding:'20px 16px 8px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>{setViewingPulse(null);onHideNav&&onHideNav(false)}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
+        <button onClick={()=>{setViewingPulse(null)}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <Avatar url={viewingPulse.author?.avatar_url} name={viewingPulse.author?.display_name} color={viewingPulse.author?.avatar_color||'#5B9CF6'} size={38}/>
         <div>
           <div style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{viewingPulse.author?.display_name}</div>
@@ -3133,14 +3302,6 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     </div>
   )}
 
-  if(viewingGroup) {
-    // register closeGC callback for back button handler
-    if(viewingGroupRef) viewingGroupRef.current = {closeGC:()=>{ setViewingGroup(null); onHideNav&&onHideNav(false); loadAll() }}
-    return <GroupChat group={viewingGroup} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroup(null);if(viewingGroupRef)viewingGroupRef.current=null;onHideNav&&onHideNav(false);loadAll()}} onUserClick={onUserClick}/>
-  }
-  // clear viewingGroupRef when no group open
-  if(viewingGroupRef) viewingGroupRef.current = null
-
   if(showCreatePulse) return (
     <div className="screen-in" style={{minHeight:'100dvh',background:pulseBg,color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12}}>
@@ -3157,82 +3318,9 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
     </div>
   )
 
-  if(showCreateGroup) return (
-    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
-        <button onClick={()=>setShowCreateGroup(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
-        <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
-        <button onClick={createGroup} disabled={saving||!groupName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Creating...':'Create'}</button>
-      </div>
-      <div style={{padding:16}}>
-        <div style={{width:72,height:72,borderRadius:20,background:pulseBg,display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,fontWeight:800,color:'var(--text-primary)',margin:'16px auto 24px'}}>{groupName[0]||'G'}</div>
-        <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:24}}>
-          {COLORS.map(c=><div key={c} onClick={()=>setPulseBg(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:pulseBg===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
-        </div>
-        <input value={groupName} onChange={e=>setGroupName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
-        <div style={{position:'relative',marginBottom:12}}>
-          <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'var(--text-secondary)',fontSize:15}}>@</span>
-          <input value={groupTag} onChange={e=>setGroupTag(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} placeholder="group_tag (unique)" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px 12px 28px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box'}}/>
-        </div>
-        <textarea value={groupDesc} onChange={e=>setGroupDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
-        <div style={{marginBottom:8}}>
-          <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
-          <div style={{display:'flex',gap:8}}>
-            <button onClick={()=>setJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:joinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:joinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Globe size={15}/> Anyone</button>
-            <button onClick={()=>setJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(joinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:joinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:joinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Lock size={15}/> Request</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  )
-
   return (
     <div style={{paddingBottom:20}}>
-      <div style={{padding:'12px 16px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
-        <span style={{fontWeight:800,fontSize:18,display:'inline-flex',alignItems:'center',gap:6}}>Pulse <Zap size={16}/></span>
-        <div style={{display:'flex',gap:8}}>
-          <button onClick={()=>{setShowReels(true);onHideNav&&onHideNav(true)}} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:12,padding:'6px 14px',color:'#FF4757',cursor:'pointer',fontWeight:700,fontSize:13,display:'inline-flex',alignItems:'center',gap:6}}><Clapperboard size={14}/> Reels</button>
-          <button onClick={()=>setShowCreateGroup(true)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'6px 14px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ Group</button>
-        </div>
-      </div>
-      <div style={{padding:'0 16px 12px'}}>
-        <input value={groupSearch} onChange={e=>searchGroups(e.target.value)} placeholder="Search group by @tag..." style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:24,padding:'10px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
-        {searchedGroups.length>0&&<div style={{marginTop:8,borderRadius:12,overflow:'hidden',border:'1px solid var(--bg-card-6)'}}>
-          {searchedGroups.map(g=>{
-            const isMember = g.group_members?.some(m=>m.user_id===currentUser.id)
-            return(
-              <div key={g.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 14px',borderBottom:'1px solid var(--bg-card-4)',background:'var(--bg-card-4)'}}>
-                <div style={{width:42,height:42,borderRadius:12,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'var(--text-primary)',flexShrink:0}}>{g.name[0]}</div>
-                <div style={{flex:1}}>
-                  <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>{g.name}</div>
-                  <div style={{color:'var(--text-secondary)',fontSize:12,display:'flex',alignItems:'center',gap:4}}>@{g.tag} · {g.group_members?.length||0} members · {g.join_mode==='open'?<><Globe size={12}/> Open</>:<><Lock size={12}/> Request</>}</div>
-                </div>
-                <button onClick={()=>joinGroupByTag(g)} style={{background:isMember?'var(--bg-card)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 14px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>{isMember?'Open':'Join'}</button>
-              </div>
-            )
-          })}
-        </div>}
-        {groupSearch&&searchedGroups.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:13,padding:'8px 4px'}}>No groups found for "@{groupSearch}"</p>}
-      </div>
-
-      {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).length>0&&<>
-        <p style={{padding:'0 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>MY GROUPS</p>
-        <div style={{display:'flex',gap:12,padding:'0 16px 16px',overflowX:'auto',scrollbarWidth:'none'}}>
-          {groups.filter(g=>g.group_members?.some(m=>m.user_id===currentUser.id)).map(g=>(
-            <div key={g.id} onClick={()=>setViewingGroup(g)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
-              <div style={{position:'relative'}}>
-                <div style={{width:60,height:60,borderRadius:18,background:g.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:24,fontWeight:800,color:'var(--text-primary)',border:'2px solid #5B9CF6',overflow:'hidden'}}>
-                {g.avatar_url?<img src={g.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:g.name[0]}
-              </div>
-                {unreadGroups[g.id]&&<span style={{position:'absolute',top:-2,right:-2,width:14,height:14,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
-              </div>
-              <span style={{color:'var(--text-subtle)',fontSize:11,maxWidth:60,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{g.name}</span>
-            </div>
-          ))}
-        </div>
-      </>}
-
-      <p style={{padding:'0 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>PULSES</p>
+      <p style={{padding:'12px 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>PULSES</p>
       <div style={{display:'flex',gap:12,padding:'0 16px 20px',overflowX:'auto',scrollbarWidth:'none'}}>
         <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
           <div onClick={()=>setShowCreatePulse(true)} style={{width:64,height:64,borderRadius:'50%',background:'var(--bg-card)',border:'2px dashed #5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#5B9CF6',cursor:'pointer'}}>＋</div>
@@ -3256,27 +3344,7 @@ function PulseTab({ currentUser, supabase, onUserClick, autoOpenGroup, onAutoOpe
         {pulses.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0'}}>No pulses yet</p>}
       </div>
 
-      {myStoriesLib.length>0&&<>
-        <p style={{padding:'0 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>STORIES</p>
-        <div style={{display:'flex',gap:12,padding:'0 16px 20px',overflowX:'auto',scrollbarWidth:'none'}}>
-          {myStoriesLib.map(({story,last_read_chapter})=>{
-            const latestChapter = story.story_chapters?.length ? Math.max(...story.story_chapters.map(c=>c.chapter_number)) : 0
-            const unread = latestChapter > (last_read_chapter||0)
-            return (
-              <a key={story.id} href={`/stories/${story.id}`} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,textDecoration:'none',flexShrink:0}}>
-                <div style={{width:64,height:64,borderRadius:16,background:'var(--bg-card-3, rgba(255,255,255,0.08))',border:unread?'3px solid #5B9CF6':'2px solid var(--border-color-2)',overflow:'hidden'}}>
-                  {story.cover_image_url && <img src={story.cover_image_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>}
-                </div>
-                <span style={{color:'var(--text-subtle)',fontSize:11,maxWidth:64,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{story.title}</span>
-              </a>
-            )
-          })}
-          <a href="/stories" style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,textDecoration:'none',flexShrink:0}}>
-            <div style={{width:64,height:64,borderRadius:16,background:'var(--bg-card)',border:'2px dashed var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-tertiary)',fontSize:12,fontWeight:700}}>See all</div>
-            <span style={{color:'var(--text-subtle)',fontSize:11}}>Stories</span>
-          </a>
-        </div>
-      </>}
+      <StoreSection currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} onMessageUser={onMessageUser}/>
     </div>
   )
 }
@@ -3721,7 +3789,6 @@ function FlittersAppInner({ currentUser }) {
     setTab(t)
     if(t==='messages') setDmView('list')
   }
-  const [autoOpenGroup, setAutoOpenGroup] = useState(null)
   const [pendingReelId, setPendingReelId] = useState(null)
   const [feedTab, setFeedTab] = useState('foryou')
   const [posts, setPosts] = useState([])
@@ -3818,7 +3885,7 @@ function FlittersAppInner({ currentUser }) {
     const gid = params.get('opengroup')
     if(gid){
       supabase.from('groups').select('*,group_members(user_id)').eq('id',gid).single().then(({data})=>{
-        if(data){setTabWithHash('pulse');setAutoOpenGroup(data)}
+        if(data){setTabWithHash('messages');setViewingGroupChat(data)}
       })
       window.history.replaceState({},'',window.location.pathname)
     }
@@ -3862,11 +3929,19 @@ function FlittersAppInner({ currentUser }) {
   const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'Flitters AI',username:'flittersai',avatar_color:'#A855F7',avatar_url:'/flitters-ai-icon.png',is_ai:true}
   const [onlineUsers, setOnlineUsers] = useState({})
   const stateRef = useRef({})
-  const viewingGroupRef = useRef(null)
   const reelsRef = useRef(null)
+  const [viewingGroupChat, setViewingGroupChat] = useState(null)
+  const [groupsForList, setGroupsForList] = useState([])
+  const [showComposeMenu, setShowComposeMenu] = useState(false)
+  const [gcName, setGcName] = useState('')
+  const [gcDesc, setGcDesc] = useState('')
+  const [gcTag, setGcTag] = useState('')
+  const [gcJoinMode, setGcJoinMode] = useState('open')
+  const [gcColor, setGcColor] = useState('#5B9CF6')
+  const [gcSaving, setGcSaving] = useState(false)
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroup:viewingGroupRef.current,viewingReels:reelsRef.current,viewingPost}
-  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost])
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroupChat,viewingReels:reelsRef.current,viewingPost}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost,viewingGroupChat])
 
   // Restore the feed's scroll position once you're actually back on it. Wait
   // a frame so the feed's DOM has repainted first — scrolling before that
@@ -4131,18 +4206,11 @@ function FlittersAppInner({ currentUser }) {
       if(s.showMyProfile){setShowMyProfile(false);return}
       if(s.showSettings){setShowSettings(false);return}
       if(s.dmView==='chat'){setDmView('list');setSelectedConv(null);setMessages([]);return}
+      if(s.viewingGroupChat){setViewingGroupChat(null);setHideNav(false);return}
       if(s.viewingReels){
         if(reelsRef.current?.closeReels) reelsRef.current.closeReels()
         reelsRef.current = null
         stateRef.current.viewingReels = null
-        setHideNav(false)
-        return
-      }
-      if(s.viewingGroup){
-        // signal PulseTab to close GC via a shared ref callback
-        if(viewingGroupRef.current?.closeGC) viewingGroupRef.current.closeGC()
-        viewingGroupRef.current = null
-        stateRef.current.viewingGroup = null
         setHideNav(false)
         return
       }
@@ -4291,7 +4359,20 @@ function FlittersAppInner({ currentUser }) {
       })
     }
   },[tab])
-  useEffect(()=>{ if(tab==='messages'&&dmView==='list') loadConvos(conversations.length===0) },[tab])
+  const loadGroupsForList = async () => {
+    const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+    if(!mems?.length){ setGroupsForList([]); return }
+    const results = await Promise.all(mems.map(async m=>{
+      const {data:group} = await supabase.from('groups').select('*,group_members(user_id)').eq('id',m.group_id).maybeSingle()
+      if(!group) return null
+      const {data:lastMsg} = await supabase.from('group_messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('group_id',group.id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const {count:unreadCount} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',group.id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
+      return {id:group.id, type:'group', group, last:lastMsg, unread:(unreadCount||0)>0}
+    }))
+    setGroupsForList(results.filter(Boolean))
+  }
+
+  useEffect(()=>{ if(tab==='messages'&&dmView==='list') { loadConvos(conversations.length===0); loadGroupsForList() } },[tab])
 
   const loadConvos = async(showSkeleton=false) => {
     if(showSkeleton) setConvosLoading(true)
@@ -4713,7 +4794,7 @@ function FlittersAppInner({ currentUser }) {
     } catch(e) { console.log('Push send error',e); return {ok:false, error:e.message} }
   }
 
-  const TABS=[{id:'home',label:'Home',icon:<Home size={22}/>},{id:'messages',label:'Messages',icon:<MessageCircle size={22}/>},{id:'pulse',label:'Pulse',icon:<Zap size={22}/>},{id:'friends',label:'People',icon:<Users size={22}/>},{id:'notifications',label:'Alerts',icon:<Bell size={22}/>}]
+  const TABS=[{id:'home',label:'Home',icon:<Home size={22}/>},{id:'messages',label:'Messages',icon:<MessageCircle size={22}/>},{id:'pulse',label:'Store',icon:<ShoppingBag size={22}/>},{id:'friends',label:'People',icon:<Users size={22}/>},{id:'notifications',label:'Alerts',icon:<Bell size={22}/>}]
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#FlittersSpotlight',posts:'445K',cat:'Flitters'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   
@@ -4814,9 +4895,16 @@ function FlittersAppInner({ currentUser }) {
 
         {tab==='messages'&&<>
           {dmView==='list'&&<>
-            <div style={{padding:'16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+            <div style={{padding:'16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',justifyContent:'space-between',position:'relative'}}>
               <span style={{fontWeight:800,fontSize:20}}>Messages</span>
-              <button onClick={()=>{setSearchQ('');setDmView('new')}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
+              <button onClick={()=>setShowComposeMenu(v=>!v)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
+              {showComposeMenu&&<>
+                <div onClick={()=>setShowComposeMenu(false)} style={{position:'fixed',inset:0,zIndex:19}}/>
+                <div style={{position:'absolute',top:'100%',right:16,marginTop:6,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:14,overflow:'hidden',zIndex:20,minWidth:180,boxShadow:'0 8px 24px rgba(0,0,0,0.3)'}}>
+                  <button onClick={()=>{setSearchQ('');setDmView('new');setShowComposeMenu(false)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'12px 16px',background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}><MessageCircle size={16}/> New Message</button>
+                  <button onClick={()=>{setGcName('');setGcDesc('');setGcTag('');setGcJoinMode('open');setGcColor('#5B9CF6');setDmView('newgroup');setShowComposeMenu(false)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'12px 16px',background:'none',border:'none',borderTop:'1px solid var(--border-color)',color:'var(--text-primary)',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}><Users size={16}/> Create Group</button>
+                </div>
+              </>}
             </div>
             {/* Flitters AI — always pinned first */}
             <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
@@ -4832,32 +4920,60 @@ function FlittersAppInner({ currentUser }) {
               <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
             </div>
             {convosLoading && <RowSkeletonList count={6}/>}
-            {!convosLoading && conversations.map(conv=>(
-              <div key={conv.id}
-                onClick={()=>{ setSelectedConv(conv); setDmView('chat') }}
+            {!convosLoading && [...conversations.map(c=>({...c,type:'dm'})), ...groupsForList].sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)).map(item=>item.type==='group'?(
+              <div key={'g_'+item.id}
+                onClick={()=>{ setViewingGroupChat(item.group); setHideNav(true) }}
                 style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
                 <div style={{position:'relative',flexShrink:0}}>
-                  <Avatar url={conv.other?.avatar_url} name={conv.other?.display_name} color={conv.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[conv.other?.id]}/>
-                  {conv.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+                  <div style={{width:50,height:50,borderRadius:16,background:item.group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'#fff',overflow:'hidden'}}>
+                    {item.group.avatar_url?<img src={item.group.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:item.group.name[0]}
+                  </div>
+                  {item.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
                 </div>
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
-                    <span style={{fontWeight:conv.unread?800:700,fontSize:15}}>{conv.other?.display_name}</span>
-                    {conv.last&&<span style={{color:conv.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:conv.unread?700:400}}>{timeAgo(conv.last.created_at)}</span>}
+                    <span style={{fontWeight:item.unread?800:700,fontSize:15,display:'flex',alignItems:'center',gap:5}}><Users size={13} color="var(--text-quaternary)"/>{item.group.name}</span>
+                    {item.last&&<span style={{color:item.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:item.unread?700:400}}>{timeAgo(item.last.created_at)}</span>}
                   </div>
-                  <p style={{color:conv.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:conv.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
-                    {conv.last
-                      ? (conv.last.is_sticker
-                          ? (conv.last.sender_id===currentUser.id?'You sent a sticker':(conv.other?.display_name||'They')+' sent a sticker')
-                          : conv.last.is_voice
-                          ? (conv.last.sender_id===currentUser.id?'You sent a voice message':(conv.other?.display_name||'They')+' sent a voice message')
-                          : (conv.last.sender_id===currentUser.id?'You: ':'')+conv.last.content)
+                  <p style={{color:item.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:item.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
+                    {item.last
+                      ? (item.last.is_sticker
+                          ? (item.last.sender_id===currentUser.id?'You sent a sticker':'Sent a sticker')
+                          : item.last.is_voice
+                          ? (item.last.sender_id===currentUser.id?'You sent a voice message':'Sent a voice message')
+                          : (item.last.sender_id===currentUser.id?'You: ':'')+item.last.content)
+                      : 'Tap to chat'}
+                  </p>
+                </div>
+                <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
+              </div>
+            ):(
+              <div key={'c_'+item.id}
+                onClick={()=>{ setSelectedConv(item); setDmView('chat') }}
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
+                <div style={{position:'relative',flexShrink:0}}>
+                  <Avatar url={item.other?.avatar_url} name={item.other?.display_name} color={item.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[item.other?.id]}/>
+                  {item.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                    <span style={{fontWeight:item.unread?800:700,fontSize:15}}>{item.other?.display_name}</span>
+                    {item.last&&<span style={{color:item.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:item.unread?700:400}}>{timeAgo(item.last.created_at)}</span>}
+                  </div>
+                  <p style={{color:item.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:item.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
+                    {item.last
+                      ? (item.last.is_sticker
+                          ? (item.last.sender_id===currentUser.id?'You sent a sticker':(item.other?.display_name||'They')+' sent a sticker')
+                          : item.last.is_voice
+                          ? (item.last.sender_id===currentUser.id?'You sent a voice message':(item.other?.display_name||'They')+' sent a voice message')
+                          : (item.last.sender_id===currentUser.id?'You: ':'')+item.last.content)
                       : 'Tap to chat'}
                   </p>
                 </div>
                 <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
               </div>
             ))}
+            {!convosLoading && conversations.length===0 && groupsForList.length===0 && <p style={{textAlign:'center',color:'var(--text-quaternary)',fontSize:14,padding:'40px 20px'}}>No conversations yet — tap + New to message someone or start a group.</p>}
           </>}
 
           {dmView==='new'&&<>
@@ -4890,6 +5006,51 @@ function FlittersAppInner({ currentUser }) {
               </div>
             ))}
           </>}
+
+          {dmView==='newgroup'&&<div style={{minHeight:'100dvh'}}>
+            <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+              <button onClick={()=>setDmView('list')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+              <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
+              <button onClick={async()=>{
+                if(!gcName.trim()) return
+                setGcSaving(true)
+                const tag = gcTag.trim().toLowerCase().replace(/[^a-z0-9_]/g,'')
+                if(!tag){setGcSaving(false);alert('Please enter a valid group tag');return}
+                const {data,error} = await supabase.from('groups').insert({name:gcName.trim(),description:gcDesc.trim(),creator_id:currentUser.id,cover_color:gcColor,tag,join_mode:gcJoinMode}).select().single()
+                if(data){
+                  await supabase.from('group_members').insert({group_id:data.id,user_id:currentUser.id})
+                  setGroupsForList(prev=>[{id:data.id,type:'group',group:{...data,group_members:[{user_id:currentUser.id}]},last:null,unread:false},...prev])
+                  setDmView('list')
+                  setViewingGroupChat({...data,group_members:[{user_id:currentUser.id}]})
+                  setHideNav(true)
+                } else alert('Error: '+(error?.message||'could not create group'))
+                setGcSaving(false)
+              }} disabled={gcSaving||!gcName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'#fff',fontWeight:700,cursor:'pointer'}}>{gcSaving?'Creating...':'Create'}</button>
+            </div>
+            <div style={{padding:16}}>
+              <div style={{width:72,height:72,borderRadius:20,background:gcColor,display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,fontWeight:800,color:'#fff',margin:'16px auto 24px'}}>{gcName[0]||'G'}</div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:24}}>
+                {['#5B9CF6','#845EF7','#FF6B35','#00C9A7','#FF4757','#F7B731','#FD79A8','#A29BFE'].map(c=><div key={c} onClick={()=>setGcColor(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:gcColor===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
+              </div>
+              <input value={gcName} onChange={e=>setGcName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+              <div style={{position:'relative',marginBottom:12}}>
+                <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'var(--text-secondary)',fontSize:15}}>@</span>
+                <input value={gcTag} onChange={e=>setGcTag(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} placeholder="group_tag (unique)" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px 12px 28px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box'}}/>
+              </div>
+              <textarea value={gcDesc} onChange={e=>setGcDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
+              <div style={{marginBottom:8}}>
+                <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
+                <div style={{display:'flex',gap:8}}>
+                  <button onClick={()=>setGcJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(gcJoinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:gcJoinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:gcJoinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Globe size={15}/> Anyone</button>
+                  <button onClick={()=>setGcJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(gcJoinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:gcJoinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:gcJoinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Lock size={15}/> Request</button>
+                </div>
+              </div>
+            </div>
+          </div>}
+
+          {viewingGroupChat&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <GroupChat group={viewingGroupChat} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroupChat(null);setHideNav(false);loadGroupsForList()}} onUserClick={handleUserClick}/>
+          </div>}
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
           {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
@@ -5024,7 +5185,7 @@ function FlittersAppInner({ currentUser }) {
             back always meant a full refetch and the loading skeleton again,
             even on the 5th visit to the same tab. */}
         <div style={{display: tab==='pulse' ? 'block' : 'none'}}>
-          <PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} autoOpenGroup={autoOpenGroup} onAutoOpenDone={()=>setAutoOpenGroup(null)} onHideNav={setHideNav} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} viewingGroupRef={viewingGroupRef} reelsRef={reelsRef}/>
+          <PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} reelsRef={reelsRef} onMessageUser={openDMWithUser}/>
         </div>
         {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Search size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
 
