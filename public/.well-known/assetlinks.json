@@ -1,11 +1,27 @@
 [
   {
-    "relation": ["delegate_permission/common.handle_all_urls"],
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
     "target": {
       "namespace": "android_app",
       "package_name": "com.flitters.app",
       "sha256_cert_fingerprints": [
         "8D:4D:B7:61:51:AB:70:FC:A6:58:8D:42:5A:8B:4D:A9:85:C3:19:4D:CE:B3:01:62:6A:06:99:34:5B:6B:1C:94"
+      ]
+    }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.flitters.apps",
+      "sha256_cert_fingerprints": [
+        "58:45:8E:82:BD:04:9A:05:5E:FB:E6:F0:77:B9:73:43:02:4D:94:AC:82:B0:38:46:79:5C:F9:37:3C:0A:AD:06",
+        "FC:38:59:28:07:82:1F:E1:F3:71:81:6C:EC:BE:3C:16:47:9B:DC:C4:9B:56:0A:1D:A7:9F:BF:DD:DB:F7:D3:4A",
+        "C0:AB:56:53:8D:85:99:20:AA:98:35:7B:AB:77:6B:BF:3B:7B:C0:E2:04:8A:49:77:12:FE:FA:03:A2:DA:D3:BA"
       ]
     }
   }
