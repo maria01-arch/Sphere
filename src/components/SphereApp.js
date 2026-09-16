@@ -1432,6 +1432,8 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
           <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
           <span style={{color:'#222',fontSize:12}}> · </span>
+          <a href="/child-safety" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Child Safety Standards</a>
+          <br/>
           <span style={{color:'#222',fontSize:12}}>© 2025 Flitters · fka Sphere</span>
         </div>
       </div>
@@ -5053,13 +5055,6 @@ function FlittersAppInner({ currentUser }) {
         <div style={{display:'flex',alignItems:'center',gap:8,zIndex:1}}>
           
           {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><Megaphone size={13}/> Ads</button>}
-{currentUser?.id===ADMIN_ID&&<button onClick={async()=>{
-            const { data: { session } } = await supabase.auth.getSession()
-            const headers = session?.access_token ? { Authorization: `Bearer ${session.access_token}` } : {}
-            const res = await fetch('/api/setup-ai-account', { headers })
-            const json = await res.json().catch(()=>({}))
-            alert(JSON.stringify(json, null, 2))
-          }} style={{background:'var(--bg-card-2)',border:'1px solid var(--border-color-2)',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700}}>Setup AI</button>}
 <button onClick={()=>setShowSearch(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Search size={22}/></button>
 <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Settings size={22}/></button>
         </div>
