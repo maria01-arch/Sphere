@@ -876,6 +876,7 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
   const [loading, setLoading] = useState(true)
   const [isBlocked, setIsBlocked] = useState(false)
   const [showMenu, setShowMenu] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
   const [showBlockConfirm, setShowBlockConfirm] = useState(false)
   const color = profile?.avatar_color || getColor(profile?.id)
 
@@ -944,6 +945,9 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
               <button onClick={toggleBlock} style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',border:'none',padding:'12px 16px',color:'#FF4757',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}>
                 <Ban size={16}/> {isBlocked?'Unblock':'Block'} @{profile?.username}
               </button>
+              <button onClick={()=>{setShowMenu(false);setShowReportModal(true)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',border:'none',borderTop:'1px solid var(--border-color)',padding:'12px 16px',color:'#FF4757',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}>
+                <AlertTriangle size={16}/> Report @{profile?.username}
+              </button>
             </div>
           </>}
         </div>}
@@ -999,6 +1003,10 @@ function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpe
           <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null} onOpenPost={onOpenPost} sendPush={sendPush}/>
         ))}
       </div>
+      {showReportModal&&<ReportModal onClose={()=>setShowReportModal(false)} onSubmit={async(reason,details)=>{
+        const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_user_id:profile.id, reason, details:details||null})
+        if(error) throw error
+      }}/>}
     </div>
   )
 }
@@ -1669,6 +1677,61 @@ function useLongPress(onLongPress, delay=500) {
   }
 }
 
+// Reporting mechanism required by Google Play's Child Safety Standards
+// policy — the published policy page can't just claim this exists, so it
+// has to actually work. Child safety is deliberately the first, visually
+// distinct option rather than buried alphabetically.
+const REPORT_REASONS = [
+  {id:'child_safety', label:'Child sexual abuse or exploitation', urgent:true},
+  {id:'nudity_sexual', label:'Nudity or sexual content'},
+  {id:'violence', label:'Violence or dangerous behavior'},
+  {id:'harassment', label:'Harassment or bullying'},
+  {id:'hate_speech', label:'Hate speech'},
+  {id:'spam', label:'Spam or scam'},
+  {id:'other', label:'Something else'},
+]
+
+function ReportModal({ onClose, onSubmit }) {
+  const [reason, setReason] = useState(null)
+  const [details, setDetails] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+
+  if(done) return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:18,padding:24,maxWidth:340,width:'100%',textAlign:'center'}}>
+        <CheckCircle2 size={40} color="#00C9A7" style={{marginBottom:10}}/>
+        <p style={{color:'var(--text-primary)',fontWeight:700,fontSize:16,marginBottom:6}}>Report submitted</p>
+        <p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:18}}>Thanks — our team will review this.</p>
+        <button onClick={onClose} style={{width:'100%',background:'var(--bg-card)',border:'none',borderRadius:14,padding:12,color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Close</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 16px calc(20px + env(safe-area-inset-bottom))',maxWidth:500,width:'100%',maxHeight:'80vh',overflowY:'auto',boxSizing:'border-box'}}>
+        <p style={{color:'var(--text-primary)',fontWeight:800,fontSize:17,marginBottom:4}}>Report</p>
+        <p style={{color:'var(--text-quaternary)',fontSize:13,marginBottom:16}}>Why are you reporting this?</p>
+        {REPORT_REASONS.map(r=>(
+          <button key={r.id} onClick={()=>setReason(r.id)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%',background:reason===r.id?'rgba(91,156,246,0.12)':'var(--bg-card)',border:reason===r.id?'1px solid #5B9CF6':'1px solid transparent',borderRadius:12,padding:'13px 14px',marginBottom:8,cursor:'pointer',textAlign:'left'}}>
+            <span style={{color:r.urgent?'#FF4757':'var(--text-primary)',fontWeight:r.urgent?700:500,fontSize:14}}>{r.label}</span>
+            {reason===r.id&&<Check size={16} color="#5B9CF6"/>}
+          </button>
+        ))}
+        {reason&&<textarea value={details} onChange={e=>setDetails(e.target.value)} placeholder="Add any extra details (optional)" rows={3} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 14px',color:'var(--text-primary)',fontSize:14,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginTop:4,marginBottom:14}}/>}
+        <button onClick={async()=>{
+          if(!reason||submitting) return
+          setSubmitting(true)
+          try { await onSubmit(reason, details.trim()); setDone(true) }
+          catch(err) { alert('Could not submit report: '+err.message) }
+          setSubmitting(false)
+        }} disabled={!reason||submitting} style={{width:'100%',background:reason?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',borderRadius:14,padding:14,color:reason?'#fff':'var(--text-quaternary)',fontWeight:700,fontSize:15,cursor:reason?'pointer':'default'}}>{submitting?'Submitting...':'Submit Report'}</button>
+      </div>
+    </div>
+  )
+}
+
 const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
   const [liked, setLiked] = useState(post.user_liked||false)
   const [reposted, setReposted] = useState(post.user_reposted||false)
@@ -1786,6 +1849,8 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
   const bodyText = isQuote ? post.quoteContent : post.content
   const [fullscreenImg, setFullscreenImg] = useState(null)
   const imageLongPress = useLongPress(()=>setFullscreenImg(post.image_url))
+  const [showPostMenu, setShowPostMenu] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
 
   const likeInFlight = useRef(false)
   const repostInFlight = useRef(false)
@@ -1914,6 +1979,15 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
               <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(headerTime)}</span>
             </div>
             {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><Trash2 size={15}/></button>}
+            {!isOwn&&<div style={{position:'relative'}}>
+              <button onClick={()=>setShowPostMenu(v=>!v)} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><MoreHorizontal size={17}/></button>
+              {showPostMenu&&<>
+                <div onClick={()=>setShowPostMenu(false)} style={{position:'fixed',inset:0,zIndex:19}}/>
+                <div style={{position:'absolute',top:'100%',right:0,marginTop:4,background:'var(--bg-card-8)',border:'1px solid var(--border-color-2)',borderRadius:12,overflow:'hidden',zIndex:20,minWidth:140,boxShadow:'0 8px 24px var(--shadow-color)'}}>
+                  <button onClick={()=>{setShowPostMenu(false);setShowReportModal(true)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'11px 14px',background:'none',border:'none',color:'#FF4757',cursor:'pointer',fontSize:13,fontWeight:600,textAlign:'left'}}><AlertTriangle size={14}/> Report</button>
+                </div>
+              </>}
+            </div>}
           </div>
           {bodyText&&<p onClick={()=>!autoExpandComments && onOpenPost && !isQuote && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost&&!isQuote)?'pointer':'default'}}><TextWithMentions text={bodyText} supabase={supabase} onUserClick={onUserClick}/></p>}
           {isQuote ? (
@@ -2027,6 +2101,10 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
       )}
 
       {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
+      {showReportModal&&<ReportModal onClose={()=>setShowReportModal(false)} onSubmit={async(reason,details)=>{
+        const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_post_id:post.id, reason, details:details||null})
+        if(error) throw error
+      }}/>}
     </div>
   )
 }, postCardPropsEqual)
@@ -2090,6 +2168,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   const [joinRequests, setJoinRequests] = useState([])
   const [loading, setLoading] = useState(true)
   const [selectedMsg, setSelectedMsg] = useState(null)
+  const [reportingMsg, setReportingMsg] = useState(null)
   const [editingMsg, setEditingMsg] = useState(null)
   const [editText, setEditText] = useState('')
   const [replyTo, setReplyTo] = useState(null)
@@ -2560,8 +2639,13 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
               <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Pencil size={17}/> Edit</button>
               <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Trash2 size={17}/> Delete</button>
             </>}
+            {selectedMsg.sender_id!==currentUser.id&&<button onClick={()=>{setReportingMsg(selectedMsg);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><AlertTriangle size={17}/> Report</button>}
           </div>
         </div>}
+        {reportingMsg&&<ReportModal onClose={()=>setReportingMsg(null)} onSubmit={async(reason,details)=>{
+          const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_message_id:reportingMsg.id, reason, details:details||null})
+          if(error) throw error
+        }}/>}
         {messages.map(msg=>{
           const own = msg.sender_id===currentUser.id
           return(
@@ -2621,6 +2705,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
   const [uploadProgress, setUploadProgress] = useState(0)
   const [liked, setLiked] = useState({})
   const [likes, setLikes] = useState({})
+  const [reportingReel, setReportingReel] = useState(null)
   const [playing, setPlaying] = useState(true)
   // Reels/ads autoplay muted by default (tap the speaker to unmute) — was
   // previously hardcoded muted={false}. This restores the original muted-
@@ -2926,6 +3011,9 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
             {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
               <Trash2 size={24}/>
             </div>}
+            {reel.user_id!==currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>setReportingReel(reel)}>
+              <AlertTriangle size={24}/>
+            </div>}
             <div style={{cursor:'pointer'}} onClick={(e)=>{e.stopPropagation();setReelMuted(m=>!m)}}>
               {reelMuted ? <VolumeX size={24}/> : <Volume2 size={24}/>}
             </div>
@@ -2965,6 +3053,11 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           </div>}
         </>:null}
       </div>}
+
+      {reportingReel&&<ReportModal onClose={()=>setReportingReel(null)} onSubmit={async(reason,details)=>{
+        const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_reel_id:reportingReel.id, reason, details:details||null})
+        if(error) throw error
+      }}/>}
 
       <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
     </div>
@@ -3567,7 +3660,9 @@ function FlittersAI({ currentUser, onClose }) {
 }
 
 function AdminPanel({ currentUser, supabase, onBack }) {
-  const [adminTab, setAdminTab] = useState('ads') // 'ads' | 'announcements'
+  const [adminTab, setAdminTab] = useState('ads') // 'ads' | 'announcements' | 'reports'
+  const [reports, setReports] = useState([])
+  const [reportsFilter, setReportsFilter] = useState('pending') // 'pending' | 'all'
   const [ads, setAds] = useState([])
   const [showForm, setShowForm] = useState(false)
   const [advertiserName, setAdvertiserName] = useState('')
@@ -3586,7 +3681,17 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   const [annDurationHours, setAnnDurationHours] = useState(24)
   const [annSaving, setAnnSaving] = useState(false)
 
-  useEffect(()=>{ loadAds(); loadAnnouncements() },[])
+  useEffect(()=>{ loadAds(); loadAnnouncements(); loadReports() },[])
+
+  const loadReports = async () => {
+    const {data} = await supabase.from('reports').select('*,reporter:profiles!reporter_id(display_name,username),reported_user:profiles!reported_user_id(display_name,username)').order('created_at',{ascending:false})
+    setReports(data||[])
+  }
+
+  const markReportStatus = async (report, status) => {
+    await supabase.from('reports').update({status, reviewed_at:new Date().toISOString()}).eq('id',report.id)
+    setReports(prev=>prev.map(r=>r.id===report.id?{...r,status}:r))
+  }
 
   const loadAnnouncements = async() => {
     const {data} = await supabase.from('announcements').select('*').order('created_at',{ascending:false})
@@ -3697,12 +3802,16 @@ function AdminPanel({ currentUser, supabase, onBack }) {
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
-        <span style={{fontWeight:700,fontSize:17,flex:1}}>{adminTab==='ads'?'Ad Manager':'Announcements'}</span>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>{adminTab==='ads'?'Ad Manager':adminTab==='announcements'?'Announcements':'Reports'}</span>
         {adminTab==='ads'&&<button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>}
       </div>
       <div style={{display:'flex',borderBottom:'1px solid var(--border-color)'}}>
         <button onClick={()=>setAdminTab('ads')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='ads'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='ads'?'#fff':'#555',fontWeight:adminTab==='ads'?700:500,fontSize:14,cursor:'pointer'}}>Ads</button>
         <button onClick={()=>setAdminTab('announcements')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='announcements'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='announcements'?'#fff':'#555',fontWeight:adminTab==='announcements'?700:500,fontSize:14,cursor:'pointer'}}>Announcements</button>
+        <button onClick={()=>setAdminTab('reports')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='reports'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='reports'?'#fff':'#555',fontWeight:adminTab==='reports'?700:500,fontSize:14,cursor:'pointer',position:'relative'}}>
+          Reports
+          {reports.filter(r=>r.status==='pending').length>0&&<span style={{position:'absolute',top:6,right:'calc(50% - 34px)',minWidth:16,height:16,borderRadius:8,background:'#FF4757',color:'#fff',fontSize:10,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{reports.filter(r=>r.status==='pending').length}</span>}
+        </button>
       </div>
 
       {adminTab==='ads'&&<>
@@ -3773,6 +3882,50 @@ function AdminPanel({ currentUser, supabase, onBack }) {
             </div>
           )
         })}
+      </>}
+
+      {adminTab==='reports'&&<>
+        <div style={{display:'flex',gap:8,padding:'12px 16px',borderBottom:'1px solid var(--border-color)'}}>
+          <button onClick={()=>setReportsFilter('pending')} style={{flex:1,padding:'8px',borderRadius:10,border:'none',background:reportsFilter==='pending'?'rgba(255,71,87,0.15)':'var(--bg-card)',color:reportsFilter==='pending'?'#FF4757':'var(--text-secondary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Pending</button>
+          <button onClick={()=>setReportsFilter('all')} style={{flex:1,padding:'8px',borderRadius:10,border:'none',background:reportsFilter==='all'?'rgba(91,156,246,0.15)':'var(--bg-card)',color:reportsFilter==='all'?'#5B9CF6':'var(--text-secondary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>All</button>
+        </div>
+        {(()=>{
+          const visible = reports.filter(r=>reportsFilter==='all'||r.status==='pending')
+          // Child-safety reports always float to the top regardless of sort,
+          // since those need the fastest possible response.
+          const sorted = [...visible].sort((a,b)=>{
+            if(a.reason==='child_safety'&&b.reason!=='child_safety') return -1
+            if(b.reason==='child_safety'&&a.reason!=='child_safety') return 1
+            return new Date(b.created_at)-new Date(a.created_at)
+          })
+          if(sorted.length===0) return <div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><AlertTriangle size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>{reportsFilter==='pending'?'No pending reports':'No reports yet'}</p></div>
+          return sorted.map(r=>{
+            const reasonLabel = REPORT_REASONS.find(x=>x.id===r.reason)?.label || r.reason
+            const isChildSafety = r.reason==='child_safety'
+            const targetLabel = r.reported_user_id ? `User @${r.reported_user?.username||'?'}`
+              : r.reported_post_id ? `Post ${r.reported_post_id.slice(0,8)}`
+              : r.reported_comment_id ? `Comment ${r.reported_comment_id.slice(0,8)}`
+              : r.reported_message_id ? `Message ${r.reported_message_id.slice(0,8)}`
+              : r.reported_reel_id ? `Reel ${r.reported_reel_id.slice(0,8)}`
+              : 'Unknown'
+            return (
+              <div key={r.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',background:isChildSafety&&r.status==='pending'?'rgba(255,71,87,0.06)':'none'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8,gap:10}}>
+                  <div>
+                    <span style={{fontWeight:800,fontSize:13,color:isChildSafety?'#FF4757':'var(--text-primary)'}}>{isChildSafety&&'🚨 '}{reasonLabel}</span>
+                    <div style={{color:'var(--text-quaternary)',fontSize:11,marginTop:2}}>{targetLabel} · reported by {r.reporter?.display_name||'?'} · {timeAgo(r.created_at)}</div>
+                  </div>
+                  <span style={{flexShrink:0,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:8,background:r.status==='pending'?'rgba(247,183,49,0.15)':r.status==='actioned'?'rgba(0,201,167,0.15)':'var(--bg-card)',color:r.status==='pending'?'#F7B731':r.status==='actioned'?'#00C9A7':'var(--text-quaternary)'}}>{r.status.toUpperCase()}</span>
+                </div>
+                {r.details&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:'0 0 10px',wordBreak:'break-word'}}>{r.details}</p>}
+                {r.status==='pending'&&<div style={{display:'flex',gap:8}}>
+                  <button onClick={()=>markReportStatus(r,'actioned')} style={{background:'rgba(0,201,167,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#00C9A7',fontSize:12,fontWeight:700,cursor:'pointer'}}>Mark Actioned</button>
+                  <button onClick={()=>markReportStatus(r,'reviewed')} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer'}}>Dismiss</button>
+                </div>}
+              </div>
+            )
+          })
+        })()}
       </>}
     </div>
   )
@@ -3879,6 +4032,7 @@ function FlittersAppInner({ currentUser }) {
   const [followed, setFollowed] = useState({})
   const [friendsSubTab, setFriendsSubTab] = useState('friends')
   const [selectedDMMsg, setSelectedDMMsg] = useState(null)
+  const [reportingDMMsg, setReportingDMMsg] = useState(null)
   const [editingDMMsg, setEditingDMMsg] = useState(null)
   const [editDMText, setEditDMText] = useState('')
   const [dmReplyTo, setDmReplyTo] = useState(null)
@@ -5156,8 +5310,13 @@ function FlittersAppInner({ currentUser }) {
                     <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Pencil size={17}/> Edit</button>
                     <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Trash2 size={17}/> Delete</button>
                   </>}
+                  {selectedDMMsg.sender_id!==currentUser.id&&<button onClick={()=>{setReportingDMMsg(selectedDMMsg);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><AlertTriangle size={17}/> Report</button>}
                 </div>
               </div>}
+              {reportingDMMsg&&<ReportModal onClose={()=>setReportingDMMsg(null)} onSubmit={async(reason,details)=>{
+                const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_message_id:reportingDMMsg.id, reason, details:details||null})
+                if(error) throw error
+              }}/>}
               {messages.map(msg=>{
                 const own = msg.sender_id===currentUser.id
                 return(
