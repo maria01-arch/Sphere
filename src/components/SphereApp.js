@@ -2116,16 +2116,7 @@ const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserCli
 function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick }) {
   const [notifs, setNotifs] = useState([])
   const [loading, setLoading] = useState(true)
-  const typeInfo = {
-    like:{icon:<Heart size={16} fill="#FF4757" color="#FF4757"/>,text:'liked your post'},
-    comment:{icon:<MessageCircle size={16}/>,text:'commented on your post'},
-    follow:{icon:<User size={16}/>,text:'started following you'},
-    repost:{icon:<Repeat2 size={16}/>,text:'reposted your flit'},
-    welcome:{icon:<Globe size={16}/>,text:'Welcome to Flitters!'},
-    follow_request:{icon:<User size={16}/>,text:'sent you a follow request'},
-    follow_accepted:{icon:<CheckCircle2 size={16}/>,text:'accepted your follow request'},
-    mention:{icon:<MessageSquare size={16}/>,text:'tagged you in a post'},
-  }
+  const typeInfo = NOTIF_TYPE_INFO
   useEffect(()=>{
     supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data})=>{setNotifs(data||[]);setLoading(false)})
     supabase.from('notifications').update({read:true}).eq('user_id',currentUser.id).eq('read',false).then(()=>{})
@@ -2160,7 +2151,7 @@ function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick })
 }
 
 
-function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
+function GroupChat({ group, currentUser, supabase, onBack, onUserClick, onRead }) {
   const [messages, setMessages] = useState([])
   const [members, setMembers] = useState([])
   const [msgText, setMsgText] = useState('')
@@ -2220,7 +2211,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
   }
   const userScrolledUp = useRef(false)
 
-  useEffect(()=>{ loadAll(); supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{}) },[])
+  useEffect(()=>{ loadAll(); supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{onRead?.(group.id)}) },[])
   useEffect(()=>{
     if(!userScrolledUp.current) bottomRef.current?.scrollIntoView({behavior:'smooth'})
   },[messages])
@@ -2235,7 +2226,7 @@ function GroupChat({ group, currentUser, supabase, onBack, onUserClick }) {
           const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
           return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
         })
-        supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{})
+        supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{onRead?.(group.id)})
       })
       .on('postgres_changes',{event:'UPDATE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
         setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,...payload.new}:m))
@@ -3966,6 +3957,43 @@ function AnnouncementBanner({ supabase }) {
   )
 }
 
+// Brief popup for new activity that arrives while you're looking at
+// something else — tap to jump straight there, or it clears itself after a
+// few seconds. Deliberately one at a time rather than a queue/stack: a
+// burst of activity (e.g. several messages in a row) just keeps replacing
+// this with the latest, which is what most chat apps do too.
+function InAppToast({ toast, onClose, onClick }) {
+  useEffect(()=>{
+    if(!toast) return
+    const t = setTimeout(onClose, 4500)
+    return ()=>clearTimeout(t)
+  },[toast])
+  if(!toast) return null
+  return (
+    <div onClick={onClick} style={{position:'fixed',top:'calc(12px + env(safe-area-inset-top))',left:12,right:12,zIndex:600,background:'var(--bg-card-8)',backdropFilter:'blur(10px)',border:'1px solid var(--border-color-2)',borderRadius:16,padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',maxWidth:500,margin:'0 auto'}}>
+      {toast.avatarUrl?<img src={toast.avatarUrl} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',flexShrink:0}} alt=""/>:<div style={{width:36,height:36,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:'var(--text-secondary)'}}><Bell size={16}/></div>}
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{toast.title}</div>
+        <div style={{fontSize:12,color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{toast.body}</div>
+      </div>
+    </div>
+  )
+}
+
+// Shared between NotificationsPanel and the in-app toast — the
+// notifications table has a `type` column, not a plain text message, so
+// both places that render a notification need the same type→text mapping.
+const NOTIF_TYPE_INFO = {
+  like:{icon:<Heart size={16} fill="#FF4757" color="#FF4757"/>,text:'liked your post'},
+  comment:{icon:<MessageCircle size={16}/>,text:'commented on your post'},
+  follow:{icon:<User size={16}/>,text:'started following you'},
+  repost:{icon:<Repeat2 size={16}/>,text:'reposted your flit'},
+  welcome:{icon:<Globe size={16}/>,text:'Welcome to Flitters!'},
+  follow_request:{icon:<User size={16}/>,text:'sent you a follow request'},
+  follow_accepted:{icon:<CheckCircle2 size={16}/>,text:'accepted your follow request'},
+  mention:{icon:<MessageSquare size={16}/>,text:'tagged you in a post'},
+}
+
 function FlittersAppInner({ currentUser }) {
   const { theme } = useTheme()
   const [ads, setAds] = useState([])
@@ -4070,40 +4098,111 @@ function FlittersAppInner({ currentUser }) {
   const [unreadDM, setUnreadDM] = useState(0)
   const [unreadNotifs, setUnreadNotifs] = useState(0)
   const [unreadGC, setUnreadGC] = useState(false)
+  // Backing store for the badges above. Kept as refs (not state) because
+  // they're mutated inside realtime callbacks and mark-as-read handlers —
+  // using plain state here would mean every handler needs the latest
+  // closure-captured value, which realtime callbacks registered once on
+  // mount don't have. The public unreadDM/unreadGC numbers/booleans are
+  // just a derived snapshot recomputed whenever a set changes.
+  const unreadConvoIdsRef = useRef(new Set())
+  const unreadGroupIdsRef = useRef(new Set())
+  const myConversationIdsRef = useRef([])
+  const myGroupIdsRef = useRef([])
+  const recomputeDMBadge = () => setUnreadDM(unreadConvoIdsRef.current.size)
+  const recomputeGCBadge = () => setUnreadGC(unreadGroupIdsRef.current.size>0)
+  const [toast, setToast] = useState(null)
 
   const loadUnreadCounts = async () => {
     try {
       const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
+      myConversationIdsRef.current = (parts||[]).map(p=>p.conversation_id)
+      unreadConvoIdsRef.current = new Set()
       if(parts?.length){
-        let dmCount = 0
         await Promise.all(parts.map(async p=>{
           const {count:c} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',p.conversation_id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
-          if(c>0) dmCount++
+          if(c>0) unreadConvoIdsRef.current.add(p.conversation_id)
         }))
-        setUnreadDM(dmCount)
-      } else setUnreadDM(0)
+      }
+      recomputeDMBadge()
 
       const {count:nc} = await supabase.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',currentUser.id).eq('read',false)
       setUnreadNotifs(nc||0)
 
       const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+      myGroupIdsRef.current = (mems||[]).map(m=>m.group_id)
+      unreadGroupIdsRef.current = new Set()
       if(mems?.length){
-        let hasUnread = false
-        for(const m of mems){
+        await Promise.all(mems.map(async m=>{
           const {count:gc} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',m.group_id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
-          if(gc>0){ hasUnread=true; break }
-        }
-        setUnreadGC(hasUnread)
-      } else setUnreadGC(false)
+          if(gc>0) unreadGroupIdsRef.current.add(m.group_id)
+        }))
+      }
+      recomputeGCBadge()
     } catch(e) { /* tables may not have these columns yet */ }
   }
 
+  // One initial fetch to establish correct baseline counts (unavoidable —
+  // a fresh page load has no live history to react to), then realtime
+  // takes over entirely. No more 15-second re-polling: new messages, new
+  // group messages, and new notifications each arrive as their own event
+  // and update just the affected badge, instantly, instead of re-scanning
+  // every conversation and group on a timer regardless of whether
+  // anything changed.
   useEffect(()=>{
     loadUnreadCounts()
-    const interval = setInterval(loadUnreadCounts, 15000)
-    return ()=>clearInterval(interval)
+    const ch = supabase.channel('unread-badges:'+currentUser.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async(payload)=>{
+        const m = payload.new
+        if(m.sender_id===currentUser.id) return
+        if(!myConversationIdsRef.current.includes(m.conversation_id)) return
+        unreadConvoIdsRef.current.add(m.conversation_id)
+        recomputeDMBadge()
+        const s = stateRef.current
+        const isViewingThisConvo = s.tab==='messages' && s.dmView==='chat' && s.selectedConv?.id===m.conversation_id
+        if(isViewingThisConvo) return
+        const {data:sender} = await supabase.from('profiles').select('display_name,avatar_url').eq('id',m.sender_id).maybeSingle()
+        setToast({
+          title: sender?.display_name || 'New message',
+          body: m.is_sticker ? 'Sent a sticker' : m.is_voice ? 'Sent a voice message' : (m.content||'').slice(0,80),
+          avatarUrl: sender?.avatar_url,
+          action: {type:'dm', conv:{id:m.conversation_id, other:sender?{id:m.sender_id,...sender}:null}},
+        })
+      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages'},async(payload)=>{
+        const m = payload.new
+        if(m.sender_id===currentUser.id) return
+        if(!myGroupIdsRef.current.includes(m.group_id)) return
+        unreadGroupIdsRef.current.add(m.group_id)
+        recomputeGCBadge()
+        const s = stateRef.current
+        const isViewingThisGroup = s.viewingGroupChat?.id===m.group_id
+        if(isViewingThisGroup) return
+        const [{data:sender},{data:group}] = await Promise.all([
+          supabase.from('profiles').select('display_name,avatar_url').eq('id',m.sender_id).maybeSingle(),
+          supabase.from('groups').select('*,group_members(user_id)').eq('id',m.group_id).maybeSingle(),
+        ])
+        setToast({
+          title: (sender?.display_name||'Someone')+' in '+(group?.name||'a group'),
+          body: m.is_sticker ? 'Sent a sticker' : m.is_voice ? 'Sent a voice message' : (m.content||'').slice(0,80),
+          avatarUrl: sender?.avatar_url,
+          action: {type:'group', group},
+        })
+      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
+        setUnreadNotifs(n=>n+1)
+        if(stateRef.current.tab==='notifications') return
+        const n = payload.new
+        const {data:actor} = n.actor_id ? await supabase.from('profiles').select('display_name,avatar_url').eq('id',n.actor_id).maybeSingle() : {data:null}
+        setToast({
+          title: actor?.display_name || 'Flitters',
+          body: NOTIF_TYPE_INFO[n.type]?.text || 'You have a new notification',
+          avatarUrl: actor?.avatar_url,
+          action: {type:'notif'},
+        })
+      })
+      .subscribe()
+    return ()=>supabase.removeChannel(ch)
   },[])
-  useEffect(()=>{ loadUnreadCounts() },[tab])
   useEffect(()=>{
     const params = new URLSearchParams(window.location.search)
     const gid = params.get('opengroup')
@@ -4164,8 +4263,8 @@ function FlittersAppInner({ currentUser }) {
   const [gcColor, setGcColor] = useState('#5B9CF6')
   const [gcSaving, setGcSaving] = useState(false)
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroupChat,viewingReels:reelsRef.current,viewingPost}
-  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost,viewingGroupChat])
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroupChat,viewingReels:reelsRef.current,viewingPost,selectedConv}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost,viewingGroupChat,selectedConv])
 
   // Restore the feed's scroll position once you're actually back on it. Wait
   // a frame so the feed's DOM has repainted first — scrolling before that
@@ -4357,8 +4456,9 @@ function FlittersAppInner({ currentUser }) {
       if(!vapidKey) { setStatus('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set at build time'); return }
 
       // Clean up any other service worker registration (e.g. a leftover
-      // OneSignal/Firebase worker from a previous setup) so it can't compete
-      // for the same push scope and cause duplicate/conflicting deliveries.
+      // OneSignal worker from a previous, now-removed setup) so it can't
+      // compete for the same push scope and cause duplicate/conflicting
+      // deliveries.
       setStatus('Checking for stale service workers...')
       const existingRegs = await navigator.serviceWorker.getRegistrations()
       for(const r of existingRegs){
@@ -4370,18 +4470,9 @@ function FlittersAppInner({ currentUser }) {
       const reg = await navigator.serviceWorker.register('/sw.js')
       await navigator.serviceWorker.ready
 
-      const usingWebtoappShell = window.__webtoapp_notification_polyfill__ === true
       let permission = Notification.permission
       if(permission === 'default') permission = await requestNotifPermission()
-      if(permission !== 'granted' && !usingWebtoappShell) { setStatus('Permission is "'+permission+'", not granted'); return }
-      if(permission !== 'granted' && usingWebtoappShell) {
-        // This shell's Notification.permission doesn't reliably reflect the
-        // real OS-level grant — it can stay stuck on "default" even after
-        // the user has genuinely allowed notifications natively. Proceed to
-        // the actual subscribe() call and let a real failure (if any) be
-        // the signal instead of trusting this stale property.
-        setStatus('WebToApp shell detected (permission property stayed "'+permission+'" — proceeding anyway, this is expected in this app shell)...')
-      }
+      if(permission !== 'granted') { setStatus('Permission is "'+permission+'", not granted'); return }
 
       setStatus('Refreshing subscription...')
       let sub = await reg.pushManager.getSubscription()
@@ -4404,12 +4495,7 @@ function FlittersAppInner({ currentUser }) {
       if(error) setStatus('DB save failed: '+error.message)
       else setStatus('Ready — subscribed at '+new Date().toLocaleTimeString())
     } catch(e) {
-      const msg = (e.name?e.name+': ':'')+e.message
-      if(/not available in this WebView/i.test(e.message||'')) {
-        setStatus('This app shell doesn\'t support real push subscriptions (confirmed by the platform itself) — local notifications (realtime + polling) are already active and are the correct fallback here. Nothing more to fix on this front.')
-      } else {
-        setStatus('Error: '+msg)
-      }
+      setStatus('Error: '+(e.name?e.name+': ':'')+e.message)
     }
   }, [currentUser.id])
 
@@ -4632,7 +4718,10 @@ function FlittersAppInner({ currentUser }) {
       ]).then(([mine,theirs])=>setDmBlocked(!!mine.data || !!theirs.data))
     }
     if(selectedConv.id!=='omnicore-ai') {
-      supabase.from('conversation_participants').update({last_read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).eq('user_id',currentUser.id).then(()=>loadUnreadCounts())
+      supabase.from('conversation_participants').update({last_read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).eq('user_id',currentUser.id).then(()=>{
+        unreadConvoIdsRef.current.delete(selectedConv.id)
+        recomputeDMBadge()
+      })
       supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
     }
     const fetchMessages = async() => {
@@ -4796,6 +4885,7 @@ function FlittersAppInner({ currentUser }) {
       await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
       convId = conv.id
     }
+    if(!myConversationIdsRef.current.includes(convId)) myConversationIdsRef.current.push(convId)
     setTabWithHash('messages')
     setSelectedConv({id:convId,other:user})
     setDmView('chat')
@@ -5236,6 +5326,7 @@ function FlittersAppInner({ currentUser }) {
                 const {data,error} = await supabase.from('groups').insert({name:gcName.trim(),description:gcDesc.trim(),creator_id:currentUser.id,cover_color:gcColor,tag,join_mode:gcJoinMode}).select().single()
                 if(data){
                   await supabase.from('group_members').insert({group_id:data.id,user_id:currentUser.id})
+                  if(!myGroupIdsRef.current.includes(data.id)) myGroupIdsRef.current.push(data.id)
                   setGroupsForList(prev=>[{id:data.id,type:'group',group:{...data,group_members:[{user_id:currentUser.id}]},last:null,unread:false},...prev])
                   setDmView('list')
                   setViewingGroupChat({...data,group_members:[{user_id:currentUser.id}]})
@@ -5266,7 +5357,7 @@ function FlittersAppInner({ currentUser }) {
           </div>}
 
           {viewingGroupChat&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
-            <GroupChat group={viewingGroupChat} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroupChat(null);setHideNav(false);loadGroupsForList()}} onUserClick={handleUserClick}/>
+            <GroupChat group={viewingGroupChat} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroupChat(null);setHideNav(false);loadGroupsForList()}} onUserClick={handleUserClick} onRead={(groupId)=>{unreadGroupIdsRef.current.delete(groupId);recomputeGCBadge()}}/>
           </div>}
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
@@ -5418,11 +5509,22 @@ function FlittersAppInner({ currentUser }) {
 
       {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
 
+      <InAppToast toast={toast} onClose={()=>setToast(null)} onClick={()=>{
+        const a = toast?.action
+        setToast(null)
+        if(!a) return
+        if(a.type==='dm'){ setTab('messages'); setSelectedConv(a.conv); setDmView('chat') }
+        else if(a.type==='group'){ if(a.group){ setTab('messages'); setViewingGroupChat(a.group); setHideNav(true) } }
+        else if(a.type==='notif'){ setTab('notifications') }
+      }}/>
       <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
         <div style={{background:'var(--bg-header)',backdropFilter:'blur(14px)',borderRadius:30,padding:'8px 4px',border:'1px solid var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px var(--shadow-color)'}}>
           {TABS.map(({id,label,icon})=>{
             const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
-            const showDot = id==='pulse'&&unreadGC
+            // Groups now live in the Messages tab's unified list, so an
+            // unread group shows here too — as a plain dot when there's no
+            // numbered DM badge already drawing attention to this tab.
+            const showDot = id==='messages'&&unreadGC&&!unreadDM
             return (
             <button key={id} onClick={()=>setTabWithHash(id)} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'var(--text-muted)',padding:'8px 10px',borderRadius:20,minWidth:48}}>
               <span style={{fontSize:20,position:'relative'}}>
