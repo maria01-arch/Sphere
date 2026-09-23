@@ -1277,6 +1277,14 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   )
 
 
+  // Intentionally removed from the Settings menu (see below) and left
+  // unreachable rather than deleted outright. Google Play's Payments
+  // policy requires any digital feature/perk unlocked inside an app
+  // distributed through Google Play to go through Google Play Billing —
+  // this screen instead shows raw USDT/BTC wallet addresses for a paid
+  // verified badge, which is exactly what that policy prohibits. Don't
+  // re-add the menu entry below without first wiring this through Play
+  // Billing (or gating it to a genuinely non-Play-reviewed context).
   if(section==='verify') return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Get Verified"/>
@@ -1418,7 +1426,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
         <a href="/stories" style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15,textDecoration:'none',boxSizing:'border-box'}}>
           <span style={{fontSize:22,display:'flex'}}><BookOpen size={18}/></span><span style={{flex:1,fontWeight:500}}>My Stories</span><span style={{color:'var(--text-quaternary)'}}>›</span>
         </a>
-        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Award size={18}/>,label:'Get Verified Badge',id:'verify'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
+        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
             <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
           </button>
@@ -4110,6 +4118,10 @@ function FlittersAppInner({ currentUser }) {
   const myGroupIdsRef = useRef([])
   const recomputeDMBadge = () => setUnreadDM(unreadConvoIdsRef.current.size)
   const recomputeGCBadge = () => setUnreadGC(unreadGroupIdsRef.current.size>0)
+  // Shared between the instant realtime listener and the polling backup
+  // further down, so an item that already got shown once (whichever path
+  // caught it first) doesn't get shown again by the other one.
+  const notifiedIdsRef = useRef(new Set())
   const [toast, setToast] = useState(null)
 
   const loadUnreadCounts = async () => {
@@ -4155,6 +4167,8 @@ function FlittersAppInner({ currentUser }) {
         const m = payload.new
         if(m.sender_id===currentUser.id) return
         if(!myConversationIdsRef.current.includes(m.conversation_id)) return
+        if(notifiedIdsRef.current.has(m.id)) return
+        notifiedIdsRef.current.add(m.id)
         unreadConvoIdsRef.current.add(m.conversation_id)
         recomputeDMBadge()
         const s = stateRef.current
@@ -4172,6 +4186,8 @@ function FlittersAppInner({ currentUser }) {
         const m = payload.new
         if(m.sender_id===currentUser.id) return
         if(!myGroupIdsRef.current.includes(m.group_id)) return
+        if(notifiedIdsRef.current.has(m.id)) return
+        notifiedIdsRef.current.add(m.id)
         unreadGroupIdsRef.current.add(m.group_id)
         recomputeGCBadge()
         const s = stateRef.current
@@ -4189,9 +4205,11 @@ function FlittersAppInner({ currentUser }) {
         })
       })
       .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
-        setUnreadNotifs(n=>n+1)
-        if(stateRef.current.tab==='notifications') return
         const n = payload.new
+        if(notifiedIdsRef.current.has(n.id)) return
+        notifiedIdsRef.current.add(n.id)
+        setUnreadNotifs(c=>c+1)
+        if(stateRef.current.tab==='notifications') return
         const {data:actor} = n.actor_id ? await supabase.from('profiles').select('display_name,avatar_url').eq('id',n.actor_id).maybeSingle() : {data:null}
         setToast({
           title: actor?.display_name || 'Flitters',
@@ -4275,12 +4293,6 @@ function FlittersAppInner({ currentUser }) {
     }
   },[viewingPost,viewingUser,showMyProfile])
 
-  // Shared between the instant realtime listener below and the polling
-  // backup further down, so an item that already got notified instantly
-  // (when the realtime connection is alive) doesn't get shown again by the
-  // next poll cycle.
-  const notifiedIdsRef = useRef(new Set())
-
   // Global listener for push notifications regardless of tab
   useEffect(()=>{
     const ch = supabase.channel('global_notifs_'+currentUser.id)
@@ -4338,22 +4350,19 @@ function FlittersAppInner({ currentUser }) {
 
         // New notifications (likes, comments, follows, reposts, mentions)
         const {data:newNotifs} = await supabase.from('notifications')
-          .select('*,actor:profiles!actor_id(display_name)')
+          .select('*,actor:profiles!actor_id(display_name,avatar_url)')
           .eq('user_id', currentUser.id)
           .gt('created_at', lastPollTime)
           .order('created_at', {ascending:true})
         if(newNotifs?.length){
-          const typeText = {
-            like:'liked your post', comment:'commented on your post', follow:'started following you',
-            repost:'reposted your flit', follow_request:'sent you a follow request',
-            follow_accepted:'accepted your follow request', mention:'tagged you in a post',
-          }
           for(const n of newNotifs){
             if(notifiedIds.has(n.id)) continue
             notifiedIds.add(n.id)
             const name = n.actor?.display_name || 'Someone'
-            const body = n.type==='welcome' ? 'Welcome to Flitters!' : `${name} ${typeText[n.type]||'sent you a notification'}`
+            const body = n.type==='welcome' ? 'Welcome to Flitters!' : `${name} ${NOTIF_TYPE_INFO[n.type]?.text||'sent you a notification'}`
             showLocalNotif('Flitters', body)
+            setUnreadNotifs(c=>c+1)
+            if(stateRef.current.tab!=='notifications') setToast({title:name, body:NOTIF_TYPE_INFO[n.type]?.text||'sent you a notification', avatarUrl:n.actor?.avatar_url, action:{type:'notif'}})
           }
         }
 
@@ -4362,7 +4371,7 @@ function FlittersAppInner({ currentUser }) {
         if(convs?.length){
           const convIds = convs.map(c=>c.conversation_id)
           const {data:newMsgs} = await supabase.from('messages')
-            .select('*,sender:profiles!sender_id(display_name)')
+            .select('*,sender:profiles!sender_id(display_name,avatar_url)')
             .in('conversation_id', convIds)
             .gt('created_at', lastPollTime)
             .order('created_at', {ascending:true})
@@ -4371,9 +4380,14 @@ function FlittersAppInner({ currentUser }) {
               if(notifiedIds.has(m.id)) continue
               notifiedIds.add(m.id)
               if(m.sender_id === currentUser.id) continue
+              unreadConvoIdsRef.current.add(m.conversation_id)
+              recomputeDMBadge()
               const name = m.sender?.display_name || 'Someone'
               const body = m.is_sticker ? `${name} sent you a sticker` : m.is_voice ? `${name} sent a voice message` : `${name}: ${(m.content||'').slice(0,100)}`
               showLocalNotif('Flitters', body)
+              const s = stateRef.current
+              const isViewingThisConvo = s.tab==='messages' && s.dmView==='chat' && s.selectedConv?.id===m.conversation_id
+              if(!isViewingThisConvo) setToast({title:name, body: m.is_sticker?'Sent a sticker':m.is_voice?'Sent a voice message':(m.content||'').slice(0,80), avatarUrl:m.sender?.avatar_url, action:{type:'dm',conv:{id:m.conversation_id,other:{id:m.sender_id,...m.sender}}}})
             }
           }
         }
@@ -4383,7 +4397,7 @@ function FlittersAppInner({ currentUser }) {
         if(myGroups?.length){
           const groupIds = myGroups.map(g=>g.group_id)
           const {data:newGroupMsgs} = await supabase.from('group_messages')
-            .select('*,sender:profiles!sender_id(display_name),group:groups!group_id(name)')
+            .select('*,sender:profiles!sender_id(display_name,avatar_url),group:groups!group_id(id,name,cover_color,avatar_url)')
             .in('group_id', groupIds)
             .gt('created_at', lastPollTime)
             .order('created_at', {ascending:true})
@@ -4392,14 +4406,16 @@ function FlittersAppInner({ currentUser }) {
               if(notifiedIds.has(m.id)) continue
               notifiedIds.add(m.id)
               if(m.sender_id === currentUser.id) continue
+              unreadGroupIdsRef.current.add(m.group_id)
+              recomputeGCBadge()
               const name = m.sender?.display_name || 'Someone'
               const body = m.is_sticker ? `${name} sent a sticker in ${m.group?.name||'a group'}` : m.is_voice ? `${name} sent a voice message in ${m.group?.name||'a group'}` : `${name} in ${m.group?.name||'a group'}: ${(m.content||'').slice(0,100)}`
               showLocalNotif('Flitters', body)
+              if(stateRef.current.viewingGroupChat?.id!==m.group_id) setToast({title:`${name} in ${m.group?.name||'a group'}`, body: m.is_sticker?'Sent a sticker':m.is_voice?'Sent a voice message':(m.content||'').slice(0,80), avatarUrl:m.sender?.avatar_url, action:{type:'group',group:m.group}})
             }
           }
         }
 
-        if(newNotifs?.length || convs?.length) loadUnreadCounts()
         lastPollTime = pollStart
       } catch(e) { console.log('Notification poll error:', e.message) }
     }
