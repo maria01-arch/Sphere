@@ -1582,17 +1582,18 @@ function AdCard({ ad }) {
     window.open(url,'_blank')
   }
   return (
-    <div onClick={openLink} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',cursor:ad.link_url?'pointer':'default'}}>
+    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+      <style>{'@keyframes adCtaPulse{0%,100%{box-shadow:0 0 0 0 rgba(91,156,246,0.5)}50%{box-shadow:0 0 0 8px rgba(91,156,246,0)}}'}</style>
       <div style={{display:'flex',gap:12}}>
-        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
+        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
         <div style={{flex:1,minWidth:0}}>
-          <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:2}}>
+          <div style={{display:'flex',gap:6,alignItems:'flex-start',justifyContent:'space-between',marginBottom:6}}>
             <span style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
-            <span style={{background:'rgba(247,183,49,0.15)',border:'1px solid rgba(247,183,49,0.3)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
+            <span style={{background:'rgba(247,183,49,0.15)',border:'1px solid rgba(247,183,49,0.3)',borderRadius:6,padding:'2px 7px',fontSize:10,color:'#F7B731',fontWeight:700,flexShrink:0,letterSpacing:0.3}}>SPONSORED</span>
           </div>
-          {ad.content&&<p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:10}}>{ad.content}</p>}
-          {ad.image_url&&<img src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover'}} alt="ad" loading="lazy"/>}
-          {ad.link_url&&<div style={{marginTop:10,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 14px',display:'inline-flex',alignItems:'center',gap:4,color:'#5B9CF6',fontSize:13,fontWeight:700}}>Learn More <ArrowRight size={14}/></div>}
+          {ad.content&&<p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:12}}>{ad.content}</p>}
+          {ad.image_url&&<img onClick={openLink} src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover',marginBottom:12,display:'block',cursor:ad.link_url?'pointer':'default'}} alt="ad" loading="lazy"/>}
+          {ad.link_url&&<button onClick={openLink} style={{animation:'adCtaPulse 2s ease-in-out infinite',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'10px 20px',display:'inline-flex',alignItems:'center',gap:6,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>{ad.cta_text||'Learn More'} <ArrowRight size={14}/></button>}
         </div>
       </div>
     </div>
@@ -3669,6 +3670,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   const [advertiserName, setAdvertiserName] = useState('')
   const [content, setContent] = useState('')
   const [linkUrl, setLinkUrl] = useState('')
+  const [adCtaText, setAdCtaText] = useState('')
   const [adType, setAdType] = useState('post')
   const [mediaFile, setMediaFile] = useState(null)
   const [saving, setSaving] = useState(false)
@@ -3754,12 +3756,13 @@ function AdminPanel({ currentUser, supabase, onBack }) {
       image_url: imageUrl,
       video_url: videoUrl,
       link_url: linkUrl.trim()||null,
+      cta_text: adCtaText.trim()||null,
       type: adType,
       active: true
     })
     if(error) alert('Error: '+error.message)
     else {
-      setAdvertiserName(''); setContent(''); setLinkUrl(''); setMediaFile(null); setShowForm(false)
+      setAdvertiserName(''); setContent(''); setLinkUrl(''); setAdCtaText(''); setMediaFile(null); setShowForm(false)
       loadAds()
     }
     setSaving(false)
@@ -3791,6 +3794,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
         <input value={advertiserName} onChange={e=>setAdvertiserName(e.target.value)} placeholder="Advertiser/Brand name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
         <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Ad text/caption" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
         <input value={linkUrl} onChange={e=>setLinkUrl(e.target.value)} placeholder="Link URL (optional)" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <input value={adCtaText} onChange={e=>setAdCtaText(e.target.value)} placeholder="Button text (default: Learn More)" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
         <div onClick={()=>fileRef.current?.click()} style={{height:120,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:6}}>
           {mediaFile?<span style={{color:'#00C9A7',fontSize:13}}>{mediaFile.name}</span>:<>{adType==='reel'?<Video size={26}/>:<ImageIcon size={26}/>}<span style={{color:'var(--text-secondary)',fontSize:13}}>Tap to select {adType==='reel'?'video':'image'} (optional)</span></>}
         </div>

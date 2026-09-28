@@ -51,6 +51,7 @@ export async function POST() {
       if (packIds.length) await admin.from('stickers').delete().in('pack_id', packIds)
     },
     () => admin.from('sticker_packs').delete().eq('owner_id', uid),
+    () => admin.from('store_listings').delete().eq('seller_id', uid),
     () => admin.from('groups').update({ creator_id: null }).eq('creator_id', uid),
   ]
 
