@@ -4,6 +4,8 @@
 // if HuggingFace is unavailable.
 import { InferenceClient } from '@huggingface/inference'
 
+import { getRequestUser, unauthorized, rateLimited, tooManyRequests } from '@/lib/apiAuth'
+
 export const runtime = 'nodejs'
 
 // General-purpose, safe image models only.
@@ -62,8 +64,12 @@ async function tryOpenRouterImage(prompt) {
 
 export async function POST(request) {
   try {
-    const { prompt } = await request.json()
-    if(!prompt?.trim()) return Response.json({ error: 'No prompt provided' }, { status: 400 })
+    const user = await getRequestUser(request)
+    if (!user) return unauthorized()
+    if (rateLimited('ai-image:' + user.id, 6, 60_000)) return tooManyRequests()
+    const body = await request.json()
+    const prompt = typeof body?.prompt === 'string' ? body.prompt.trim().slice(0, 500) : ''
+    if(!prompt) return Response.json({ error: 'No prompt provided' }, { status: 400 })
 
     let hfError = null
     try {
@@ -85,11 +91,10 @@ export async function POST(request) {
 
     // Surface real error detail so failures are diagnosable instead of a
     // generic message every time.
-    return Response.json({
-      error: `Image generation is temporarily unavailable. (${hfError || 'HF failed'} / ${orError || 'OR failed'})`
-    }, { status: 503 })
+    console.error('Image generation failed:', hfError, orError)
+    return Response.json({ error: 'Image generation is temporarily unavailable. Please try again shortly.' }, { status: 503 })
   } catch(e) {
     console.error('Image route error:', e)
-    return Response.json({ error: 'Something went wrong generating the image: ' + e.message }, { status: 500 })
+    return Response.json({ error: 'Something went wrong generating the image.' }, { status: 500 })
   }
 }

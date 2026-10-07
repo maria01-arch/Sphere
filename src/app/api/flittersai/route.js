@@ -1,5 +1,7 @@
 // Flitters AI — powered by OpenRouter (openrouter.ai)
 // Built by Flitters Labs Corp. Founder: Dara Samuel ("Samzy Bankz"). Logo design: Artist Bigkizz.
+import { getRequestUser, unauthorized, rateLimited, tooManyRequests } from '@/lib/apiAuth'
+
 export const runtime = 'nodejs'
 
 const FAST_MODELS = [
@@ -81,7 +83,20 @@ async function* streamModel(model, messages, deepThink) {
 }
 
 export async function POST(request) {
-  const { messages, deepThink } = await request.json()
+  const user = await getRequestUser(request)
+  if (!user) return unauthorized()
+  if (rateLimited('ai-chat:' + user.id, 20, 60_000)) return tooManyRequests()
+
+  let body
+  try { body = await request.json() } catch { return Response.json({ error: 'Bad request' }, { status: 400 }) }
+  const deepThink = !!body?.deepThink
+  // Only plain user/assistant turns, capped in count and size, so one
+  // request can't be used to burn through a huge amount of AI credit.
+  const messages = (Array.isArray(body?.messages) ? body.messages : [])
+    .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string' && m.content.trim())
+    .slice(-20)
+    .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }))
+  if (!messages.length) return Response.json({ error: 'No messages' }, { status: 400 })
   const modelList = deepThink ? DEEP_MODELS : FAST_MODELS
 
   const encoder = new TextEncoder()

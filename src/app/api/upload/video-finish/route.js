@@ -1,4 +1,4 @@
-import { createClient } from '@/lib/supabase/server'
+import { getRequestUser, unauthorized, validateUploadKey, isAllowedContentType } from '@/lib/apiAuth'
 import { finishChunkedUpload } from '@/lib/media/r2'
 
 export const runtime = 'nodejs'
@@ -8,11 +8,8 @@ export const maxDuration = 60 // reassembling ~60s of video (a few tens of MB) n
 // Fetches every chunk back from R2 in order, concatenates them, and writes
 // the result as one normal object at `path`. Returns { publicUrl }.
 export async function POST(req) {
-  const supabase = await createClient()
-  const authHeader = req.headers.get('authorization')
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser()
-  if (!user) return Response.json({ error: 'Not signed in' }, { status: 401 })
+  const user = await getRequestUser(req)
+  if (!user) return unauthorized()
 
   const { uploadId, totalChunks, path, contentType } = await req.json()
   if (!uploadId || !totalChunks || !path || typeof path !== 'string' || typeof uploadId !== 'string') {
@@ -21,7 +18,10 @@ export async function POST(req) {
   if (!/^[a-zA-Z0-9_-]+$/.test(uploadId)) {
     return Response.json({ error: 'Invalid uploadId' }, { status: 400 })
   }
-  const key = path.replace(/^\/+/, '').replace(/\.\./g, '')
+  const checked = validateUploadKey(path, user.id)
+  if (checked.error) return Response.json({ error: checked.error }, { status: 400 })
+  if (!isAllowedContentType(contentType)) return Response.json({ error: 'File type not allowed' }, { status: 415 })
+  const key = checked.key
 
   try {
     const { publicUrl } = await finishChunkedUpload(uploadId, totalChunks, key, contentType)

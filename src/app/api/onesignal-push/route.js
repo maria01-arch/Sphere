@@ -1,10 +1,17 @@
 // Sends a push notification via OneSignal, targeting a specific Flitters user
 // by external_id (set client-side via OneSignal.login(userId) on sign-in).
+import { getRequestUser, unauthorized, rateLimited, tooManyRequests } from '@/lib/apiAuth'
+
 export const runtime = 'nodejs'
 
 export async function POST(request) {
   try {
-    const { userId, title, body, url } = await request.json()
+    const caller = await getRequestUser(request)
+    if (!caller) return unauthorized()
+    if (rateLimited('onesignal:' + caller.id, 60, 60_000)) return tooManyRequests()
+    const { userId, title: rawTitle, body: rawBody, url } = await request.json()
+    const title = typeof rawTitle === 'string' ? rawTitle.slice(0, 100) : rawTitle
+    const body = typeof rawBody === 'string' ? rawBody.slice(0, 300) : rawBody
     if (!userId || !title) return Response.json({ error: 'Missing userId or title' }, { status: 400 })
 
     const res = await fetch('https://api.onesignal.com/notifications', {

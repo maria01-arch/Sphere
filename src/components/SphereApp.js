@@ -19,6 +19,17 @@ const supabase = createClient()
 // Detects an @flittersai mention and, if found, asks the AI to reply as a
 // comment on the post — used after both posting and commenting, since you
 // can tag it either way.
+// Headers for API routes that require sign-in. Sends the Bearer token so it
+// works inside the Android WebView wrapper too, where cookies can be flaky.
+async function authJsonHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    const { data: { session } } = await createClient().auth.getSession()
+    if (session?.access_token) headers.Authorization = 'Bearer ' + session.access_token
+  } catch {}
+  return headers
+}
+
 const AI_MENTION_RE = /@flittersai\b/i
 // Solid "read-receipt blue" for the sender's own chat bubbles — replaces
 // the old blue/purple gradient, matching the flatter WhatsApp/Messenger
@@ -1141,7 +1152,7 @@ function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate
   const deleteAccount = async () => {
     setDeleting(true); setDeleteError('')
     try {
-      const res = await fetch('/api/delete-account',{method:'POST'})
+      const res = await fetch('/api/delete-account',{method:'POST',headers:await authJsonHeaders()})
       const result = await res.json().catch(()=>({}))
       if(!res.ok) { setDeleteError(result.error||'Something went wrong. Please try again.'); setDeleting(false); return }
       await supabase.auth.signOut()
@@ -3539,7 +3550,7 @@ function FlittersAI({ currentUser, onClose }) {
     setGeneratingImg(true)
     setGenImg(null)
     try {
-      const res = await fetch('/api/flittersai-image',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt:imgPrompt})})
+      const res = await fetch('/api/flittersai-image',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify({prompt:imgPrompt})})
       const data = await res.json()
       if(data.image) setGenImg(data.image)
       else alert(data.error||'Generation failed, try again')
@@ -3554,7 +3565,7 @@ function FlittersAI({ currentUser, onClose }) {
     setInput('')
     setLoading(true)
     try {
-      const res = await fetch('/api/flittersai',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
+      const res = await fetch('/api/flittersai',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
       if(!res.body) throw new Error('No response stream')
       const reader = res.body.getReader()
       const decoder = new TextDecoder()
@@ -5115,7 +5126,7 @@ function FlittersAppInner({ currentUser }) {
       // below once they fail as stale.
       const [freshest, ...stale] = rows
       if(stale.length) supabase.from('push_subscriptions').delete().in('id', stale.map(r=>r.id)).then(()=>{})
-      const res = await fetch('/api/push',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({subscription:freshest.subscription,title,body,url:'/'})})
+      const res = await fetch('/api/push',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify({subscription:freshest.subscription,title,body,url:'/'})})
       if(!res.ok){
         const err = await res.json().catch(()=>({}))
         if(err.statusCode===404 || err.statusCode===410) {

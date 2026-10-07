@@ -1,6 +1,15 @@
+import { getRequestUser, unauthorized, rateLimited, tooManyRequests } from '@/lib/apiAuth'
+
 export async function POST(request) {
   try {
-    const { messages } = await request.json()
+    const user = await getRequestUser(request)
+    if (!user) return unauthorized()
+    if (rateLimited('ai-chat:' + user.id, 20, 60_000)) return tooManyRequests()
+    const body = await request.json()
+    const messages = (Array.isArray(body?.messages) ? body.messages : [])
+      .filter(m => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+      .slice(-20)
+      .map(m => ({ role: m.role, content: m.content.slice(0, 4000) }))
 
     const response = await fetch('https://api.groq.com/openai/v1/chat/completions', {
       method: 'POST',

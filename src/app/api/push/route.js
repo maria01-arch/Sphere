@@ -1,4 +1,5 @@
 import webpush from 'web-push'
+import { getRequestUser, unauthorized, rateLimited, tooManyRequests } from '@/lib/apiAuth'
 
 const VAPID_PUBLIC = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
 const VAPID_PRIVATE = process.env.VAPID_PRIVATE_KEY
@@ -18,6 +19,9 @@ try {
 export const runtime = 'nodejs'
 
 export async function POST(request) {
+  const user = await getRequestUser(request)
+  if (!user) return unauthorized()
+  if (rateLimited('push:' + user.id, 120, 60_000)) return tooManyRequests()
   if (!vapidConfigured) {
     console.error('Push not configured:', vapidError)
     return Response.json({ error: vapidError }, { status: 500 })
@@ -28,7 +32,7 @@ export async function POST(request) {
 
     await webpush.sendNotification(
       subscription,
-      JSON.stringify({ title: title || 'Flitters', body: body || 'You have a new notification', url: url || '/' })
+      JSON.stringify({ title: String(title || 'Flitters').slice(0, 100), body: String(body || 'You have a new notification').slice(0, 300), url: typeof url === 'string' && url.startsWith('/') ? url : '/' })
     )
     return Response.json({ success: true })
   } catch (e) {

@@ -1,14 +1,12 @@
-import { createClient } from '@/lib/supabase/server'
+import { getRequestUser, unauthorized } from '@/lib/apiAuth'
 import { createAdminClient } from '@/lib/supabase/admin'
 
 export const runtime = 'nodejs'
 
-export async function POST() {
-  const supabase = await createClient()
-  const { data: { user }, error: authErr } = await supabase.auth.getUser()
-  if (authErr || !user) {
-    return Response.json({ error: 'Not signed in' }, { status: 401 })
-  }
+// Accepts a Bearer token (native app) or the session cookie (website).
+export async function POST(req) {
+  const user = await getRequestUser(req)
+  if (!user) return unauthorized()
 
   if (!process.env.SUPABASE_SERVICE_ROLE_KEY) {
     return Response.json({ error: 'Server is not configured for account deletion (missing SUPABASE_SERVICE_ROLE_KEY)' }, { status: 500 })
@@ -44,6 +42,15 @@ export async function POST() {
     () => admin.from('notifications').delete().eq('user_id', uid),
     () => admin.from('notifications').delete().eq('actor_id', uid),
     () => admin.from('push_subscriptions').delete().eq('user_id', uid),
+    // Tables the native app writes to
+    () => admin.from('push_tokens').delete().eq('user_id', uid),
+    () => admin.from('login_history').delete().eq('user_id', uid),
+    () => admin.from('follow_requests').delete().eq('requester_id', uid),
+    () => admin.from('follow_requests').delete().eq('target_id', uid),
+    () => admin.from('pinned_messages').delete().eq('pinned_by', uid),
+    () => admin.from('comment_likes').delete().eq('user_id', uid),
+    () => admin.from('comment_reposts').delete().eq('user_id', uid),
+    () => admin.from('comment_reactions').delete().eq('user_id', uid),
     () => admin.from('verification_applications').delete().eq('user_id', uid),
     async () => {
       const { data: packs } = await admin.from('sticker_packs').select('id').eq('owner_id', uid)

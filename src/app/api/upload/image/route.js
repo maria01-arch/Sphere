@@ -1,40 +1,44 @@
-import { createClient } from '@/lib/supabase/server'
-import { uploadImageDirect, debugConfig } from '@/lib/media/r2'
+import { uploadImageDirect } from '@/lib/media/r2'
+import { getRequestUser, unauthorized, rateLimited, tooManyRequests, validateUploadKey, isAllowedContentType } from '@/lib/apiAuth'
 
 export const runtime = 'nodejs'
 
-// Body: multipart/form-data with fields "file" and "path" (e.g. 'avatars/uid.png')
+const MAX_BYTES = 30 * 1024 * 1024
+
+// Body: multipart/form-data with fields "file" and "path" (e.g. 'avatars/<uid>.png')
 // Returns: { publicUrl } — the file already lives in R2 by the time this
 // responds; nothing further for the client to upload.
 //
-// Earlier version handed the browser a presigned URL and had it PUT the file
-// straight to R2. That requires R2's CORS policy to allow the calling origin,
-// which broke inside this app's Android WebView wrapper ("Failed to fetch").
-// Routing the bytes through our own server instead sidesteps CORS entirely.
+// Bytes go through our own server (not a presigned URL straight to R2) so
+// R2's CORS policy never matters — that broke inside the Android WebView.
+//
+// Hardening: the caller must be signed in, the path must be inside an
+// allowed folder (and, for personal folders, inside the caller's own area),
+// and only image/video/audio content types are accepted (no SVG/HTML).
 export async function POST(req) {
-  const supabase = await createClient()
-  const authHeader = req.headers.get('authorization')
-  const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null
-  const { data: { user } } = token ? await supabase.auth.getUser(token) : await supabase.auth.getUser()
-  if (!user) return Response.json({ error: 'Not signed in' }, { status: 401 })
+  const user = await getRequestUser(req)
+  if (!user) return unauthorized()
+  if (rateLimited('upload:' + user.id, 120, 60_000)) return tooManyRequests()
 
   const form = await req.formData()
   const file = form.get('file')
   const path = form.get('path')
-  if (!file || !path || typeof path !== 'string') {
+  if (!file || typeof file === 'string' || !path) {
     return Response.json({ error: 'Missing file or path' }, { status: 400 })
   }
-  // Keep uploads scoped to a clean relative key — no leading slashes, no ..
-  const key = path.replace(/^\/+/, '').replace(/\.\./g, '')
+
+  const checked = validateUploadKey(path, user.id)
+  if (checked.error) return Response.json({ error: checked.error }, { status: 400 })
+  if (file.size > MAX_BYTES) return Response.json({ error: 'File too large' }, { status: 413 })
+  if (!isAllowedContentType(file.type)) return Response.json({ error: 'File type not allowed' }, { status: 415 })
 
   try {
     const bytes = Buffer.from(await file.arrayBuffer())
-    const { publicUrl } = await uploadImageDirect(key, bytes, file.type)
+    const { publicUrl } = await uploadImageDirect(checked.key, bytes, file.type)
     return Response.json({ publicUrl })
   } catch (err) {
-    // Temporary: include masked config so a failed upload tells us directly
-    // what endpoint/credentials were actually used, instead of guessing.
-    // Nothing secret is exposed — just prefix/suffix + length of each value.
-    return Response.json({ error: (err.message || 'Upload failed') + ' | debug: ' + JSON.stringify(debugConfig()) }, { status: 500 })
+    // Details stay in the server log only — never sent back to the client.
+    console.error('Upload failed:', err)
+    return Response.json({ error: 'Upload failed' }, { status: 500 })
   }
 }
