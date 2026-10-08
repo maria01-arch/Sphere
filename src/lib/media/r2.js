@@ -15,6 +15,17 @@ const ACCOUNT_ID = process.env.R2_ACCOUNT_ID?.trim()
 const ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID?.trim()
 const SECRET_ACCESS_KEY = process.env.R2_SECRET_ACCESS_KEY?.trim()
 const BUCKET_NAME = process.env.R2_BUCKET_NAME?.trim()
+// Tells phones and browsers they may keep an uploaded file and reuse it, rather
+// than downloading it again every time it appears. Upload names are unique
+// (they contain a timestamp), so a file never changes once uploaded — a year
+// is safe. The exception: avatars/ and groups/ are written to the same name
+// again when someone changes their picture, so those only get an hour.
+function cacheControlFor(key) {
+  return /^(avatars|groups)\//.test(key)
+    ? 'public, max-age=3600'
+    : 'public, max-age=31536000, immutable'
+}
+
 const PUBLIC_BASE_URL = process.env.R2_PUBLIC_BASE_URL?.trim().replace(/\/+$/, '')
 
 let _client = null
@@ -61,6 +72,7 @@ export async function createImageUploadUrl(key, contentType) {
     Bucket: BUCKET_NAME,
     Key: key,
     ContentType: contentType || 'application/octet-stream',
+    CacheControl: cacheControlFor(key),
   })
   const uploadUrl = await getSignedUrl(client(), command, { expiresIn: 300 })
   const publicUrl = `${PUBLIC_BASE_URL}/${key}`
@@ -78,6 +90,7 @@ export async function uploadImageDirect(key, bytes, contentType) {
     Key: key,
     Body: bytes,
     ContentType: contentType || 'application/octet-stream',
+    CacheControl: cacheControlFor(key),
   })
   await client().send(command)
   return { publicUrl: `${PUBLIC_BASE_URL}/${key}` }
@@ -107,7 +120,7 @@ export async function finishChunkedUpload(uploadId, totalChunks, finalKey, conte
     buffers.push(Buffer.from(await res.Body.transformToByteArray()))
   }
   const full = Buffer.concat(buffers)
-  await client().send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: finalKey, Body: full, ContentType: contentType || 'application/octet-stream' }))
+  await client().send(new PutObjectCommand({ Bucket: BUCKET_NAME, Key: finalKey, Body: full, ContentType: contentType || 'application/octet-stream', CacheControl: cacheControlFor(finalKey) }))
   // Best-effort cleanup — if this fails the temp objects just sit there
   // (harmless, tiny, and R2 has no expiring-object lifecycle rule set up
   // yet), so it's not worth failing the whole upload over.
