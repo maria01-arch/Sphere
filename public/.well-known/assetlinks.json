@@ -24,5 +24,17 @@
         "C0:AB:56:53:8D:85:99:20:AA:98:35:7B:AB:77:6B:BF:3B:7B:C0:E2:04:8A:49:77:12:FE:FA:03:A2:DA:D3:BA"
       ]
     }
+  },
+  {
+    "relation": [
+      "delegate_permission/common.handle_all_urls"
+    ],
+    "target": {
+      "namespace": "android_app",
+      "package_name": "com.xchordlabs.flitters",
+      "sha256_cert_fingerprints": [
+        "E4:68:40:9D:1A:13:F3:FF:DB:4A:43:A0:0E:13:20:F4:23:72:B9:75:31:E4:93:88:08:1E:C7:C7:77:D3:8F:22"
+      ]
+    }
   }
 ]
