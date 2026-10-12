@@ -1596,7 +1596,7 @@ function AdCard({ ad }) {
     <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
       <style>{'@keyframes adCtaPulse{0%,100%{box-shadow:0 0 0 0 rgba(91,156,246,0.5)}50%{box-shadow:0 0 0 8px rgba(91,156,246,0)}}'}</style>
       <div style={{display:'flex',gap:12}}>
-        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
+        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0,overflow:'hidden'}}>{ad.advertiser_avatar_url?<img src={ad.advertiser_avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:(ad.advertiser_name?.[0]||'A')}</div>
         <div style={{flex:1,minWidth:0}}>
           <div style={{display:'flex',gap:6,alignItems:'flex-start',justifyContent:'space-between',marginBottom:6}}>
             <span style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
@@ -2968,7 +2968,7 @@ function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId 
           <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
           <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
             <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
-              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
+              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff',overflow:'hidden'}}>{currentAd.advertiser_avatar_url?<img src={currentAd.advertiser_avatar_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:(currentAd.advertiser_name?.[0]||'A')}</div>
               <div style={{display:'flex',gap:6,alignItems:'center'}}>
                 <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{currentAd.advertiser_name}</span>
                 <span style={{background:'rgba(247,183,49,0.2)',border:'1px solid rgba(247,183,49,0.4)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
@@ -3684,8 +3684,17 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   const [adCtaText, setAdCtaText] = useState('')
   const [adType, setAdType] = useState('post')
   const [mediaFile, setMediaFile] = useState(null)
+  const [avatarFile, setAvatarFile] = useState(null)
+  const avatarRef = useRef(null)
   const [saving, setSaving] = useState(false)
   const fileRef = useRef(null)
+
+  // Moderation state: which reports have their content previewed, which has
+  // its ban-duration picker open, and the offender's id once the content is
+  // gone (so a post can be deleted AND its author still banned).
+  const [previews, setPreviews] = useState({})
+  const [banFor, setBanFor] = useState(null)
+  const [offenders, setOffenders] = useState({})
 
   const [announcements, setAnnouncements] = useState([])
   const [annMessage, setAnnMessage] = useState('')
@@ -3700,6 +3709,65 @@ function AdminPanel({ currentUser, supabase, onBack }) {
   const loadReports = async () => {
     const {data} = await supabase.from('reports').select('*,reporter:profiles!reporter_id(display_name,username),reported_user:profiles!reported_user_id(display_name,username)').order('created_at',{ascending:false})
     setReports(data||[])
+  }
+
+  const callModerate = async (body) => {
+    const res = await fetch('/api/admin/moderate',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify(body)})
+    const j = await res.json().catch(()=>({}))
+    if(!res.ok) throw new Error(j.error||('Error '+res.status))
+    return j
+  }
+
+  // Fetches whatever the report points at, for the preview box.
+  const loadReportTarget = async (r) => {
+    if(r.reported_post_id){
+      const {data} = await supabase.from('posts').select('id,user_id,content,image_url,video_url,created_at,author:profiles(display_name,username)').eq('id',r.reported_post_id).maybeSingle()
+      return data ? {kind:'Post',...data} : {kind:'Post',missing:true}
+    }
+    if(r.reported_reel_id){
+      const {data} = await supabase.from('reels').select('id,user_id,video_url,caption,created_at,author:profiles(display_name,username)').eq('id',r.reported_reel_id).maybeSingle()
+      return data ? {kind:'Reel',content:data.caption,...data} : {kind:'Reel',missing:true}
+    }
+    if(r.reported_comment_id){
+      const {data} = await supabase.from('comments').select('id,user_id,content,created_at,author:profiles!comments_user_id_fkey(display_name,username)').eq('id',r.reported_comment_id).maybeSingle()
+      return data ? {kind:'Comment',...data} : {kind:'Comment',missing:true}
+    }
+    return null
+  }
+
+  const previewReport = async (r) => {
+    if(previews[r.id]){ setPreviews(prev=>{const n={...prev};delete n[r.id];return n}); return }
+    const t = await loadReportTarget(r)
+    if(t) setPreviews(prev=>({...prev,[r.id]:t}))
+  }
+
+  const offenderOf = async (r) => {
+    if(r.reported_user_id) return r.reported_user_id
+    if(offenders[r.id]) return offenders[r.id]
+    const t = previews[r.id] || await loadReportTarget(r)
+    return t?.user_id || null
+  }
+
+  const deleteReportedPost = async (r) => {
+    if(!window.confirm('Delete this post for everyone? This cannot be undone.')) return
+    try {
+      const j = await callModerate({action:'delete_post',postId:r.reported_post_id})
+      setReports(prev=>prev.map(x=>x.reported_post_id===r.reported_post_id?{...x,status:'actioned'}:x))
+      setOffenders(prev=>{const n={...prev}; reports.filter(x=>x.reported_post_id===r.reported_post_id).forEach(x=>{n[x.id]=j.userId}); return n})
+      setPreviews(prev=>({...prev,[r.id]:{kind:'Post',missing:true,deleted:true}}))
+    } catch(err){ alert('Could not delete: '+err.message) }
+  }
+
+  const banOffender = async (r, hours, label) => {
+    const userId = await offenderOf(r)
+    if(!userId){ alert('Could not work out who posted this (it may already be deleted). Ban from a report on their profile instead.'); return }
+    if(!window.confirm('Ban this user for '+label+'? They will not be able to sign in until the ban ends.')) return
+    try {
+      await callModerate({action:'ban_user',userId,hours})
+      await markReportStatus(r,'actioned')
+      setBanFor(null)
+      alert('User banned for '+label+'.')
+    } catch(err){ alert('Could not ban: '+err.message) }
   }
 
   const markReportStatus = async (report, status) => {
@@ -3761,7 +3829,13 @@ function AdminPanel({ currentUser, supabase, onBack }) {
       if(adType==='reel') videoUrl = urlData.publicUrl
       else imageUrl = urlData.publicUrl
     }
+    let avatarUrl = null
+    if(avatarFile) {
+      try { avatarUrl = (await uploadToR2(avatarFile, 'ads/avatar_'+Date.now()+'.'+avatarFile.name.split('.').pop())).publicUrl }
+      catch(err) { alert('Profile picture upload failed: '+err.message); setSaving(false); return }
+    }
     const {error} = await supabase.from('ads').insert({
+      ...(avatarUrl?{advertiser_avatar_url:avatarUrl}:{}),
       advertiser_name: advertiserName.trim(),
       content: content.trim(),
       image_url: imageUrl,
@@ -3773,7 +3847,7 @@ function AdminPanel({ currentUser, supabase, onBack }) {
     })
     if(error) alert('Error: '+error.message)
     else {
-      setAdvertiserName(''); setContent(''); setLinkUrl(''); setAdCtaText(''); setMediaFile(null); setShowForm(false)
+      setAdvertiserName(''); setContent(''); setLinkUrl(''); setAdCtaText(''); setMediaFile(null); setAvatarFile(null); setShowForm(false)
       loadAds()
     }
     setSaving(false)
@@ -3801,6 +3875,13 @@ function AdminPanel({ currentUser, supabase, onBack }) {
         <div style={{display:'flex',gap:8}}>
           <button onClick={()=>setAdType('post')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='post'?'#F7B731':'var(--bg-card-2)'),background:adType==='post'?'rgba(247,183,49,0.15)':'transparent',color:adType==='post'?'#F7B731':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><FileText size={15}/> Feed Post</button>
           <button onClick={()=>setAdType('reel')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='reel'?'#F7B731':'var(--bg-card-2)'),background:adType==='reel'?'rgba(247,183,49,0.15)':'transparent',color:adType==='reel'?'#F7B731':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Clapperboard size={15}/> Reel Video</button>
+        </div>
+ <div style={{display:'flex',alignItems:'center',gap:12}}>
+          <div onClick={()=>avatarRef.current?.click()} style={{width:56,height:56,borderRadius:'50%',overflow:'hidden',flexShrink:0,cursor:'pointer',background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.2)',display:'flex',alignItems:'center',justifyContent:'center'}}>
+            {avatarFile?<img src={URL.createObjectURL(avatarFile)} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>:<ImageIcon size={22}/>}
+          </div>
+          <span style={{color:'var(--text-secondary)',fontSize:13}}>{avatarFile?avatarFile.name:'Profile picture (optional — shown instead of the first letter)'}</span>
+          <input ref={avatarRef} type="file" accept="image/*" onChange={e=>setAvatarFile(e.target.files[0]||null)} style={{display:'none'}}/>
         </div>
         <input value={advertiserName} onChange={e=>setAdvertiserName(e.target.value)} placeholder="Advertiser/Brand name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
         <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Ad text/caption" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
@@ -3934,6 +4015,26 @@ function AdminPanel({ currentUser, supabase, onBack }) {
                   <span style={{flexShrink:0,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:8,background:r.status==='pending'?'rgba(247,183,49,0.15)':r.status==='actioned'?'rgba(0,201,167,0.15)':'var(--bg-card)',color:r.status==='pending'?'#F7B731':r.status==='actioned'?'#00C9A7':'var(--text-quaternary)'}}>{r.status.toUpperCase()}</span>
                 </div>
                 {r.details&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:'0 0 10px',wordBreak:'break-word'}}>{r.details}</p>}
+                {(r.reported_post_id||r.reported_reel_id||r.reported_comment_id)&&<div style={{display:'flex',gap:8,flexWrap:'wrap',marginBottom:10}}>
+                  <button onClick={()=>previewReport(r)} style={{background:'rgba(91,156,246,0.12)',border:'none',borderRadius:10,padding:'6px 12px',color:'#5B9CF6',fontSize:12,fontWeight:700,cursor:'pointer'}}>{previews[r.id]?'Hide preview':'Preview'}</button>
+                  {r.reported_post_id&&<button onClick={()=>deleteReportedPost(r)} style={{background:'rgba(255,71,87,0.12)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>Delete post</button>}
+                </div>}
+                {previews[r.id]&&<div style={{background:'var(--bg-card)',border:'1px solid var(--border-color)',borderRadius:14,padding:12,marginBottom:10}}>
+                  {previews[r.id].missing
+                    ? <p style={{margin:0,color:'var(--text-secondary)',fontSize:13}}>{previews[r.id].deleted?'This post has been deleted.':previews[r.id].kind+' no longer exists.'}</p>
+                    : <>
+                        <div style={{fontSize:12,color:'var(--text-quaternary)',marginBottom:6}}>{previews[r.id].kind} by {previews[r.id].author?.display_name||'?'} (@{previews[r.id].author?.username||'?'})</div>
+                        {previews[r.id].content&&<p style={{margin:'0 0 8px',fontSize:14,whiteSpace:'pre-wrap',wordBreak:'break-word'}}>{previews[r.id].content}</p>}
+                        {previews[r.id].image_url&&<img src={previews[r.id].image_url} alt="" style={{maxWidth:'100%',maxHeight:320,borderRadius:10,display:'block'}}/>}
+                        {previews[r.id].video_url&&<video src={previews[r.id].video_url} controls playsInline style={{maxWidth:'100%',maxHeight:320,borderRadius:10,display:'block'}}/>}
+                      </>}
+                </div>}
+                {(r.reported_user_id||r.reported_post_id||r.reported_reel_id||r.reported_comment_id)&&<div style={{marginBottom:10}}>
+                  <button onClick={()=>setBanFor(banFor===r.id?null:r.id)} style={{background:'rgba(255,71,87,0.12)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>{banFor===r.id?'Cancel ban':'Ban user…'}</button>
+                  {banFor===r.id&&<div style={{display:'flex',gap:6,flexWrap:'wrap',marginTop:8}}>
+                    {[['1 day',24],['3 days',72],['7 days',168],['30 days',720],['Permanent',null]].map(([label,h])=><button key={label} onClick={()=>banOffender(r,h,label)} style={{background:'var(--bg-card)',border:'1px solid rgba(255,71,87,0.4)',borderRadius:10,padding:'6px 10px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>{label}</button>)}
+                  </div>}
+                </div>}
                 {r.status==='pending'&&<div style={{display:'flex',gap:8}}>
                   <button onClick={()=>markReportStatus(r,'actioned')} style={{background:'rgba(0,201,167,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#00C9A7',fontSize:12,fontWeight:700,cursor:'pointer'}}>Mark Actioned</button>
                   <button onClick={()=>markReportStatus(r,'reviewed')} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer'}}>Dismiss</button>
