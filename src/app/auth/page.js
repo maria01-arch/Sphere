@@ -1,0 +1,569 @@
+'use client'
+import { useState, useRef, useEffect } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
+import { Camera, Check, X as XIcon, Loader2 } from 'lucide-react'
+
+const COUNTRIES = [
+  'Nigeria','United States','United Kingdom','Canada','Ghana','South Africa','Kenya','Egypt',
+  'India','Pakistan','Bangladesh','Germany','France','Spain','Italy','Netherlands','Sweden',
+  'Brazil','Mexico','Argentina','Colombia','Australia','New Zealand','Japan','South Korea',
+  'China','Philippines','Indonesia','Malaysia','Singapore','UAE','Saudi Arabia','Turkey',
+  'Morocco','Ethiopia','Uganda','Tanzania','Rwanda','Cameroon','Ivory Coast','Senegal','Other'
+]
+
+const XLogo = ({ size = 52 }) => (
+  <img src={FLITTERS_MARK} alt="Flitters" width={size} height={size} style={{ objectFit: 'contain' }} />
+)
+
+const isEmail = (v) => v.includes('@')
+
+export default function AuthPage() {
+  const [mode, setMode] = useState('login') // 'login' | 'signup' | 'forgot'
+  const [step, setStep] = useState(1) // signup wizard step 1-7 (7 = OTP, email path only)
+
+  // forgot-password flow — matches the signup OTP pattern instead of an email
+  // link, since a link opens in whatever the device's default browser is
+  // (not necessarily the app/browser the reset was requested from), which
+  // broke reliably across contexts. A code typed back into the app has no
+  // such dependency.
+  const [forgotStep, setForgotStep] = useState('email') // 'email' | 'otp' | 'newpassword'
+  const [resetOtpCode, setResetOtpCode] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [newPasswordConfirm, setNewPasswordConfirm] = useState('')
+
+  // step 1
+  const [displayName, setDisplayName] = useState('')
+  const [username, setUsername] = useState('')
+  // 'idle' | 'checking' | 'available' | 'taken' | 'invalid'
+  const [usernameStatus, setUsernameStatus] = useState('idle')
+  const usernameCheckRef = useRef(0) // guards against a slow older check overwriting a newer one's result
+  // step 2
+  const [dob, setDob] = useState('')
+  const [country, setCountry] = useState('')
+  // step 3 — explicit email vs phone path
+  const [contactMethod, setContactMethod] = useState('email') // 'email' | 'phone'
+  const [email, setEmail] = useState('')
+  const [phone, setPhone] = useState('')
+  // step 4
+  const [password, setPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  // step 5 — profile picture
+  const [avatarFile, setAvatarFile] = useState(null)
+  const [avatarPreview, setAvatarPreview] = useState('')
+  const fileRef = useRef(null)
+  // step 6 — policy
+  const [acceptedPolicy, setAcceptedPolicy] = useState(false)
+  // step 7 — OTP (email signups only)
+  const [otpCode, setOtpCode] = useState('')
+  const [pendingEmail, setPendingEmail] = useState('')
+  const [pendingSignupData, setPendingSignupData] = useState(null)
+
+  // login / forgot
+  const [loginContact, setLoginContact] = useState('')
+  const [loginPassword, setLoginPassword] = useState('')
+
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState('')
+  const [success, setSuccess] = useState('')
+  const supabase = createClient()
+
+  const totalSteps = 6
+
+  // Live username-availability check while typing, debounced — catches a
+  // taken username here instead of at the very end of the wizard, where it
+  // used to surface as an opaque "Database error saving new user" only
+  // after the account-creation call had already failed.
+  useEffect(() => {
+    const trimmed = username.trim().toLowerCase()
+    if (!trimmed) { setUsernameStatus('idle'); return }
+    if (trimmed.length < 3) { setUsernameStatus('invalid'); return }
+    if (!/^[a-z0-9_]+$/.test(trimmed)) { setUsernameStatus('invalid'); return }
+
+    setUsernameStatus('checking')
+    const myCheck = ++usernameCheckRef.current
+    const timer = setTimeout(async () => {
+      const { data, error } = await supabase.from('profiles').select('id').eq('username', trimmed).maybeSingle()
+      if (myCheck !== usernameCheckRef.current) return // a newer keystroke already started its own check
+      if (error) { setUsernameStatus('idle'); return } // fail open — don't block signup over a flaky check; the DB unique constraint is still the real backstop
+      setUsernameStatus(data ? 'taken' : 'available')
+    }, 450)
+    return () => clearTimeout(timer)
+  }, [username])
+
+  const goToLogin = () => { setMode('login'); setError(''); setSuccess('') }
+  const goToSignup = () => { setMode('signup'); setStep(1); setError(''); setSuccess('') }
+  const goToForgot = () => { setMode('forgot'); setForgotStep('email'); setResetOtpCode(''); setNewPassword(''); setNewPasswordConfirm(''); setError(''); setSuccess('') }
+
+  const handleAvatarPick = (file) => {
+    if (!file) return
+    setAvatarFile(file)
+    setAvatarPreview(URL.createObjectURL(file))
+  }
+
+  const validateStep = () => {
+    setError('')
+    if (step === 1) {
+      if (!displayName.trim()) return 'Please enter your full name'
+      if (!username.trim() || username.trim().length < 3) return 'Username must be at least 3 characters'
+      if (usernameStatus === 'invalid') return 'Usernames can only contain letters, numbers, and underscores'
+      if (usernameStatus === 'taken') return 'That username is already taken'
+      if (usernameStatus === 'checking') return 'Still checking that username — one sec'
+      return ''
+    }
+    if (step === 2) {
+      if (!dob) return 'Please enter your date of birth'
+      const age = (Date.now() - new Date(dob).getTime()) / (1000 * 60 * 60 * 24 * 365.25)
+      if (age < 13) return 'You must be at least 13 years old to join Flitters'
+      if (!country) return 'Please select your country'
+      return ''
+    }
+    if (step === 3) {
+      if (contactMethod === 'email') {
+        if (!email.trim() || !isEmail(email)) return 'Please enter a valid email address'
+      } else {
+        if (!phone.trim() || phone.trim().length < 7) return 'Please enter a valid mobile number'
+      }
+      return ''
+    }
+    if (step === 4) {
+      if (!password || password.length < 6) return 'Password must be at least 6 characters'
+      if (password !== confirmPassword) return 'Passwords do not match'
+      return ''
+    }
+    // step 5 (avatar) has no required validation — skippable
+    return ''
+  }
+
+  const handleNext = () => {
+    const err = validateStep()
+    if (err) { setError(err); return }
+    setError('')
+    setStep(s => s + 1)
+  }
+
+  const handleBack = () => {
+    setError('')
+    if (step === 1) { goToLogin(); return }
+    setStep(s => s - 1)
+  }
+
+  const finishAccountSetup = async (userId) => {
+    // Optional profile picture upload — skip silently on any failure, don't block account creation
+    if (avatarFile && userId) {
+      try {
+        const ext = avatarFile.name.split('.').pop()
+        const path = `avatars/${userId}.${ext}`
+        const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true })
+        if (!upErr) {
+          const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
+          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl + '?v=' + Date.now() }).eq('id', userId)
+        }
+      } catch { /* non-fatal — account already created */ }
+    }
+    window.location.href = new URLSearchParams(window.location.search).get('next') || '/'
+  }
+
+  const handleCreateAccount = async () => {
+    if (!acceptedPolicy) { setError('Please accept the Privacy Policy to continue'); return }
+    setError(''); setLoading(true)
+    try {
+      const signupData = {
+        display_name: displayName.trim(),
+        username: username.toLowerCase().replace(/\s/g, ''),
+        date_of_birth: dob,
+        location: country,
+      }
+
+      if (contactMethod === 'email') {
+        const trimmedEmail = email.trim()
+        const { data: signUpResult, error: signUpError } = await supabase.auth.signUp({
+          email: trimmedEmail,
+          password,
+          options: { data: signupData }
+        })
+        if (signUpError) throw signUpError
+
+        if (signUpResult?.session) {
+          // Email confirmation isn't required on this project (or already satisfied) —
+          // we're already signed in, so skip the OTP step entirely.
+          await finishAccountSetup(signUpResult.user?.id)
+          return
+        }
+
+        // A session wasn't returned, meaning Supabase is holding for email
+        // confirmation — move to the code-entry step.
+        setPendingEmail(trimmedEmail)
+        setPendingSignupData(signupData)
+        setLoading(false)
+        setStep(7)
+        return
+      } else {
+        // Phone path — no SMS provider configured yet, so we skip verification
+        // entirely and use a placeholder email under the hood, same as before.
+        const trimmedPhone = phone.trim()
+        const placeholderEmail = `${trimmedPhone.replace(/[^0-9]/g, '')}@phone.flitters.placeholder`
+        const { error: signUpError } = await supabase.auth.signUp({
+          email: placeholderEmail,
+          password,
+          options: { data: { ...signupData, phone: trimmedPhone } }
+        })
+        if (signUpError) throw signUpError
+
+        const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({ email: placeholderEmail, password })
+        if (signInError) throw signInError
+
+        await finishAccountSetup(signInData?.user?.id)
+        return
+      }
+    } catch (e) {
+      const msg = e.message || ''
+      // Covers the rare race where someone else grabs the same username
+      // between the live check above and this actual signup call — same
+      // friendly message instead of the raw Postgres/trigger error text.
+      if (/duplicate key|already exists|profiles_username/i.test(msg)) {
+        setError('That username was just taken — please pick another.')
+        setUsernameStatus('taken')
+        setStep(1)
+      } else {
+        setError(msg)
+      }
+    }
+    setLoading(false)
+  }
+
+  const handleVerifyOtp = async () => {
+    if (!otpCode.trim() || otpCode.trim().length < 6) { setError('Enter the code from your email'); return }
+    setError(''); setLoading(true)
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: pendingEmail,
+        token: otpCode.trim(),
+        type: 'signup'
+      })
+      if (error) throw error
+      await finishAccountSetup(data?.user?.id)
+    } catch (e) {
+      setError(e.message)
+    }
+    setLoading(false)
+  }
+
+  const handleResendOtp = async () => {
+    setError(''); setSuccess(''); setLoading(true)
+    try {
+      const { error } = await supabase.auth.resend({ type: 'signup', email: pendingEmail })
+      if (error) throw error
+      setSuccess('Code resent! Check your inbox.')
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const handleLogin = async () => {
+    setError(''); setLoading(true)
+    try {
+      const trimmed = loginContact.trim()
+      const usingEmail = isEmail(trimmed)
+      const loginEmailValue = usingEmail ? trimmed : `${trimmed.replace(/[^0-9]/g, '')}@phone.flitters.placeholder`
+      const { error } = await supabase.auth.signInWithPassword({ email: loginEmailValue, password: loginPassword })
+      if (error) throw error
+      window.location.href = new URLSearchParams(window.location.search).get('next') || '/'
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const handleForgot = async () => {
+    setError(''); setSuccess(''); setLoading(true)
+    try {
+      const trimmed = loginContact.trim()
+      const usingEmail = isEmail(trimmed)
+      if (!usingEmail) { setError('Password reset requires an email address. Please enter the email on your account.'); setLoading(false); return }
+      // redirectTo is kept as a fallback for anyone who ends up on the email
+      // link instead of the code (e.g. an email client that only shows the
+      // button) — the code below is the primary, reliable path now.
+      const { error } = await supabase.auth.resetPasswordForEmail(trimmed, {
+        redirectTo: window.location.origin + '/auth/reset'
+      })
+      if (error) throw error
+      setForgotStep('otp')
+      setSuccess(forgotStep === 'otp' ? 'Code resent! Check your inbox.' : '')
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const handleVerifyResetOtp = async () => {
+    if (!resetOtpCode.trim() || resetOtpCode.trim().length < 6) { setError('Enter the code from your email'); return }
+    setError(''); setLoading(true)
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: loginContact.trim(),
+        token: resetOtpCode.trim(),
+        type: 'recovery'
+      })
+      if (error) throw error
+      setError(''); setSuccess('')
+      setForgotStep('newpassword')
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const handleSetNewPassword = async () => {
+    if (newPassword.length < 6) { setError('Password must be at least 6 characters'); return }
+    if (newPassword !== newPasswordConfirm) { setError('Passwords do not match'); return }
+    setError(''); setLoading(true)
+    try {
+      const { error } = await supabase.auth.updateUser({ password: newPassword })
+      if (error) throw error
+      setSuccess('Password updated! Redirecting...')
+      setTimeout(() => { window.location.href = '/' }, 1200)
+    } catch (e) { setError(e.message) }
+    setLoading(false)
+  }
+
+  const inp = { width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', color: '#fff', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
+  const label = { color: '#888', fontSize: 12, display: 'block', marginBottom: 6, marginTop: 2 }
+  const primaryBtn = { width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 4 }
+  const secondaryBtn = { width: '100%', padding: '14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10 }
+  const skipBtn = { width: '100%', padding: '12px', background: 'none', border: 'none', color: '#666', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 6 }
+  const switchLink = { textAlign: 'center', marginTop: 2, marginBottom: 14, color: '#888', fontSize: 13, cursor: 'pointer' }
+
+  const stepTitles = {
+    1: 'Your name',
+    2: 'Date of birth & country',
+    3: contactMethod === 'email' ? 'Your email' : 'Your mobile number',
+    4: 'Create a password',
+    5: 'Add a profile picture',
+    6: 'Almost done',
+    7: 'Verify your email',
+  }
+
+  return (
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
+
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
+          <XLogo size={52} />
+          <div>
+            <div style={{ fontWeight: 900, fontSize: 26, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</div>
+            <div style={{ fontSize: 10, color: '#444', marginTop: -2 }}>formerly known as Sphere</div>
+          </div>
+        </div>
+
+        {/* ---------- LOGIN ---------- */}
+        {mode === 'login' && <>
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Welcome back</h1>
+          <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Sign in to your account</p>
+
+          <input style={inp} type="text" placeholder="Email or phone number" value={loginContact} onChange={e => setLoginContact(e.target.value)} />
+          <input style={inp} type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
+
+          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+
+          <button onClick={handleLogin} disabled={loading} style={primaryBtn}>
+            {loading ? 'Please wait...' : 'Sign In'}
+          </button>
+
+          <p style={{ textAlign: 'center', marginTop: 14, marginBottom: 0 }}>
+            <span onClick={goToForgot} style={{ color: '#888', fontSize: 13, cursor: 'pointer' }}>Forgot password?</span>
+          </p>
+          <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+            {"Don't have an account? "}<span onClick={goToSignup} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign up</span>
+          </p>
+        </>}
+
+        {/* ---------- FORGOT ---------- */}
+        {mode === 'forgot' && <>
+          {forgotStep === 'email' && <>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Reset Password</h1>
+            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Enter your account email — we'll send you a code</p>
+
+            <input style={inp} type="text" placeholder="Email address" value={loginContact} onChange={e => setLoginContact(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleForgot()} />
+
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+
+            <button onClick={handleForgot} disabled={loading} style={primaryBtn}>
+              {loading ? 'Please wait...' : 'Send Code'}
+            </button>
+
+            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+              <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
+            </p>
+          </>}
+
+          {forgotStep === 'otp' && <>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Enter Code</h1>
+            <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              We sent a code to <strong style={{ color: '#fff' }}>{loginContact}</strong>. Enter it below.
+            </p>
+
+            <input style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={10} placeholder="0000000000" value={resetOtpCode} onChange={e => setResetOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyResetOtp()} />
+
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+
+            <button onClick={handleVerifyResetOtp} disabled={loading} style={primaryBtn}>
+              {loading ? 'Verifying...' : 'Verify Code'}
+            </button>
+
+            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+              {"Didn't get a code? "}<span onClick={handleForgot} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Resend</span>
+            </p>
+            <p style={{ textAlign: 'center', marginTop: 8, color: '#555', fontSize: 14 }}>
+              <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
+            </p>
+          </>}
+
+          {forgotStep === 'newpassword' && <>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>New Password</h1>
+            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Choose a new password for your account</p>
+
+            <input style={inp} type="password" placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
+            <input style={inp} type="password" placeholder="Confirm new password" value={newPasswordConfirm} onChange={e => setNewPasswordConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSetNewPassword()} />
+
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+
+            <button onClick={handleSetNewPassword} disabled={loading} style={primaryBtn}>
+              {loading ? 'Saving...' : 'Set New Password'}
+            </button>
+          </>}
+        </>}
+
+        {/* ---------- SIGNUP WIZARD ---------- */}
+        {mode === 'signup' && <>
+          {step <= totalSteps && <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
+            {Array.from({ length: totalSteps }, (_, i) => i + 1).map(n => (
+              <div key={n} style={{ flex: 1, height: 4, borderRadius: 2, background: n <= step ? 'linear-gradient(135deg,#A855F7,#06B6D4)' : 'rgba(255,255,255,0.08)' }} />
+            ))}
+          </div>}
+
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>{stepTitles[step]}</h1>
+          {step <= totalSteps && <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Step {step} of {totalSteps}</p>}
+
+          {step === 1 && <>
+            <label style={label}>Full name</label>
+            <input style={inp} placeholder="e.g. Ada Lovelace" value={displayName} onChange={e => setDisplayName(e.target.value)} />
+            <label style={label}>Username</label>
+            <div style={{position:'relative'}}>
+              <input style={{...inp,paddingRight:36}} placeholder="e.g. adalovelace" value={username} onChange={e => setUsername(e.target.value.replace(/\s/g, ''))} />
+              <div style={{position:'absolute',right:12,top:13,display:'flex'}}>
+                {usernameStatus==='checking'&&<Loader2 size={17} color="#888" className="xspin"/>}
+                {usernameStatus==='available'&&<Check size={17} color="#4ADE80"/>}
+                {(usernameStatus==='taken'||usernameStatus==='invalid')&&<XIcon size={17} color="#F87171"/>}
+              </div>
+            </div>
+            {usernameStatus==='taken'&&<p style={{color:'#F87171',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is already taken</p>}
+            {usernameStatus==='available'&&<p style={{color:'#4ADE80',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is available</p>}
+            {usernameStatus==='invalid'&&username.trim().length>=3&&<p style={{color:'#F87171',fontSize:12,margin:'-8px 0 12px'}}>Only letters, numbers, and underscores</p>}
+          </>}
+
+          {step === 2 && <>
+            <label style={label}>Date of birth</label>
+            <input style={inp} type="date" value={dob} onChange={e => setDob(e.target.value)} max={new Date().toISOString().split('T')[0]} />
+            <label style={label}>Country</label>
+            <select style={{ ...inp, appearance: 'auto' }} value={country} onChange={e => setCountry(e.target.value)}>
+              <option value="" style={{ color: '#000' }}>Select your country</option>
+              {COUNTRIES.map(c => <option key={c} value={c} style={{ color: '#000' }}>{c}</option>)}
+            </select>
+            <p style={{ color: '#444', fontSize: 12, marginTop: -6 }}>This becomes your Location — editable anytime in Settings.</p>
+          </>}
+
+          {step === 3 && contactMethod === 'email' && <>
+            <label style={label}>Email address</label>
+            <input style={inp} type="email" placeholder="you@example.com" value={email} onChange={e => setEmail(e.target.value)} />
+            <p style={switchLink} onClick={() => { setContactMethod('phone'); setError('') }}>Sign up with mobile number instead</p>
+          </>}
+
+          {step === 3 && contactMethod === 'phone' && <>
+            <label style={label}>Mobile number</label>
+            <input style={inp} type="tel" placeholder="+234 801 234 5678" value={phone} onChange={e => setPhone(e.target.value)} />
+            <p style={{ color: '#444', fontSize: 12, marginTop: -6, marginBottom: 14 }}>SMS verification isn't available yet — your number is saved to your profile.</p>
+            <p style={switchLink} onClick={() => { setContactMethod('email'); setError('') }}>Sign up with email instead</p>
+          </>}
+
+          {step === 4 && <>
+            <label style={label}>Password</label>
+            <input style={inp} type="password" placeholder="At least 6 characters" value={password} onChange={e => setPassword(e.target.value)} />
+            <label style={label}>Confirm password</label>
+            <input style={inp} type="password" placeholder="Re-enter your password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleNext()} />
+          </>}
+
+          {step === 5 && <>
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 14, padding: '8px 0 4px' }}>
+              <div onClick={() => fileRef.current?.click()} style={{
+                width: 96, height: 96, borderRadius: '50%', cursor: 'pointer',
+                background: avatarPreview ? `url(${avatarPreview}) center/cover` : 'rgba(255,255,255,0.06)',
+                border: '2px dashed rgba(255,255,255,0.2)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                fontSize: 28, color: '#555'
+              }}>
+                {!avatarPreview && <Camera size={26}/>}
+              </div>
+              <input ref={fileRef} type="file" accept="image/*" style={{ display: 'none' }} onChange={e => handleAvatarPick(e.target.files?.[0])} />
+              <span onClick={() => fileRef.current?.click()} style={{ color: '#A855F7', fontSize: 14, fontWeight: 600, cursor: 'pointer' }}>
+                {avatarPreview ? 'Change photo' : 'Upload a photo'}
+              </span>
+            </div>
+          </>}
+
+          {step === 6 && <>
+            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 16, marginBottom: 18, fontSize: 13, color: '#aaa', lineHeight: 1.7, display: 'flex', gap: 12, alignItems: 'center' }}>
+              <div style={{
+                width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
+                background: avatarPreview ? `url(${avatarPreview}) center/cover` : 'linear-gradient(135deg,#A855F7,#06B6D4)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700
+              }}>
+                {!avatarPreview && displayName.trim().charAt(0).toUpperCase()}
+              </div>
+              <div>
+                <div><strong style={{ color: '#fff' }}>{displayName}</strong> · @{username}</div>
+                <div>{country} · {dob}</div>
+                <div>{contactMethod === 'email' ? email : phone}</div>
+              </div>
+            </div>
+            <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: 'pointer' }}>
+              <input type="checkbox" checked={acceptedPolicy} onChange={e => setAcceptedPolicy(e.target.checked)} style={{ marginTop: 3 }} />
+              <span style={{ color: '#aaa', fontSize: 13, lineHeight: 1.5 }}>
+                I agree to Flitters's <a href="/privacy" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Privacy Policy</a> and Terms of Service.
+              </span>
+            </label>
+          </>}
+
+          {step === 7 && <>
+            <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
+              We sent a verification code to <strong style={{ color: '#fff' }}>{pendingEmail}</strong>. Enter it below to finish creating your account.
+            </p>
+            <input style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={10} placeholder="0000000000" value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()} />
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            <button onClick={handleVerifyOtp} disabled={loading} style={primaryBtn}>
+              {loading ? 'Verifying...' : 'Verify & Create Account'}
+            </button>
+            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+              {"Didn't get a code? "}<span onClick={handleResendOtp} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Resend</span>
+            </p>
+          </>}
+
+          {step !== 7 && error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginTop: 10, marginBottom: 4 }}>{error}</div>}
+
+          {step < totalSteps
+            ? <button onClick={handleNext} style={primaryBtn}>Next</button>
+            : step === totalSteps
+              ? <button onClick={handleCreateAccount} disabled={loading || !acceptedPolicy} style={{ ...primaryBtn, opacity: (loading || !acceptedPolicy) ? 0.6 : 1 }}>
+                  {loading ? 'Creating account...' : 'Create Account'}
+                </button>
+              : null}
+
+          {step === 5 && <button onClick={() => setStep(s => s + 1)} style={skipBtn}>Skip for now</button>}
+
+          {step <= totalSteps && <button onClick={handleBack} style={secondaryBtn}>Back</button>}
+
+          {step === 1 && <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+            {"Already on Flitters? "}<span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign in</span>
+          </p>}
+        </>}
+
+      </div>
+    </div>
+  )
+}
