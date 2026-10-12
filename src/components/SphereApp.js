@@ -1,0 +1,5625 @@
+'use client'
+import { useEffect, useState, useRef, useCallback, memo } from 'react'
+import { createClient } from '@/lib/supabase/client'
+import { FLITTERS_MARK } from '@/lib/flitters-mark'
+import { uploadToR2, uploadVideoChunked, getVideoDuration } from '@/lib/media/upload'
+import { EMOJI_CATEGORIES } from '@/lib/emojiData'
+import HlsVideo from './HlsVideo'
+import { useTheme } from '@/lib/theme'
+import {
+  X, Check, CheckCheck, MessageCircle, MessageSquare, MapPin, Award, Settings,
+  Image as ImageIcon, User, Lock, Globe, Bell, LogOut, XCircle, CheckCircle2,
+  Camera, Send, Heart, Repeat2, Share, Trash2, CornerUpLeft, Zap, Copy, Pencil,
+  Video, Search, Palette, Megaphone, Users, Link2, Inbox, Save, Brain,
+  Loader2, Home, Clapperboard, ArrowRight, FileText, MoreHorizontal, AlertTriangle, Upload, Share2, Ban, Compass, Smile, BookOpen, Volume2, VolumeX,
+  Mic, Play, Pause, ShoppingBag, Tag, PackageX, CircleDollarSign
+} from 'lucide-react'
+const supabase = createClient()
+
+// Detects an @flittersai mention and, if found, asks the AI to reply as a
+// comment on the post — used after both posting and commenting, since you
+// can tag it either way.
+// Headers for API routes that require sign-in. Sends the Bearer token so it
+// works inside the Android WebView wrapper too, where cookies can be flaky.
+async function authJsonHeaders() {
+  const headers = { 'Content-Type': 'application/json' }
+  try {
+    const { data: { session } } = await createClient().auth.getSession()
+    if (session?.access_token) headers.Authorization = 'Bearer ' + session.access_token
+  } catch {}
+  return headers
+}
+
+const AI_MENTION_RE = /@flittersai\b/i
+// Solid "read-receipt blue" for the sender's own chat bubbles — replaces
+// the old blue/purple gradient, matching the flatter WhatsApp/Messenger
+// bubble look rather than the gradient used elsewhere in the app's UI.
+const TICK_BLUE = '#0B93F6'
+async function triggerAiMentionReply({ postId, postContent, mentionText, mentionCommentId }) {
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    const headers = { 'Content-Type': 'application/json' }
+    if (session?.access_token) headers.Authorization = `Bearer ${session.access_token}`
+    const res = await fetch('/api/flittersai/mention-reply', {
+      method: 'POST',
+      headers,
+      body: JSON.stringify({ postId, postContent, mentionText, mentionCommentId }),
+    })
+    if (!res.ok) {
+      const errJson = await res.json().catch(()=>({}))
+      // Temporary: surfaced directly since this can't be reproduced/tested
+      // from outside the app — remove once confirmed working reliably.
+      alert('AI mention failed (' + res.status + '): ' + (errJson.error || 'unknown error'))
+    }
+  } catch (err) {
+    alert('AI mention request failed to send: ' + err.message)
+  }
+}
+
+class ErrorBoundary extends (require('react').Component) {
+  constructor(props) { super(props); this.state = {error:null} }
+  static getDerivedStateFromError(e) { return {error:e} }
+  render() {
+    if(this.state.error) return (
+      <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',padding:20,fontFamily:'sans-serif'}}>
+        <h2 style={{color:'#FF4757'}}>App Error</h2>
+        <p style={{color:'var(--text-subtle)',fontSize:14,wordBreak:'break-word'}}>{this.state.error?.message}</p>
+        <pre style={{color:'var(--text-muted)',fontSize:11,overflow:'auto'}}>{this.state.error?.stack?.slice(0,500)}</pre>
+        <button onClick={()=>window.location.reload()} style={{marginTop:16,background:'#5B9CF6',border:'none',borderRadius:12,padding:'12px 24px',color:'var(--text-primary)',cursor:'pointer'}}>Reload</button>
+      </div>
+    )
+    return this.props.children
+  }
+}
+
+const COLORS = ['#FF6B35','#00C9A7','#845EF7','#F7B731','#FF4757','#5B9CF6','#A29BFE','#FD79A8']
+const getColor = (id) => COLORS[(id?.charCodeAt(0)||0) % COLORS.length]
+
+function timeAgo(ts) {
+  if (!ts) return ''
+  const d = Math.floor((Date.now() - new Date(ts)) / 1000)
+  if (d < 60) return 'now'
+  if (d < 3600) return `${Math.floor(d/60)}m`
+  if (d < 86400) return `${Math.floor(d/3600)}h`
+  return `${Math.floor(d/86400)}d`
+}
+
+// True when a Supabase/Postgrest error means a column or table referenced in
+// the query doesn't exist yet — i.e. supabase_migration_reply_and_stickers.sql
+// hasn't been run on this project. Used to fall back gracefully instead of
+// failing sends silently.
+function isMissingColumnError(error) {
+  if(!error) return false
+  const code = error.code||''
+  const msg = (error.message||'').toLowerCase()
+  return code==='42703' || code==='PGRST204' || code==='42P01' ||
+    (msg.includes('column') && msg.includes('does not exist')) ||
+    (msg.includes('could not find') && msg.includes('column')) ||
+    msg.includes('relation') && msg.includes('does not exist')
+}
+
+// Reaction picker emoji set — shown as a scrollable grid in the message
+// action sheet (both DM and group chat).
+const QUICK_REACTIONS = [
+  '👍','❤️','😂','😮','😢','🔥','👏','💯','🙏','😍',
+  '😊','😁','😅','🤣','🥹','😉','😘','😎','🤩','🥳',
+  '😇','🙃','😴','😭','😡','🤬','🤯','🥵','🥶','😱',
+  '🤔','🤨','😐','🙄','😬','🤫','🤗','🤝','👌','✌️',
+  '🤞','👀','💪','🫶','💔','⭐','✨','🎉','🎊',
+  '🥰','😆','🤤','😷','🤢','🤮','👋','🖤','💙','💚'
+]
+
+// Strips trailing punctuation a sentence would naturally have right after a
+// URL ("check http://x.com!" shouldn't swallow the "!" into the link).
+function splitTrailingPunct(url) {
+  const m = url.match(/^(.*?)([.,!?;:'"\)\]\}]*)$/)
+  return [m[1], m[2]]
+}
+const URL_TOKEN_RE = /^https?:\/\//i
+const URL_TOKEN_RE2 = /^www\.[a-zA-Z0-9]/i
+function isUrlToken(token) { return URL_TOKEN_RE.test(token) || URL_TOKEN_RE2.test(token) }
+function urlHref(cleanToken) { return URL_TOKEN_RE.test(cleanToken) ? cleanToken : 'https://'+cleanToken }
+
+// First URL found in a block of text, normalized to an absolute href — used
+// to decide whether to attach a LinkPreviewCard below a message/post.
+function getFirstUrl(text) {
+  if(!text) return null
+  const m = text.match(/(https?:\/\/[^\s]+|www\.[a-zA-Z0-9][^\s]*)/i)
+  if(!m) return null
+  const [clean] = splitTrailingPunct(m[0])
+  return urlHref(clean)
+}
+
+// Renders plain text with any URLs turned into clickable, colored links.
+// Deliberately doesn't handle @mentions — that's TextWithMentions' job for
+// feed content; chat bubbles use this directly since they don't have a
+// mention feature.
+function Linkify({ text, color='#5B9CF6' }) {
+  if(!text) return null
+  const parts = text.split(/(https?:\/\/[^\s]+|www\.[a-zA-Z0-9][^\s]*)/g)
+  return <>{parts.map((part,i)=>{
+    if(isUrlToken(part)) {
+      const [clean, trail] = splitTrailingPunct(part)
+      return <span key={i}><a href={urlHref(clean)} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()} style={{color,textDecoration:'underline',wordBreak:'break-all'}}>{clean}</a>{trail}</span>
+    }
+    return <span key={i}>{part}</span>
+  })}</>
+}
+
+// In-memory only — a link's metadata doesn't change within a session, and
+// re-fetching every time a message scrolls back into view would be wasteful.
+const linkPreviewCache = new Map()
+function LinkPreviewCard({ url, own }) {
+  const [data, setData] = useState(()=>linkPreviewCache.get(url)||null)
+  const [failed, setFailed] = useState(false)
+  useEffect(()=>{
+    if(!url) return
+    if(linkPreviewCache.has(url)) { setData(linkPreviewCache.get(url)); return }
+    let cancelled = false
+    fetch('/api/link-preview?url='+encodeURIComponent(url)).then(r=>r.json()).then(json=>{
+      if(cancelled) return
+      if(json.error || (!json.title && !json.image)) { setFailed(true); return }
+      linkPreviewCache.set(url, json)
+      setData(json)
+    }).catch(()=>{ if(!cancelled) setFailed(true) })
+    return ()=>{cancelled=true}
+  },[url])
+  // No skeleton/loading state on purpose — most links either resolve in a
+  // few hundred ms or never resolve at all (blocked, broken, no og tags),
+  // and a permanent "loading" card for the latter would look broken.
+  if(!url || failed || !data) return null
+  return (
+    <a href={data.url||url} target="_blank" rel="noopener noreferrer" onClick={e=>e.stopPropagation()}
+      style={{display:'block',marginTop:8,borderRadius:12,overflow:'hidden',textDecoration:'none',
+        background:own?'rgba(255,255,255,0.15)':'var(--bg-card-2)',
+        border:own?'1px solid rgba(255,255,255,0.25)':'1px solid var(--border-color-2)'}}>
+      {data.image&&<img src={data.image} alt="" loading="lazy" style={{width:'100%',maxHeight:160,objectFit:'cover',display:'block'}}/>}
+      <div style={{padding:'8px 10px'}}>
+        {data.title&&<div style={{color:own?'#fff':'var(--text-primary)',fontSize:13,fontWeight:700,marginBottom:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{data.title}</div>}
+        {data.description&&<div style={{color:own?'rgba(255,255,255,0.8)':'var(--text-quaternary)',fontSize:12,marginBottom:3,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{data.description}</div>}
+        {data.domain&&<div style={{color:own?'rgba(255,255,255,0.65)':'var(--text-quaternary)',fontSize:11}}>{data.domain}</div>}
+      </div>
+    </a>
+  )
+}
+
+function TextWithMentions({ text, supabase, onUserClick, linkColor='#5B9CF6' }) {
+  if(!text) return null
+  const parts = text.split(/(@[a-zA-Z0-9_]+)/g)
+  return <>{parts.map((part,i)=>{
+    if(part.startsWith('@')&&part.length>1){
+      const handle = part.slice(1)
+      return <span key={i} onClick={async(e)=>{
+        e.stopPropagation()
+        const {data} = await supabase.from('profiles').select('*').eq('username',handle.toLowerCase()).maybeSingle()
+        if(data) onUserClick(data)
+      }} style={{color:'#5B9CF6',fontWeight:600,cursor:'pointer'}}>{part}</span>
+    }
+    return <Linkify key={i} text={part} color={linkColor}/>
+  })}</>
+}
+
+function Avatar({ url, name='', color='#5B9CF6', size=42, online=false }) {
+  const i = (name||'?').trim().split(' ').map(w=>w[0]).join('').toUpperCase().slice(0,2)||'??'
+  return (
+    <div style={{position:'relative',flexShrink:0,display:'inline-block'}}>
+      {url
+        ? <img src={url} alt={name} style={{width:size,height:size,borderRadius:'50%',objectFit:'cover',boxShadow:`0 0 0 2px #090B10`}} loading="lazy"/>
+        : <div style={{width:size,height:size,borderRadius:'50%',background:`linear-gradient(135deg,${color}88,${color})`,display:'flex',alignItems:'center',justifyContent:'center',fontSize:size*0.36,fontWeight:800,color:'var(--text-primary)',boxShadow:`0 0 0 2px #090B10`}}>{i}</div>
+      }
+      {online&&<div style={{position:'absolute',bottom:1,right:1,width:size*0.27,height:size*0.27,borderRadius:'50%',background:'#00C9A7',border:'2px solid #090B10'}}/>}
+    </div>
+  )
+}
+
+// ── SKELETON LOADING PRIMITIVES ─────────────────────────────────────────────
+// Used everywhere the app was showing a bare "Loading..." string or spinner.
+// A shimmering block communicates "content is coming" without a jarring
+// flash screen — reserved now for true first-launch only (see page.js).
+function SkeletonBlock({ w='100%', h=14, radius=6, style={} }) {
+  return <div style={{width:w,height:h,borderRadius:radius,background:'var(--bg-card-3, rgba(255,255,255,0.08))',animation:'skeletonPulse 1.4s ease-in-out infinite',...style}}/>
+}
+function PostSkeleton() {
+  return (
+    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',gap:12}}>
+      <SkeletonBlock w={44} h={44} radius={22}/>
+      <div style={{flex:1,minWidth:0}}>
+        <SkeletonBlock w={120} h={13} style={{marginBottom:8}}/>
+        <SkeletonBlock w="90%" h={13} style={{marginBottom:6}}/>
+        <SkeletonBlock w="60%" h={13} style={{marginBottom:12}}/>
+        <div style={{display:'flex',gap:24}}>
+          <SkeletonBlock w={40} h={12}/><SkeletonBlock w={40} h={12}/><SkeletonBlock w={40} h={12}/>
+        </div>
+      </div>
+    </div>
+  )
+}
+function FeedSkeleton({ count=5 }) {
+  return <div>{Array.from({length:count}).map((_,i)=><PostSkeleton key={i}/>)}</div>
+}
+function RowSkeleton() {
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px'}}>
+      <SkeletonBlock w={40} h={40} radius={20}/>
+      <div style={{flex:1}}>
+        <SkeletonBlock w="50%" h={12} style={{marginBottom:6}}/>
+        <SkeletonBlock w="30%" h={11}/>
+      </div>
+    </div>
+  )
+}
+function RowSkeletonList({ count=6 }) {
+  return <div>{Array.from({length:count}).map((_,i)=><RowSkeleton key={i}/>)}</div>
+}
+function ChatSkeleton({ count=6 }) {
+  return (
+    <div style={{display:'flex',flexDirection:'column',gap:10,padding:'8px 0'}}>
+      {Array.from({length:count}).map((_,i)=>(
+        <div key={i} style={{display:'flex',justifyContent:i%2?'flex-end':'flex-start'}}>
+          <SkeletonBlock w={120+((i*37)%80)} h={34} radius={16}/>
+        </div>
+      ))}
+    </div>
+  )
+}
+// Sits at the bottom of the rendered feed slice; fires onReached once when it
+// scrolls near the viewport, which is what grows visibleCount by 10. Keeps
+// the feed from rendering everything at once (10 at a time), and reveals
+// more automatically instead of needing a "Load more" tap.
+function FeedLoadMoreSentinel({ onReached }) {
+  const ref = useRef(null)
+  useEffect(()=>{
+    const el = ref.current
+    if(!el) return
+    const obs = new IntersectionObserver((entries)=>{
+      if(entries[0].isIntersecting) onReached()
+    }, { rootMargin: '600px' }) // trigger a bit before it's actually on screen, so more posts are ready by the time you scroll to them
+    obs.observe(el)
+    return ()=>obs.disconnect()
+  },[onReached])
+  return <div ref={ref} style={{height:1}}/>
+}
+
+
+// Reply text is stored as a flattened "Sender Name: quoted text" string today.
+// We split on the first ": " to render it WhatsApp-style (bold name + dimmed
+// quote) without needing a schema migration. Older messages with no ": " just
+// render as a plain quoted line. If replyToId is present (new messages only —
+// requires the reply_to_id column) the quote becomes tappable and jumps to
+// the original message.
+function ReplyQuoteInline({ text, own, onJump }) {
+  if(!text) return null
+  const idx = text.indexOf(': ')
+  const name = idx>-1 ? text.slice(0,idx) : null
+  const quoted = idx>-1 ? text.slice(idx+2) : text
+  return (
+    <div onClick={onJump?(e)=>{e.stopPropagation();onJump()}:undefined} style={{borderLeft:'3px solid '+(own?'rgba(255,255,255,0.6)':'#5B9CF6'),background:own?'rgba(0,0,0,0.16)':'rgba(91,156,246,0.08)',borderRadius:8,padding:'5px 10px',marginBottom:6,cursor:onJump?'pointer':'default'}}>
+      {name&&<div style={{fontWeight:700,fontSize:12,color:own?'rgba(255,255,255,0.95)':'#5B9CF6',marginBottom:1}}>{name}</div>}
+      <div style={{fontSize:12.5,color:own?'rgba(255,255,255,0.7)':'var(--text-tertiary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quoted}</div>
+    </div>
+  )
+}
+
+// The quote-reply preview shown above the composer while replying.
+function ReplyComposerBar({ text, onCancel }) {
+  if(!text) return null
+  const idx = text.indexOf(': ')
+  const name = idx>-1 ? text.slice(0,idx) : null
+  const quoted = idx>-1 ? text.slice(idx+2) : text
+  return (
+    <div style={{padding:'8px 14px',display:'flex',alignItems:'center',gap:8,borderBottom:'1px solid var(--border-color)'}}>
+      <div style={{width:3,alignSelf:'stretch',background:'#5B9CF6',borderRadius:2,minHeight:28}}/>
+      <div style={{flex:1,minWidth:0}}>
+        {name&&<div style={{color:'#5B9CF6',fontSize:12,fontWeight:700}}>{name}</div>}
+        <div style={{color:'var(--text-tertiary)',fontSize:12,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{quoted}</div>
+      </div>
+      <button onClick={onCancel} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',flexShrink:0,display:'flex'}}><X size={18}/></button>
+    </div>
+  )
+}
+
+// A sticker renders as bare media (no bubble chrome), WhatsApp/Telegram-style.
+// sticker_url ending in a video extension plays as a silent looping clip.
+const VIDEO_EXT = /\.(mp4|webm|mov)$/i
+// preventDefault on contextmenu + the touch-callout/drag/select CSS below
+// stop the browser's native "save/share image" popup from firing on a long
+// press. Without this, that native popup and the app's own long-press timer
+// (which opens the reaction sheet) fight over the same gesture and the page
+// stops responding until the user dismisses the native menu — which reads
+// as the whole app freezing.
+const NO_CALLOUT_STYLE = {
+  WebkitTouchCallout:'none', WebkitUserSelect:'none', userSelect:'none',
+  WebkitUserDrag:'none', KhtmlUserSelect:'none', MozUserSelect:'none', msUserSelect:'none'
+}
+function StickerMedia({ url, size=132 }) {
+  const blockContextMenu = (e)=>e.preventDefault()
+  if(VIDEO_EXT.test(url)) {
+    return <video src={url} autoPlay loop muted playsInline disablePictureInPicture controlsList="nodownload noplaybackrate"
+      onContextMenu={blockContextMenu} draggable={false}
+      style={{width:size,height:size,objectFit:'contain',display:'block',...NO_CALLOUT_STYLE}}/>
+  }
+  return <img src={url} alt="sticker" loading="lazy" draggable={false} onContextMenu={blockContextMenu}
+    style={{width:size,height:size,objectFit:'contain',display:'block',...NO_CALLOUT_STYLE,pointerEvents:'auto'}}/>
+}
+
+// ── VOICE NOTES (shared by DM + GroupChat) ──────────────────────────────────
+// Tap-to-record rather than WhatsApp's press-and-hold-with-slide-to-cancel —
+// that gesture needs careful drag-distance tracking to feel right and this
+// is a wrapped WebView as much as a touch surface, so a plain tap to start /
+// tap to stop (with an explicit cancel button) is the more reliable choice,
+// same tradeoff Telegram Web and Instagram DM's web client make.
+function formatVoiceDuration(totalSeconds) {
+  const s = Math.max(0, Math.round(totalSeconds||0))
+  const m = Math.floor(s/60)
+  const r = s%60
+  return m+':'+String(r).padStart(2,'0')
+}
+function useVoiceRecorder() {
+  const [recording, setRecording] = useState(false)
+  const [seconds, setSeconds] = useState(0)
+  const mediaRecorderRef = useRef(null)
+  const chunksRef = useRef([])
+  const streamRef = useRef(null)
+  const timerRef = useRef(null)
+
+  const cleanup = () => {
+    if(timerRef.current) clearInterval(timerRef.current)
+    timerRef.current = null
+    streamRef.current?.getTracks().forEach(t=>t.stop())
+    streamRef.current = null
+    mediaRecorderRef.current = null
+    setRecording(false)
+  }
+
+  const start = async () => {
+    if(typeof navigator==='undefined' || !navigator.mediaDevices?.getUserMedia) {
+      alert("Voice notes aren't supported in this browser/app.")
+      return
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({audio:true})
+      streamRef.current = stream
+      chunksRef.current = []
+      const mimeType = (typeof MediaRecorder!=='undefined' && MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) ? 'audio/webm;codecs=opus' : 'audio/webm'
+      const mr = new MediaRecorder(stream, {mimeType})
+      mr.ondataavailable = e => { if(e.data.size>0) chunksRef.current.push(e.data) }
+      mediaRecorderRef.current = mr
+      mr.start()
+      setSeconds(0)
+      setRecording(true)
+      timerRef.current = setInterval(()=>setSeconds(s=>s+1), 1000)
+    } catch(err) {
+      console.error('Voice note recording failed to start:', err)
+      alert("Couldn't access the microphone — check your browser/app permissions.")
+    }
+  }
+
+  // Resolves with {blob, duration} once the recorder has actually flushed
+  // its last data chunk — resolving eagerly (e.g. right after calling
+  // mr.stop()) can hand back a blob missing the tail end of the clip.
+  const stop = () => new Promise(resolve => {
+    const mr = mediaRecorderRef.current
+    if(!mr || mr.state==='inactive') { cleanup(); resolve(null); return }
+    const finalSeconds = seconds
+    mr.onstop = () => {
+      const blob = new Blob(chunksRef.current, {type: mr.mimeType||'audio/webm'})
+      cleanup()
+      resolve({blob, duration:finalSeconds})
+    }
+    mr.stop()
+  })
+
+  const cancel = () => {
+    const mr = mediaRecorderRef.current
+    if(mr && mr.state!=='inactive') { mr.onstop = null; mr.stop() }
+    chunksRef.current = []
+    cleanup()
+  }
+
+  useEffect(()=>()=>{ streamRef.current?.getTracks().forEach(t=>t.stop()) },[])
+
+  return { recording, seconds, start, stop, cancel }
+}
+
+// Recording-in-progress UI: replaces the whole composer row while active so
+// there's no ambiguity about what tapping will do.
+function VoiceRecordingBar({ seconds, onCancel, onSend }) {
+  return (
+    <div style={{padding:'10px 14px',display:'flex',gap:12,alignItems:'center'}}>
+      <style>{'@keyframes voiceRecPulse{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:0.6}}'}</style>
+      <button onClick={onCancel} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'#F87171',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Trash2 size={18}/></button>
+      <div style={{flex:1,display:'flex',alignItems:'center',gap:8,color:'var(--text-primary)',fontSize:14}}>
+        <span style={{width:9,height:9,borderRadius:'50%',background:'#F87171',flexShrink:0,animation:'voiceRecPulse 1.2s ease-in-out infinite'}}/>
+        <span>Recording... {formatVoiceDuration(seconds)}</span>
+      </div>
+      <button onClick={onSend} style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+    </div>
+  )
+}
+
+// Playback bubble for a sent voice note — plain <audio> element driven by a
+// custom play/pause button + scrubber so it matches the rest of the chat's
+// styling instead of the browser's native (and inconsistent across
+// browsers/WebViews) <audio controls> widget.
+function VoiceMessagePlayer({ url, duration, own }) {
+  const audioRef = useRef(null)
+  const [playing, setPlaying] = useState(false)
+  const [progress, setProgress] = useState(0) // 0-1
+  const [dur, setDur] = useState(duration||0)
+
+  const toggle = () => {
+    const a = audioRef.current
+    if(!a) return
+    if(playing) a.pause()
+    else a.play().catch(err=>console.error('Voice note playback failed:', err))
+  }
+
+  return (
+    <div style={{display:'flex',alignItems:'center',gap:10,minWidth:180}}>
+      <audio ref={audioRef} src={url} preload="metadata"
+        onPlay={()=>setPlaying(true)} onPause={()=>setPlaying(false)}
+        onEnded={()=>{setPlaying(false);setProgress(0)}}
+        onLoadedMetadata={e=>{ if(isFinite(e.target.duration)) setDur(e.target.duration) }}
+        onTimeUpdate={e=>{ const d=e.target.duration; if(d) setProgress(e.target.currentTime/d) }}
+        style={{display:'none'}}/>
+      <button onClick={toggle} style={{width:34,height:34,borderRadius:'50%',border:'none',background:own?'rgba(255,255,255,0.25)':'var(--bg-card-2)',color:own?'#fff':'var(--text-primary)',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>
+        {playing?<Pause size={15}/>:<Play size={15} style={{marginLeft:2}}/>}
+      </button>
+      <div style={{flex:1,height:3,borderRadius:2,background:own?'rgba(255,255,255,0.3)':'var(--bg-card-3)',position:'relative',overflow:'hidden'}}>
+        <div style={{position:'absolute',left:0,top:0,bottom:0,width:(progress*100)+'%',background:own?'#fff':'#5B9CF6',borderRadius:2}}/>
+      </div>
+      <span style={{fontSize:11,color:own?'rgba(255,255,255,0.85)':'var(--text-quaternary)',flexShrink:0,minWidth:30,textAlign:'right'}}>{formatVoiceDuration(dur)}</span>
+    </div>
+  )
+}
+
+
+// Single message row: avatar (for others) + bubble + reactions.
+// Bubble corners are uniform/rounded (no tail) — pill-style like Beeper.
+// Reply quotes render *inside* the bubble — WhatsApp-style — via ReplyQuoteInline.
+// Custom comparator: the call sites pass onClick/onLongPress/etc as fresh
+// inline arrow functions on every parent render (they close over `msg`,
+// which is itself a stable reference from the `messages` array state), so a
+// plain shallow-compare memo would never skip a re-render — every keystroke
+// in the composer would re-render the entire message list. Comparing only
+// the props that actually affect what's rendered lets memo do its job.
+function messageBubblePropsEqual(prev, next) {
+  return prev.msg === next.msg &&
+    prev.own === next.own &&
+    prev.reactions === next.reactions &&
+    prev.isEditing === next.isEditing &&
+    prev.editValue === next.editValue &&
+    prev.highlighted === next.highlighted &&
+    prev.showSenderInfo === next.showSenderInfo &&
+    prev.showReadTicks === next.showReadTicks &&
+    prev.currentUserId === next.currentUserId &&
+    prev.rowId === next.rowId
+}
+const MessageBubble = memo(function MessageBubble({
+  msg, own, showSenderInfo=false,
+  onAvatarClick, onImageClick,
+  onLongPress, onPressEnd,
+  reactions, onToggleReaction, currentUserId,
+  isEditing, editValue, onEditChange, onSaveEdit, onCancelEdit,
+  showReadTicks=false,
+  onJumpToReply, highlighted=false, rowId
+}) {
+  const isSticker = msg.is_sticker && msg.sticker_url
+  const isVoice = msg.is_voice && msg.voice_url
+  // Long-press handlers live on the bubble/sticker element itself, not the
+  // full-width row — otherwise tapping empty space next to a bubble (the
+  // rest of the flex row) would also trigger the action sheet.
+  const pressHandlers = isEditing ? {} : {
+    onTouchStart:onLongPress, onTouchEnd:onPressEnd, onTouchMove:onPressEnd,
+    onMouseDown:onLongPress, onMouseUp:onPressEnd
+  }
+  return (
+    <div id={rowId}
+      style={{display:'flex',justifyContent:own?'flex-end':'flex-start',gap:8,alignItems:'flex-end',userSelect:'none',WebkitUserSelect:'none',transition:'background-color 0.3s ease',backgroundColor:highlighted?'rgba(91,156,246,0.14)':'transparent',borderRadius:14}}>
+      {!own&&showSenderInfo&&<div onClick={onAvatarClick} style={{cursor:'pointer',flexShrink:0}}><Avatar url={msg.sender?.avatar_url} name={msg.sender?.display_name} color={msg.sender?.avatar_color||'#5B9CF6'} size={28}/></div>}
+      <div style={{maxWidth:'75%'}}>
+        {!own&&showSenderInfo&&<div style={{color:'#5B9CF6',fontSize:11,fontWeight:700,marginBottom:3,paddingLeft:4}}>{msg.sender?.display_name}</div>}
+        {isEditing?(
+          <div style={{display:'flex',gap:6}}>
+            <input value={editValue} onChange={onEditChange} onKeyDown={e=>e.key==='Enter'&&onSaveEdit()} style={{flex:1,background:'var(--bg-card-2)',border:'1px solid #5B9CF6',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+            <button onClick={onSaveEdit} style={{background:'#5B9CF6',border:'none',borderRadius:16,padding:'8px 12px',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center'}}><Check size={16}/></button>
+            <button onClick={onCancelEdit} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'8px 12px',color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center'}}><X size={16}/></button>
+          </div>
+        ):isSticker?(
+          <div {...pressHandlers} onContextMenu={e=>e.preventDefault()} style={{WebkitTouchCallout:'none'}}>
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
+            <StickerMedia url={msg.sticker_url}/>
+            <div style={{fontSize:10,color:msg._failed?'#F87171':'var(--text-quaternary)',marginTop:2,textAlign:own?'right':'left',display:'flex',gap:4,justifyContent:own?'flex-end':'flex-start',alignItems:'center'}}>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'var(--text-quaternary)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
+            </div>
+          </div>
+        ):isVoice?(
+          <div {...pressHandlers} style={{padding:'8px 12px',borderRadius:16,background:own?TICK_BLUE:'var(--bg-card-7)',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
+            <VoiceMessagePlayer url={msg.voice_url} duration={msg.voice_duration} own={own}/>
+            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
+            </div>
+          </div>
+        ):(
+          <div {...pressHandlers} style={{padding:msg.image_url?'4px':'7px 11px',borderRadius:16,background:own?TICK_BLUE:'var(--bg-card-7)',color:own?'#fff':'var(--text-primary)',fontSize:14,lineHeight:1.4,wordBreak:'break-word',overflow:'hidden',opacity:msg._failed?0.7:1,outline:msg._failed?'1px solid #F87171':'none'}}>
+            {msg.reply_to&&<ReplyQuoteInline text={msg.reply_to} own={own} onJump={msg.reply_to_id?()=>onJumpToReply?.(msg.reply_to_id):undefined}/>}
+            {msg.image_url?<img src={msg.image_url} style={{maxWidth:220,maxHeight:220,borderRadius:12,display:'block',cursor:'pointer'}} alt="img" loading="lazy" onClick={()=>onImageClick(msg.image_url)}/>:<Linkify text={msg.content} color={own?'#D6ECFF':'#5B9CF6'}/>}
+            {!msg.image_url&&msg.content&&<LinkPreviewCard url={getFirstUrl(msg.content)} own={own}/>}
+            <div style={{fontSize:10,color:msg._failed?'#F87171':(own?'rgba(255,255,255,0.75)':'var(--text-quaternary)'),marginTop:4,textAlign:'right',padding:msg.image_url?'0 6px 4px':'0',display:'flex',gap:4,justifyContent:'flex-end',alignItems:'center'}}>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}>{msg._failed?<><AlertTriangle size={12}/> Failed to send</>:timeAgo(msg.created_at)}</span>
+              {showReadTicks&&own&&!msg._failed&&<span style={{color:msg.read_at?'#5EE6C4':'rgba(255,255,255,0.5)',display:'inline-flex'}}>{msg.read_at?<CheckCheck size={14}/>:<Check size={14}/>}</span>}
+            </div>
+          </div>
+        )}
+        {reactions?.length>0&&<div style={{display:'flex',gap:4,marginTop:2,flexWrap:'wrap',justifyContent:own?'flex-end':'flex-start'}}>
+          {Object.entries(reactions.reduce((acc,r)=>{acc[r.emoji]=(acc[r.emoji]||0)+1;return acc},{})).map(([emoji,count])=>{
+            const mine = reactions.some(r=>r.emoji===emoji&&r.user_id===currentUserId)
+            return <span key={emoji} onClick={()=>onToggleReaction(emoji)} style={{background:mine?'rgba(91,156,246,0.25)':'var(--bg-card-2)',border:mine?'1px solid #5B9CF6':'none',borderRadius:10,padding:'2px 7px',fontSize:12,cursor:'pointer'}}>{emoji}{count>1?' '+count:''}</span>
+          })}
+        </div>}
+      </div>
+    </div>
+  )
+}, messageBubblePropsEqual)
+
+// ── EMOJI GRID (shared by DM + GroupChat, embedded in the combined tray below) ──
+// Flat category-tab + grid layout. Selecting an emoji doesn't close the
+// tray — WhatsApp/Telegram-style — so picking several in a row is one tap
+// each instead of reopening the picker every time.
+function EmojiGrid({ onSelect }) {
+  const [activeCat, setActiveCat] = useState(EMOJI_CATEGORIES[0].id)
+  const cat = EMOJI_CATEGORIES.find(c=>c.id===activeCat) || EMOJI_CATEGORIES[0]
+  return (
+    <>
+      <div style={{display:'flex',alignItems:'center',gap:4,padding:'8px 10px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
+        {EMOJI_CATEGORIES.map(c=>(
+          <button key={c.id} onClick={()=>setActiveCat(c.id)} title={c.label} style={{flexShrink:0,width:32,height:32,borderRadius:10,border:'none',background:activeCat===c.id?'rgba(91,156,246,0.2)':'transparent',fontSize:17,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}>{c.icon}</button>
+        ))}
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:8,display:'grid',gridTemplateColumns:'repeat(7,1fr)',gap:2,alignContent:'start'}}>
+        {cat.emojis.map((e,i)=>(
+          <button key={cat.id+i} onClick={()=>onSelect(e)} style={{aspectRatio:'1',background:'none',border:'none',fontSize:22,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',borderRadius:8}}>{e}</button>
+        ))}
+      </div>
+    </>
+  )
+}
+
+// ── STICKER TRAY (shared by DM + GroupChat) ─────────────────────────────────
+// Sticker packs are shared/public (anyone can browse & send from any pack,
+// like Telegram) but a user can only add stickers to their own pack (created
+// automatically on first open). Media is uploaded to the existing 'avatars'
+// storage bucket under a stickers/ prefix — no new bucket needed.
+// Lets the user pick a start point and a clip length (max 10s) out of a
+// longer video before it becomes a sticker, previewing the loop live, then
+// re-encodes just that window to webm via canvas + MediaRecorder (silent —
+// stickers autoplay muted anyway, so no audio track is captured).
+const STICKER_MAX_SECONDS = 10
+function VideoTrimModal({ file, onCancel, onConfirm }) {
+  const videoRef = useRef(null)
+  const [url] = useState(()=>URL.createObjectURL(file))
+  const [duration, setDuration] = useState(0)
+  const [start, setStart] = useState(0)
+  const [length, setLength] = useState(STICKER_MAX_SECONDS)
+  const [ready, setReady] = useState(false)
+  const [processing, setProcessing] = useState(false)
+  const [error, setError] = useState(null)
+
+  useEffect(()=>()=>URL.revokeObjectURL(url),[url])
+
+  const onLoadedMeta = () => {
+    const d = videoRef.current.duration || 0
+    setDuration(d)
+    setLength(Math.min(STICKER_MAX_SECONDS, d))
+    setReady(true)
+  }
+
+  // keep the preview looping over just [start, start+length]
+  useEffect(()=>{
+    const v = videoRef.current
+    if(!v || !ready) return
+    v.currentTime = start
+    v.play().catch(()=>{})
+    const onTime = () => { if(v.currentTime >= start+length) v.currentTime = start }
+    v.addEventListener('timeupdate', onTime)
+    return ()=>v.removeEventListener('timeupdate', onTime)
+  },[start,length,ready])
+
+  const changeStart = (v) => {
+    const s = Math.max(0, Math.min(v, duration-0.2))
+    const maxLen = Math.min(STICKER_MAX_SECONDS, duration-s)
+    setStart(s)
+    setLength(prev=>Math.min(prev, maxLen))
+  }
+  const changeLength = (v) => {
+    const maxLen = Math.min(STICKER_MAX_SECONDS, duration-start)
+    setLength(Math.max(0.5, Math.min(v, maxLen)))
+  }
+
+  const confirm = async () => {
+    setProcessing(true)
+    setError(null)
+    try {
+      const blob = await trimVideoToBlob(videoRef.current, start, start+length)
+      onConfirm(blob)
+    } catch(e) {
+      console.error('Video trim failed:', e)
+      setError("Couldn't process that clip — try a shorter or smaller video.")
+      setProcessing(false)
+    }
+  }
+
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:700,background:'rgba(0,0,0,0.92)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:20,gap:16}}>
+      <video ref={videoRef} src={url} muted playsInline onLoadedMetadata={onLoadedMeta} style={{maxWidth:'100%',maxHeight:'55vh',borderRadius:16,background:'#000'}}/>
+      {ready?(
+        <div style={{width:'100%',maxWidth:420,display:'flex',flexDirection:'column',gap:14}}>
+          <div>
+            <div style={{color:'var(--text-secondary,#aaa)',fontSize:12,marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+              <span>Start</span><span>{start.toFixed(1)}s</span>
+            </div>
+            <input type="range" min={0} max={Math.max(0,duration-0.5)} step={0.1} value={start} onChange={e=>changeStart(parseFloat(e.target.value))} style={{width:'100%'}}/>
+          </div>
+          <div>
+            <div style={{color:'var(--text-secondary,#aaa)',fontSize:12,marginBottom:4,display:'flex',justifyContent:'space-between'}}>
+              <span>Length (max {STICKER_MAX_SECONDS}s)</span><span>{length.toFixed(1)}s</span>
+            </div>
+            <input type="range" min={0.5} max={Math.min(STICKER_MAX_SECONDS,duration)} step={0.1} value={length} onChange={e=>changeLength(parseFloat(e.target.value))} style={{width:'100%'}}/>
+          </div>
+          {error&&<p style={{color:'#F87171',fontSize:13}}>{error}</p>}
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={onCancel} disabled={processing} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card,#222)',color:'var(--text-primary,#fff)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+            <button onClick={confirm} disabled={processing} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',fontWeight:700,cursor:'pointer'}}>{processing?'Processing…':'Use this clip'}</button>
+          </div>
+        </div>
+      ):<p style={{color:'#aaa',fontSize:13}}>Loading video…</p>}
+    </div>
+  )
+}
+
+function trimVideoToBlob(videoEl, start, end) {
+  return new Promise((resolve, reject) => {
+    const maxDim = 480
+    const scale = Math.min(1, maxDim/Math.max(videoEl.videoWidth||maxDim, videoEl.videoHeight||maxDim))
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.max(1, Math.round((videoEl.videoWidth||maxDim)*scale))
+    canvas.height = Math.max(1, Math.round((videoEl.videoHeight||maxDim)*scale))
+    const ctx = canvas.getContext('2d')
+    const stream = canvas.captureStream(30)
+    const mimeType = (typeof MediaRecorder!=='undefined' && MediaRecorder.isTypeSupported('video/webm;codecs=vp9')) ? 'video/webm;codecs=vp9' : 'video/webm'
+    let recorder
+    try { recorder = new MediaRecorder(stream, {mimeType}) } catch(e) { reject(e); return }
+    const chunks = []
+    recorder.ondataavailable = e => { if(e.data.size>0) chunks.push(e.data) }
+    recorder.onerror = reject
+    recorder.onstop = () => resolve(new Blob(chunks,{type:'video/webm'}))
+
+    let rafId
+    const stopAll = () => {
+      videoEl.pause()
+      if(rafId) cancelAnimationFrame(rafId)
+      if(recorder.state!=='inactive') recorder.stop()
+    }
+    const draw = () => {
+      if(videoEl.currentTime >= end || videoEl.paused || videoEl.ended) { stopAll(); return }
+      ctx.drawImage(videoEl,0,0,canvas.width,canvas.height)
+      rafId = requestAnimationFrame(draw)
+    }
+    videoEl.pause()
+    videoEl.currentTime = start
+    videoEl.onseeked = () => {
+      videoEl.onseeked = null
+      recorder.start()
+      videoEl.play().then(()=>{ rafId = requestAnimationFrame(draw) }).catch(reject)
+    }
+    // safety timeout in case seeking/events never fire
+    setTimeout(()=>{ if(recorder.state==='inactive'&&chunks.length===0) reject(new Error('Trim timed out')) }, (end-start)*1000 + 5000)
+  })
+}
+
+// Save-step shown after picking (and, for video, trimming) a sticker: lets
+// the user drop it into an existing pack of theirs, or type a custom new
+// pack name to create on the spot. Defaults to their first/only pack so the
+// common case (one pack) is just tap-to-save.
+function StickerSaveModal({ packs, defaultPackId, onCancel, onConfirm, saving }) {
+  const [choice, setChoice] = useState(defaultPackId||'__new__')
+  const [newName, setNewName] = useState('')
+  const confirm = () => {
+    if(choice==='__new__'){
+      if(!newName.trim()) return
+      onConfirm({newPackName:newName.trim()})
+    } else {
+      onConfirm({packId:choice})
+    }
+  }
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:701,background:'rgba(0,0,0,0.75)',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div style={{width:'100%',maxWidth:420,background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 20px calc(20px + env(safe-area-inset-bottom,0px))',display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)'}}>Save sticker to...</div>
+        {packs.map(p=>(
+          <label key={p.id} style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:12,background:choice===p.id?'rgba(91,156,246,0.15)':'var(--bg-card)',cursor:'pointer'}}>
+            <input type="radio" name="pack" checked={choice===p.id} onChange={()=>setChoice(p.id)}/>
+            <span style={{color:'var(--text-primary)',fontSize:14,fontWeight:600}}>{p.name}</span>
+          </label>
+        ))}
+        <label style={{display:'flex',alignItems:'center',gap:10,padding:'10px 12px',borderRadius:12,background:choice==='__new__'?'rgba(91,156,246,0.15)':'var(--bg-card)',cursor:'pointer'}}>
+          <input type="radio" name="pack" checked={choice==='__new__'} onChange={()=>setChoice('__new__')}/>
+          <input value={newName} onChange={e=>{setNewName(e.target.value);setChoice('__new__')}} placeholder="Custom pack name..." style={{flex:1,background:'none',border:'none',outline:'none',color:'var(--text-primary)',fontSize:14,fontWeight:600}}/>
+        </label>
+        <div style={{display:'flex',gap:10,marginTop:6}}>
+          <button onClick={onCancel} disabled={saving} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card)',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+          <button onClick={confirm} disabled={saving||(choice==='__new__'&&!newName.trim())} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',color:'#fff',fontWeight:700,cursor:'pointer'}}>{saving?'Saving…':'Save'}</button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function StickerTray({ currentUser, supabase, onSelect, onEmojiSelect, onClose }) {
+  const [mode, setMode] = useState('emoji') // 'emoji' | 'sticker' — emoji first since it's the more universal default
+  const [packs, setPacks] = useState([])
+  const [activePack, setActivePack] = useState(null)
+  const [stickers, setStickers] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [setupError, setSetupError] = useState(null)
+  const [trimFile, setTrimFile] = useState(null)
+  const [pendingUpload, setPendingUpload] = useState(null) // File ready to save, once pack is chosen
+  const fileRef = useRef(null)
+
+  const pickFile = (file) => {
+    if(!file) return
+    if(file.type.startsWith('video/')) setTrimFile(file) // adjust start/length first
+    else setPendingUpload(file) // images go straight to the pack picker
+  }
+
+  useEffect(()=>{ loadPacks() },[])
+
+  // Only the current user's own packs — stickers used to be browsable across
+  // every user's packs, which cluttered the tray with one tab per person.
+  // Now it's just your own pack(s), defaulting to a single "My Stickers".
+  const loadPacks = async () => {
+    setLoading(true)
+    setSetupError(null)
+    let {data:myPacks, error:myPackErr} = await supabase.from('sticker_packs').select('id,name,owner_id').eq('owner_id',currentUser.id).order('created_at',{ascending:true})
+    if(myPackErr && isMissingColumnError(myPackErr)) {
+      setSetupError("Stickers aren't set up yet — ask your dev to run supabase_migration_reply_and_stickers.sql in Supabase.")
+      setLoading(false)
+      return
+    }
+    if(!myPacks?.length){
+      const {data:created, error:createErr} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:'My Stickers'}).select('id,name,owner_id').single()
+      if(createErr) { console.error('Failed to create sticker pack:', createErr); setSetupError('Could not set up your sticker pack: '+createErr.message); setLoading(false); return }
+      myPacks = [created]
+    }
+    setPacks(myPacks)
+    setActivePack(prev=>prev||myPacks[0]?.id||null)
+    setLoading(false)
+  }
+
+  useEffect(()=>{ if(activePack) loadStickers(activePack) },[activePack])
+  const loadStickers = async (packId) => {
+    const {data} = await supabase.from('stickers').select('id,media_url').eq('pack_id',packId).order('created_at',{ascending:true})
+    setStickers(data||[])
+  }
+
+  const handleUpload = async (file, {packId, newPackName}) => {
+    if(!file) return
+    setUploading(true)
+    let targetPack = packs.find(p=>p.id===packId)
+    if(newPackName){
+      const {data:created, error:createErr} = await supabase.from('sticker_packs').insert({owner_id:currentUser.id,name:newPackName}).select('id,name,owner_id').single()
+      if(createErr){ alert('Could not create pack: '+createErr.message); setUploading(false); return }
+      targetPack = created
+      setPacks(prev=>[...prev,created])
+    }
+    if(!targetPack) { alert("Couldn't find that sticker pack — try reopening the sticker tray."); setUploading(false); return }
+    const ext = file.name.split('.').pop()
+    const path = 'stickers/'+currentUser.id+'_'+Date.now()+'.'+ext
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err) { alert('Sticker upload failed: '+err.message); setUploading(false); return }
+    const {data:inserted, error:insertErr} = await supabase.from('stickers').insert({pack_id:targetPack.id,media_url:urlData.publicUrl}).select('id,media_url').single()
+    if(inserted){
+      setActivePack(targetPack.id)
+      setStickers(prev=>targetPack.id===activePack?[...prev,inserted]:prev)
+    } else {
+      alert('Could not save sticker: '+(insertErr?.message||'unknown error'))
+    }
+    setUploading(false)
+    setPendingUpload(null)
+  }
+
+  return (
+    <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:160,height:280,display:'flex',flexDirection:'column',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+      <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
+        <button onClick={()=>setMode('emoji')} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:mode==='emoji'?'rgba(91,156,246,0.2)':'var(--bg-card)',color:mode==='emoji'?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><Smile size={14}/> Emoji</button>
+        <button onClick={()=>setMode('sticker')} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:mode==='sticker'?'rgba(91,156,246,0.2)':'var(--bg-card)',color:mode==='sticker'?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><span style={{fontSize:14,lineHeight:1}}>🖼️</span> Stickers</button>
+        {mode==='sticker'&&packs.length>1&&packs.map(p=>(
+          <button key={p.id} onClick={()=>setActivePack(p.id)} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:activePack===p.id?'rgba(91,156,246,0.2)':'var(--bg-card)',color:activePack===p.id?'#5B9CF6':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',whiteSpace:'nowrap'}}>{p.name}</button>
+        ))}
+        <button onClick={onClose} style={{marginLeft:'auto',background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',flexShrink:0,display:'flex'}}><X size={18}/></button>
+      </div>
+      {mode==='emoji' ? (
+        <EmojiGrid onSelect={onEmojiSelect}/>
+      ) : (
+      <div style={{flex:1,overflowY:'auto',padding:12,display:'grid',gridTemplateColumns:'repeat(4,1fr)',gap:10,alignContent:'start'}}>
+        {setupError?(
+          <p style={{gridColumn:'span 4',color:'#F87171',fontSize:13,lineHeight:1.5}}>{setupError}</p>
+        ):(<>
+        <input ref={fileRef} type="file" accept="image/*,video/webm,video/mp4,video/quicktime" onChange={e=>{pickFile(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
+        <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{aspectRatio:'1',borderRadius:12,border:'2px dashed var(--border-color-2)',background:'none',color:'var(--text-tertiary)',fontSize:26,cursor:'pointer'}}>{uploading?'⏳':'+'}</button>
+        {stickers.map(s=>(
+          <button key={s.id} onClick={()=>onSelect(s.media_url)} style={{aspectRatio:'1',borderRadius:12,border:'none',background:'var(--bg-card)',padding:4,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+            <StickerMedia url={s.media_url} size={'100%'}/>
+          </button>
+        ))}
+        {!loading&&stickers.length===0&&<p style={{gridColumn:'span 3',color:'var(--text-quaternary)',fontSize:12,alignSelf:'center'}}>No stickers here yet — tap + to add your own image or short video clip.</p>}
+        </>)}
+      </div>
+      )}
+      {trimFile&&<VideoTrimModal file={trimFile}
+        onCancel={()=>setTrimFile(null)}
+        onConfirm={(blob)=>{
+          setTrimFile(null)
+          setPendingUpload(new File([blob],'sticker_'+Date.now()+'.webm',{type:'video/webm'}))
+        }}
+      />}
+      {pendingUpload&&<StickerSaveModal packs={packs} defaultPackId={activePack} saving={uploading}
+        onCancel={()=>setPendingUpload(null)}
+        onConfirm={(dest)=>handleUpload(pendingUpload,dest)}
+      />}
+    </div>
+  )
+}
+
+// ── USER PROFILE ───────────────────────────────────────────────────────────
+function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpenPost, sendPush }) {
+  const [posts, setPosts] = useState([])
+  const [isFollowing, setIsFollowing] = useState(false)
+  const [showBigAvatar, setShowBigAvatar] = useState(false)
+  const [followerCount, setFollowerCount] = useState(null)
+  const [followingCount, setFollowingCount] = useState(null)
+  const [profile, setProfile] = useState(user)
+  const [loading, setLoading] = useState(true)
+  const [isBlocked, setIsBlocked] = useState(false)
+  const [showMenu, setShowMenu] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+  const [showBlockConfirm, setShowBlockConfirm] = useState(false)
+  const color = profile?.avatar_color || getColor(profile?.id)
+
+  useEffect(() => {
+    if (!user) return
+    // fetch full fresh profile so badges and counts are always accurate
+    supabase.from('profiles').select('*').eq('id',user.id).single()
+      .then(({data})=>{
+        if(data){
+          // This account is Flitters AI, always — if its DB row still has an
+          // old display_name/username from before the app's rebrand, don't
+          // let that leak into the UI. Everything else about the row (real
+          // user profiles) is trusted as-is.
+          const merged = user.id==='omnicore-ai' ? {...data,display_name:'Flitters AI',username:'flittersai',avatar_url:'/flitters-ai-icon.png'} : data
+          setProfile(merged); setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0)
+        }
+      })
+    supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',user.id).order('created_at',{ascending:false}).limit(50)
+      .then(({data}) => { setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,user_liked:p.likes?.some(l=>l.user_id===currentUser.id)}))); setLoading(false) })
+    supabase.from('follows').select('id').eq('follower_id',currentUser.id).eq('following_id',user.id).maybeSingle()
+      .then(({data}) => setIsFollowing(!!data))
+    supabase.from('blocks').select('id').eq('blocker_id',currentUser.id).eq('blocked_id',user.id).maybeSingle()
+      .then(({data}) => setIsBlocked(!!data))
+  }, [user])
+
+  const toggleFollow = async () => {
+    if (isFollowing) {
+      await supabase.from('follows').delete().eq('follower_id',currentUser.id).eq('following_id',user.id)
+      setFollowerCount(c=>c-1)
+    } else {
+      await supabase.from('follows').insert({follower_id:currentUser.id,following_id:user.id})
+      setFollowerCount(c=>c+1)
+    }
+    setIsFollowing(!isFollowing)
+  }
+
+  const toggleBlock = async () => {
+    setShowMenu(false)
+    if (isBlocked) {
+      await supabase.from('blocks').delete().eq('blocker_id',currentUser.id).eq('blocked_id',user.id)
+      setIsBlocked(false)
+    } else {
+      setShowBlockConfirm(true)
+    }
+  }
+  const confirmBlock = async () => {
+    setShowBlockConfirm(false)
+    await supabase.from('blocks').insert({blocker_id:currentUser.id,blocked_id:user.id})
+    // blocking implies unfollowing each other
+    await supabase.from('follows').delete().eq('follower_id',currentUser.id).eq('following_id',user.id)
+    await supabase.from('follows').delete().eq('follower_id',user.id).eq('following_id',currentUser.id)
+    setIsBlocked(true)
+    setIsFollowing(false)
+  }
+
+  return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>{profile?.display_name}</span>
+        {profile?.id !== currentUser.id && <div style={{position:'relative'}}>
+          <button onClick={()=>setShowMenu(m=>!m)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><MoreHorizontal size={20}/></button>
+          {showMenu && <>
+            <div onClick={()=>setShowMenu(false)} style={{position:'fixed',inset:0,zIndex:20}}/>
+            <div style={{position:'absolute',top:'100%',right:0,marginTop:6,background:'var(--bg-card-8)',border:'1px solid var(--border-color-2)',borderRadius:12,overflow:'hidden',zIndex:21,minWidth:160,boxShadow:'0 8px 30px var(--shadow-color)'}}>
+              <button onClick={toggleBlock} style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',border:'none',padding:'12px 16px',color:'#FF4757',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}>
+                <Ban size={16}/> {isBlocked?'Unblock':'Block'} @{profile?.username}
+              </button>
+              <button onClick={()=>{setShowMenu(false);setShowReportModal(true)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',background:'none',border:'none',borderTop:'1px solid var(--border-color)',padding:'12px 16px',color:'#FF4757',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}>
+                <AlertTriangle size={16}/> Report @{profile?.username}
+              </button>
+            </div>
+          </>}
+        </div>}
+      </div>
+      <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
+      {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt="" loading="lazy"/></div>}
+      <div style={{padding:'0 16px',marginTop:-36,marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
+        <div onClick={()=>setShowBigAvatar(true)} style={{cursor:'pointer'}}>
+          <Avatar url={profile?.avatar_url} name={profile?.display_name} color={color} size={72}/>
+        </div>
+        <div style={{display:'flex',gap:8}}>
+          {profile?.id !== currentUser.id && (isBlocked ? (
+            <button onClick={toggleBlock} style={{background:'var(--bg-card)',border:'1px solid rgba(255,71,87,0.3)',borderRadius:20,padding:'8px 16px',color:'#FF4757',cursor:'pointer',fontWeight:700,fontSize:13,display:'inline-flex',alignItems:'center',gap:6}}><Ban size={14}/> Blocked · Tap to unblock</button>
+          ) : <>
+            <div onClick={()=>onMessage(profile)} style={{background:'var(--bg-card-6)',border:'1px solid rgba(255,255,255,0.15)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:600,fontSize:13,WebkitTapHighlightColor:'rgba(255,255,255,0.2)',userSelect:'none',display:'inline-flex',alignItems:'center',gap:6}}><MessageCircle size={15}/> Message</div>
+            <button onClick={toggleFollow} style={{background:isFollowing?'var(--bg-card)':'linear-gradient(135deg,#5B9CF6,#845EF7)',border:isFollowing?'1px solid rgba(255,255,255,0.15)':'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',cursor:'pointer',fontWeight:700,fontSize:13}}>
+              {isFollowing?'Following':'Follow'}
+            </button>
+          </>)}
+        </div>
+      </div>
+      {showBlockConfirm && (
+        <div onClick={()=>setShowBlockConfirm(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:18,padding:22,maxWidth:340,width:'100%'}}>
+            <div style={{display:'flex',justifyContent:'center',color:'#FF4757',marginBottom:10}}><Ban size={30}/></div>
+            <p style={{fontWeight:700,fontSize:16,textAlign:'center',marginBottom:8}}>Block @{profile?.username}?</p>
+            <p style={{color:'var(--text-secondary)',fontSize:13,textAlign:'center',marginBottom:18,lineHeight:1.5}}>They won't be able to follow you or message you, and you won't see each other's posts. You can unblock them anytime from Settings.</p>
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>setShowBlockConfirm(false)} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card)',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+              <button onClick={confirmBlock} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'#FF4757',color:'#fff',fontWeight:700,cursor:'pointer'}}>Block</button>
+            </div>
+          </div>
+        </div>
+      )}
+      <div style={{padding:'0 16px 16px'}}>
+        <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        </div>
+        <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
+        {profile?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}
+        {profile?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:8,display:'flex',alignItems:'center',gap:4}}><MapPin size={13}/> {profile.location}</p>}
+        <div style={{display:'flex',gap:20}}>
+          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'var(--text-secondary)'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'var(--text-secondary)'}}>Followers</span></span>
+        </div>
+      </div>
+      <div style={{borderTop:'1px solid var(--border-color)'}}>
+        <p style={{padding:'14px 16px',fontWeight:700,fontSize:15}}>Posts</p>
+        {isBlocked && <p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>You've blocked this account</p>}
+        {!isBlocked && loading&&<FeedSkeleton count={3}/>}
+        {!isBlocked && !loading&&posts.length===0&&<p style={{padding:'20px',textAlign:'center',color:'var(--text-quaternary)'}}>No posts yet</p>}
+        {!isBlocked && posts.map(post=>(
+          <PostCard key={post.id} post={{...post,author:profile}} currentUser={currentUser} supabase={supabase} onUserClick={()=>{}} onDelete={null} onOpenPost={onOpenPost} sendPush={sendPush}/>
+        ))}
+      </div>
+      {showReportModal&&<ReportModal onClose={()=>setShowReportModal(false)} onSubmit={async(reason,details)=>{
+        const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_user_id:profile.id, reason, details:details||null})
+        if(error) throw error
+      }}/>}
+    </div>
+  )
+}
+
+// ── SETTINGS ───────────────────────────────────────────────────────────────
+function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) {
+  const [form, setForm] = useState({name:"",reason:"",idtype:"",txhash:"",paymethod:""})
+  const [idFile, setIdFile] = useState(null)
+  const [idPreview, setIdPreview] = useState('')
+  const fileRef = useRef(null)
+  const set = (k,v) => setForm(f=>({...f,[k]:v}))
+  const pickFile = (file) => {
+    if(!file) return
+    setIdFile(file)
+    setIdPreview(file.type.startsWith('image/') ? URL.createObjectURL(file) : '')
+  }
+  const submit = async() => {
+    if(!form.name||!form.reason||!form.idtype||!form.txhash||!form.paymethod){showMsg("Please fill all fields",false);return}
+    if(!idFile){showMsg("Please upload a photo of your ID document",false);return}
+    setSaving(true)
+    let idDocUrl = null
+    const ext = idFile.name.split('.').pop()
+    const path = 'verification-ids/'+currentUser.id+'_'+Date.now()+'.'+ext
+    let urlData
+    try { urlData = await uploadToR2(idFile, path) }
+    catch(err) { showMsg("ID upload failed: "+err.message,false); setSaving(false); return }
+    idDocUrl = urlData.publicUrl
+    const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod,id_document_url:idDocUrl})
+    if(error) showMsg(error.message,false)
+    else showMsg("Application submitted! We will review within 48 hours.")
+    setSaving(false)
+  }
+  return(<div>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>Full Name</label>
+    <input value={form.name} onChange={e=>set("name",e.target.value)} style={{...inp}} placeholder="Your legal name"/>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>ID Type</label>
+    <select value={form.idtype} onChange={e=>set("idtype",e.target.value)} style={{...inp,background:"rgba(255,255,255,0.07)"}}>
+      <option value="">Select ID type</option>
+      <option>National ID</option><option>Passport</option><option>Driver License</option>
+    </select>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>ID Document Photo</label>
+    <input ref={fileRef} type="file" accept="image/*,.pdf" style={{display:'none'}} onChange={e=>pickFile(e.target.files?.[0])}/>
+    <div onClick={()=>fileRef.current?.click()} style={{...inp,height:'auto',minHeight:56,display:'flex',alignItems:'center',gap:10,cursor:'pointer',padding:'10px 14px'}}>
+      {idPreview
+        ? <img src={idPreview} alt="ID preview" style={{width:44,height:44,objectFit:'cover',borderRadius:8}}/>
+        : <Upload size={20} color="#888"/>}
+      <span style={{color:idFile?'var(--text-primary)':'#888',fontSize:13}}>{idFile?idFile.name:'Tap to upload a clear photo of your ID'}</span>
+    </div>
+    <p style={{color:'var(--text-quaternary)',fontSize:11,marginTop:-8,marginBottom:14}}>Used only to confirm your identity for verification. Not shown publicly.</p>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>Why do you want verification?</label>
+    <textarea value={form.reason} onChange={e=>set("reason",e.target.value)} rows={3} style={{...inp,resize:"none"}} placeholder="Describe yourself and why you deserve verification"/>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>Transaction Hash (TX ID)</label>
+    <input value={form.txhash} onChange={e=>set("txhash",e.target.value)} style={{...inp}} placeholder="Paste your payment transaction hash"/>
+    <label style={{color:"#888",fontSize:13,display:"block",marginBottom:6}}>Payment Method Used</label>
+    <select value={form.paymethod} onChange={e=>set("paymethod",e.target.value)} style={{...inp,background:"rgba(255,255,255,0.07)"}}>
+      <option value="">Select payment method</option>
+      <option>USDT TRC-20</option><option>Bitcoin BTC</option>
+    </select>
+    <button onClick={submit} disabled={saving} style={{width:"100%",background:"linear-gradient(135deg,#FFD700,#FFA500)",border:"none",borderRadius:12,padding:"14px",color:"#000",fontWeight:800,fontSize:15,cursor:"pointer",marginTop:8}}>{saving?"Submitting...":"Submit Application"}</button>
+  </div>)
+}
+
+function ThemeToggleRow() {
+  const { theme, setTheme, isManual, useSystemTheme } = useTheme()
+  const opt = (id, icon, label) => {
+    const active = id === 'system' ? !isManual : (isManual && theme === id)
+    return (
+      <button
+        onClick={() => id === 'system' ? useSystemTheme() : setTheme(id)}
+        style={{
+          flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 4,
+          padding: '12px 8px', borderRadius: 12, cursor: 'pointer',
+          border: active ? '1.5px solid #A855F7' : '1px solid var(--border-color-2)',
+          background: active ? 'rgba(168,85,247,0.1)' : 'var(--bg-card)',
+          color: active ? '#A855F7' : 'var(--text-tertiary)',
+        }}
+      >
+        <span style={{ fontSize: 18 }}>{icon}</span>
+        <span style={{ fontSize: 12, fontWeight: 600 }}>{label}</span>
+      </button>
+    )
+  }
+  return (
+    <div style={{ padding: '4px 20px 18px', borderBottom: '1px solid var(--border-color)', marginBottom: 4 }}>
+      <div style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 10, fontWeight: 600 }}>Appearance</div>
+      <div style={{ display: 'flex', gap: 8 }}>
+        {opt('light', '☀️', 'Light')}
+        {opt('dark', '🌙', 'Dark')}
+        {opt('system', <Settings size={18}/>, 'System')}
+      </div>
+    </div>
+  )
+}
+
+function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush, setupPush, requestNotifPermission }) {
+  const [section, setSection] = useState('main')
+  const [displayName, setDisplayName] = useState(currentUser?.display_name||'')
+  const [bio, setBio] = useState(currentUser?.bio||'')
+  const [location, setLocation] = useState(currentUser?.location||'')
+  const [language, setLanguage] = useState('English')
+  const [newPass, setNewPass] = useState('')
+  const [confirmPass, setConfirmPass] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState({text:'',ok:true})
+  const [uploading, setUploading] = useState(false)
+  const fileRef = useRef(null)
+  const [crossUsername, setCrossUsername] = useState('')
+  const [crossTestMsg, setCrossTestMsg] = useState('')
+  const [testingCross, setTestingCross] = useState(false)
+  const [testMsg, setTestMsg] = useState('')
+  const [permState, setPermState] = useState(typeof Notification !== 'undefined' ? Notification.permission : 'unsupported')
+  const [serverTestMsg, setServerTestMsg] = useState('')
+  const [testingServer, setTestingServer] = useState(false)
+  const [pushSetupStatus, setPushSetupStatus] = useState(()=>{ try { return localStorage.getItem('flitters_push_status')||'' } catch(e){ return '' } })
+  const [rerunning, setRerunning] = useState(false)
+  const rerunSetup = async () => {
+    setRerunning(true)
+    await setupPush()
+    try { setPushSetupStatus(localStorage.getItem('flitters_push_status')||'') } catch(e){}
+    setRerunning(false)
+  }
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleteConfirmText, setDeleteConfirmText] = useState('')
+  const [deleting, setDeleting] = useState(false)
+  const [deleteError, setDeleteError] = useState('')
+  const [blockedList, setBlockedList] = useState(null)
+  useEffect(()=>{
+    if(section!=='blocked') return
+    supabase.from('blocks').select('id,blocked_id,blocked:profiles!blocks_blocked_id_fkey(id,display_name,username,avatar_url,avatar_color)').eq('blocker_id',currentUser.id).order('created_at',{ascending:false})
+      .then(({data,error})=>{ if(error) console.log('blocked list error',error.message); setBlockedList(data||[]) })
+  },[section])
+  const deleteAccount = async () => {
+    setDeleting(true); setDeleteError('')
+    try {
+      const res = await fetch('/api/delete-account',{method:'POST',headers:await authJsonHeaders()})
+      const result = await res.json().catch(()=>({}))
+      if(!res.ok) { setDeleteError(result.error||'Something went wrong. Please try again.'); setDeleting(false); return }
+      await supabase.auth.signOut()
+      window.location.href = '/auth'
+    } catch(e) { setDeleteError(e.message); setDeleting(false) }
+  }
+
+  const showMsg = (text, ok=true) => { setMsg({text,ok}); setTimeout(()=>setMsg({text:'',ok:true}),3000) }
+  const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}
+  const LANGUAGES = ['English','French','Spanish','Arabic','Portuguese','Swahili','Hindi','Chinese','German','Japanese','Russian','Italian']
+
+  const uploadAvatar = async (file) => {
+    if (!file) return
+    setUploading(true)
+    const ext = file.name.split('.').pop()
+    const path = `avatars/${currentUser.id}.${ext}`
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err) { showMsg('Upload failed: '+err.message, false); setUploading(false); return }
+    // Cache-bust: the storage path (and therefore the base public URL) stays
+    // identical across re-uploads, so browsers cache the old image against
+    // that same URL and never re-fetch the new one. Appending a changing
+    // query param forces a fresh fetch every time.
+    const url = urlData.publicUrl + '?v=' + Date.now()
+    await supabase.from('profiles').update({avatar_url:url}).eq('id',currentUser.id)
+    currentUser.avatar_url = url
+    onAvatarUpdate(url)
+    showMsg('Profile picture updated!')
+    setUploading(false)
+  }
+
+  const saveProfile = async () => {
+    setSaving(true)
+    const hasEmoji = /\p{Emoji}/u.test(displayName);if(hasEmoji){showMsg('Emojis are not allowed in display names',false);setSaving(false);return}
+    const {error} = await supabase.from('profiles').update({display_name:displayName,bio,location}).eq('id',currentUser.id)
+    if (error) showMsg(error.message, false)
+    else { currentUser.display_name=displayName; currentUser.bio=bio; currentUser.location=location; showMsg('Profile saved!') }
+    setSaving(false)
+  }
+
+  const changePassword = async () => {
+    if (newPass!==confirmPass) { showMsg('Passwords do not match',false); return }
+    if (newPass.length<6) { showMsg('Minimum 6 characters',false); return }
+    setSaving(true)
+    const {error} = await supabase.auth.updateUser({password:newPass})
+    if (error) showMsg(error.message,false)
+    else { showMsg('Password changed!'); setNewPass(''); setConfirmPass('') }
+    setSaving(false)
+  }
+
+  const MsgBox = () => msg.text ? <div style={{padding:'10px 14px',borderRadius:10,background:msg.ok?'rgba(0,201,167,0.1)':'rgba(255,71,87,0.1)',border:`1px solid ${msg.ok?'rgba(0,201,167,0.2)':'rgba(255,71,87,0.2)'}`,color:msg.ok?'#00C9A7':'#FF4757',fontSize:13,marginBottom:16}}>{msg.text}</div> : null
+
+  const Header = ({title}) => (
+    <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+      <button onClick={()=>setSection('main')} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
+      <span style={{fontWeight:700,fontSize:17}}>{title}</span>
+    </div>
+  )
+
+  if (section==='avatar') return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <Header title="Profile Picture"/>
+      <div style={{padding:'30px 20px',display:'flex',flexDirection:'column',alignItems:'center',gap:20}}>
+        <MsgBox/>
+        <Avatar url={currentUser?.avatar_url} name={currentUser?.display_name} color={currentUser?.avatar_color||'#5B9CF6'} size={100}/>
+        <input ref={fileRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>uploadAvatar(e.target.files[0])}/>
+        <button onClick={()=>fileRef.current?.click()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px 32px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',width:'100%'}}>
+          {uploading?'Uploading...':'Choose Photo'}
+        </button>
+        <p style={{color:'var(--text-secondary)',fontSize:13,textAlign:'center'}}>Tap to select a photo from your device</p>
+      </div>
+    </div>
+  )
+
+  if (section==='profile') return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <Header title="Edit Profile"/>
+      <div style={{padding:'20px 16px'}}>
+        <MsgBox/>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Display Name</label>
+        <input value={displayName} onChange={e=>setDisplayName(e.target.value)} style={{...inp}} placeholder="Your name"/>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Bio</label>
+        <textarea value={bio} onChange={e=>setBio(e.target.value)} rows={3} style={{...inp,resize:'none'}} placeholder="Tell the world about yourself"/>
+        <button onClick={saveProfile} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+          {saving?'Saving...':'Save Changes'}
+        </button>
+      </div>
+    </div>
+  )
+
+  if (section==='password') return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <Header title="Change Password"/>
+      <div style={{padding:'20px 16px'}}>
+        <MsgBox/>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>New Password</label>
+        <input type="password" value={newPass} onChange={e=>setNewPass(e.target.value)} style={{...inp}} placeholder="New password"/>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Confirm Password</label>
+        <input type="password" value={confirmPass} onChange={e=>setConfirmPass(e.target.value)} style={{...inp}} placeholder="Confirm new password"/>
+        <button onClick={changePassword} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+          {saving?'Saving...':'Update Password'}
+        </button>
+      </div>
+    </div>
+  )
+
+  if (section==='location') return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <Header title="Location"/>
+      <div style={{padding:'20px 16px'}}>
+        <MsgBox/>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Your Country / City</label>
+        <input value={location} onChange={e=>setLocation(e.target.value)} style={{...inp}} placeholder="e.g. Lagos, Nigeria"/>
+        <button onClick={async()=>{setSaving(true);const {error}=await supabase.from('profiles').update({location}).eq('id',currentUser.id);if(error)showMsg(error.message,false);else{currentUser.location=location;showMsg('Saved!')};setSaving(false)}} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+          {saving?'Saving...':'Save Location'}
+        </button>
+      </div>
+    </div>
+  )
+
+  if (section==='language') return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <Header title="Language"/>
+      <div style={{padding:'8px 0'}}>
+        {LANGUAGES.map(lang=>(
+          <div key={lang} onClick={()=>setLanguage(lang)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',padding:'16px 20px',cursor:'pointer',borderBottom:'1px solid var(--bg-card-4)',background:language===lang?'rgba(91,156,246,0.08)':'transparent'}}>
+            <span style={{fontSize:15}}>{lang}</span>
+            {language===lang&&<span style={{color:'#5B9CF6',display:'flex'}}><Check size={18}/></span>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+
+
+  // Intentionally removed from the Settings menu (see below) and left
+  // unreachable rather than deleted outright. Google Play's Payments
+  // policy requires any digital feature/perk unlocked inside an app
+  // distributed through Google Play to go through Google Play Billing —
+  // this screen instead shows raw USDT/BTC wallet addresses for a paid
+  // verified badge, which is exactly what that policy prohibits. Don't
+  // re-add the menu entry below without first wiring this through Play
+  // Billing (or gating it to a genuinely non-Play-reviewed context).
+  if(section==='verify') return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <Header title="Get Verified"/>
+      <div style={{padding:'20px 16px'}}>
+        <MsgBox/>
+        <div style={{background:'linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,165,0,0.08))',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'20px',marginBottom:24,textAlign:'center'}}>
+          <div style={{marginBottom:8,display:'flex',justifyContent:'center',color:'#5B9CF6'}}><Award size={48}/></div>
+          <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Flitters Verified Badge</h2>
+          <p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
+          <p style={{color:'#FFD700',fontWeight:700,fontSize:18,marginTop:12}}>One-time fee: $5 USD</p>
+        </div>
+        <h3 style={{fontWeight:700,fontSize:15,marginBottom:12}}>Pay to one of these:</h3>
+        <div style={{background:'var(--bg-card-4)',borderRadius:12,padding:'14px',marginBottom:10}}>
+          <p style={{fontWeight:700,marginBottom:6}}>USDT TRC-20</p>
+          <p style={{color:'var(--text-tertiary)',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>TABFK9Z3yC4kKtVzqEwqoyAfwSySkzJcHL</p>
+        </div>
+        <div style={{background:'var(--bg-card-4)',borderRadius:12,padding:'14px',marginBottom:20}}>
+          <p style={{fontWeight:700,marginBottom:6}}>Bitcoin BTC</p>
+          <p style={{color:'var(--text-tertiary)',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>bc1ql7qzefrh2czl29krzzsnwkr6dvnp2few2h80s7</p>
+        </div>
+        <h3 style={{fontWeight:700,fontSize:15,marginBottom:12}}>Application Form</h3>
+        <VerifyForm currentUser={currentUser} supabase={supabase} showMsg={showMsg} saving={saving} setSaving={setSaving} inp={inp}/>
+      </div>
+    </div>
+  )
+  if(section==='notiftest') {
+    const runTest = async () => {
+      setTestMsg('')
+      if (typeof Notification === 'undefined') { setTestMsg('This browser/app does not support the Notification API at all.'); return }
+      const usingNativeBridge = window.__webtoapp_notification_polyfill__ === true
+      let perm = Notification.permission
+      if (perm === 'default') { perm = await requestNotifPermission(); setPermState(perm) }
+      if (perm !== 'granted' && !usingNativeBridge) { setTestMsg('Permission is "'+perm+'" — notifications are blocked. Check app/site notification settings.'); return }
+      try {
+        if('serviceWorker' in navigator){
+          const reg = await navigator.serviceWorker.ready
+          await reg.showNotification('Flitters Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+        } else {
+          new Notification('Flitters Test', { body: 'If you see this, notifications work in this browser/app!', icon: '/icon-192.png' })
+        }
+        setTestMsg('Test notification sent — check if it appeared.'+(perm!=='granted'?' (permission property said "'+perm+'" but the native bridge is in play, so this is the real test.)':''))
+      } catch(e) {
+        setTestMsg('showNotification() threw an error: ' + e.message)
+      }
+    }
+    const runServerTest = async () => {
+      setServerTestMsg('')
+      setTestingServer(true)
+      const result = await sendPush(currentUser.id, 'Flitters Push Test', 'This came through the real server — subscription, VAPID keys, and all.')
+      setTestingServer(false)
+      if(result.ok) setServerTestMsg('Sent via the server! If it doesn\'t appear in a few seconds, the issue is on the delivery side (check your device notification settings for this site/app), not your setup.')
+      else setServerTestMsg('Failed: '+result.error+(result.error.includes('subscription')?' — try closing and reopening the app once (with notifications allowed) so it can register.':''))
+    }
+    const runCrossTest = async () => {
+      setCrossTestMsg('')
+      const uname = crossUsername.trim().replace(/^@/,'')
+      if(!uname) { setCrossTestMsg('Enter a username first.'); return }
+      setTestingCross(true)
+      const {data:target, error:lookupErr} = await supabase.from('profiles').select('id,display_name').ilike('username',uname).maybeSingle()
+      if(lookupErr || !target) { setCrossTestMsg('No account found with username @'+uname); setTestingCross(false); return }
+      if(target.id === currentUser.id) { setCrossTestMsg('That\'s your own account — this test needs a different account to check cross-account delivery.'); setTestingCross(false); return }
+      const result = await sendPush(target.id, 'Flitters Push Test', 'Sent to you by '+(currentUser.display_name||'someone')+' as a cross-account test.')
+      setTestingCross(false)
+      if(result.ok) setCrossTestMsg('Sent to @'+uname+'! Ask them to check their device — if it doesn\'t arrive there, the read succeeded but delivery failed on their end.')
+      else setCrossTestMsg('Failed reading/sending to @'+uname+': '+result.error+(result.error.includes('subscription')?' — this is the same lookup a like/comment notification uses, so if that account has genuinely completed setup and this still says no subscription found, it points at a database permissions (RLS) issue reading someone else\'s subscription row rather than your own.':''))
+    }
+    return (
+      <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+        <Header title="Notifications"/>
+        <div style={{padding:'20px 16px'}}>
+          <div style={{background:'var(--bg-card-5)',border:'1px solid var(--bg-card-6)',borderRadius:14,padding:16,marginBottom:16,fontSize:14,color:'var(--text-subtle)'}}>
+            <div>Browser permission status: <strong style={{color: permState==='granted'?'#00C9A7':'#FF4757'}}>{permState}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>Last subscription attempt: <strong style={{color:'var(--text-primary)'}}>{pushSetupStatus||'(none recorded yet — try the button below)'}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>window.requestNotificationPermissions: <strong style={{color:typeof window!=='undefined'&&typeof window.requestNotificationPermissions==='function'?'#00C9A7':'#FF4757'}}>{typeof window!=='undefined'?typeof window.requestNotificationPermissions:'n/a'}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>Similar globals found: <strong style={{color:'var(--text-primary)',wordBreak:'break-word'}}>{typeof window!=='undefined'?(Object.keys(window).filter(k=>/notif|permission/i.test(k)).join(', ')||'(none)'):'n/a'}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>__webtoapp_notification_polyfill__ type: <strong style={{color:'var(--text-primary)'}}>{typeof window!=='undefined'?typeof window.__webtoapp_notification_polyfill__:'n/a'}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>...its keys: <strong style={{color:'var(--text-primary)',wordBreak:'break-word'}}>{(()=>{try{const p=window.__webtoapp_notification_polyfill__; if(!p) return '(not present)'; if(typeof p!=='object'&&typeof p!=='function') return '(primitive: '+String(p)+')'; const own=Object.getOwnPropertyNames(p); const proto=Object.getPrototypeOf(p); const protoKeys=proto?Object.getOwnPropertyNames(proto).filter(k=>k!=='constructor'):[]; return 'own: ['+own.join(', ')+'] proto: ['+protoKeys.join(', ')+']'}catch(e){return 'error: '+e.message}})()}</strong></div>
+            <div style={{marginTop:8,paddingTop:8,borderTop:'1px solid var(--bg-card-6)'}}>window.Notification own keys: <strong style={{color:'var(--text-primary)',wordBreak:'break-word'}}>{(()=>{try{return typeof Notification!=='undefined'?Object.getOwnPropertyNames(Notification).join(', '):'n/a'}catch(e){return 'error: '+e.message}})()}</strong></div>
+          </div>
+          <button onClick={rerunSetup} disabled={rerunning} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:600,fontSize:13,cursor:'pointer',marginBottom:16}}>
+            {rerunning?'Running...':'Re-run subscription setup now'}
+          </button>
+          <button onClick={runTest} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
+            1. Test local notification
+          </button>
+          {testMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5,marginBottom:16}}>{testMsg}</div>}
+          <button onClick={runServerTest} disabled={testingServer} style={{width:'100%',background:'linear-gradient(135deg,#A855F7,#06B6D4)',border:'none',borderRadius:12,padding:'14px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:12}}>
+            {testingServer?'Sending...':'2. Test real push (via server)'}
+          </button>
+          {serverTestMsg && <div style={{padding:'12px 14px',borderRadius:10,background:'var(--bg-card-4)',color:'var(--text-subtle)',fontSize:13,lineHeight:1.5,marginBottom:16}}>{serverTestMsg}</div>}
+          <div style={{background:'var(--bg-card-3)',borderRadius:12,padding:14,marginBottom:12}}>
+            <p style={{fontWeight:700,fontSize:14,marginBottom:10}}>3. Test push to another account</p>
+            <input value={crossUsername} onChange={e=>setCrossUsername(e.target.value)} placeholder="their username (no @)" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'10px 14px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box',marginBottom:10}}/>
+            <button onClick={runCrossTest} disabled={testingCross} style={{width:'100%',background:'var(--bg-card-2)',border:'none',borderRadius:10,padding:'12px',color:'var(--text-primary)',fontWeight:700,fontSize:14,cursor:'pointer'}}>
+              {testingCross?'Sending...':'Send test to that account'}
+            </button>
+            {crossTestMsg && <p style={{marginTop:10,color:'var(--text-subtle)',fontSize:13,lineHeight:1.5}}>{crossTestMsg}</p>}
+          </div>
+          <p style={{color:'var(--text-secondary)',fontSize:12,marginTop:8,lineHeight:1.6}}>Test 1 checks only that this browser/app can show notifications at all. Test 2 sends a real notification from the server through your own saved subscription. Test 3 does the same thing but to someone else's account by username — this is exactly what happens when someone likes or comments on your post, so it's the right way to check cross-account delivery specifically.</p>
+        </div>
+      </div>
+    )
+  }
+
+  if(section==='blocked') {
+    const unblock = async(blockRowId) => {
+      setBlockedList(list=>list.filter(b=>b.id!==blockRowId))
+      await supabase.from('blocks').delete().eq('id',blockRowId).eq('blocker_id',currentUser.id)
+    }
+    return (
+      <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+        <Header title="Blocked Accounts"/>
+        <div style={{padding:'8px 0'}}>
+          {blockedList===null&&<RowSkeletonList count={4}/>}
+          {blockedList?.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Ban size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You haven't blocked anyone</p></div>}
+          {blockedList?.map(b=>(
+            <div key={b.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
+              <Avatar url={b.blocked?.avatar_url} name={b.blocked?.display_name} color={b.blocked?.avatar_color||'#5B9CF6'} size={40}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:600,fontSize:14}}>{b.blocked?.display_name}</div>
+                <div style={{color:'var(--text-secondary)',fontSize:12}}>@{b.blocked?.username}</div>
+              </div>
+              <button onClick={()=>unblock(b.id)} style={{background:'var(--bg-card-2)',border:'none',borderRadius:16,padding:'7px 14px',color:'var(--text-primary)',fontWeight:600,fontSize:12,cursor:'pointer',flexShrink:0}}>Unblock</button>
+            </div>
+          ))}
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>Settings</span>
+      </div>
+      <div style={{padding:'12px 0'}}>
+        <ThemeToggleRow/>
+        <a href="/stories" style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15,textDecoration:'none',boxSizing:'border-box'}}>
+          <span style={{fontSize:22,display:'flex'}}><BookOpen size={18}/></span><span style={{flex:1,fontWeight:500}}>My Stories</span><span style={{color:'var(--text-quaternary)'}}>›</span>
+        </a>
+        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
+          <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
+            <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
+          </button>
+        ))}
+        <button onClick={onSignOut} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'#FF4757',borderTop:'1px solid var(--border-color)',marginTop:8,fontSize:15}}>
+          <LogOut size={20}/><span style={{fontWeight:600}}>Sign Out</span>
+        </button>
+        <button onClick={()=>setShowDeleteConfirm(true)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-quaternary)',fontSize:14}}>
+          <Trash2 size={18}/><span style={{fontWeight:500}}>Delete Account</span>
+        </button>
+        <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
+          <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
+          <span style={{color:'#222',fontSize:12}}> · </span>
+          <a href="/child-safety" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Child Safety Standards</a>
+          <br/>
+          <span style={{color:'#222',fontSize:12}}>© 2025 Flitters · fka Sphere</span>
+        </div>
+      </div>
+      {showDeleteConfirm && (
+        <div onClick={()=>!deleting&&setShowDeleteConfirm(false)} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,0.7)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+          <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:18,padding:24,maxWidth:360,width:'100%'}}>
+            <div style={{display:'flex',justifyContent:'center',color:'#FF4757',marginBottom:10}}><AlertTriangle size={32}/></div>
+            <p style={{fontWeight:800,fontSize:17,textAlign:'center',marginBottom:8}}>Delete your account?</p>
+            <p style={{color:'var(--text-secondary)',fontSize:13,textAlign:'center',marginBottom:16,lineHeight:1.6}}>This permanently deletes your profile, posts, messages, and everything tied to your account. This cannot be undone.</p>
+            <label style={{color:'var(--text-tertiary)',fontSize:12,display:'block',marginBottom:6}}>Type <strong style={{color:'var(--text-primary)'}}>DELETE</strong> to confirm</label>
+            <input value={deleteConfirmText} onChange={e=>setDeleteConfirmText(e.target.value)} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'10px 14px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+            {deleteError && <p style={{color:'#FF4757',fontSize:12,marginBottom:12}}>{deleteError}</p>}
+            <div style={{display:'flex',gap:10}}>
+              <button onClick={()=>{setShowDeleteConfirm(false);setDeleteConfirmText('')}} disabled={deleting} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:'var(--bg-card)',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+              <button onClick={deleteAccount} disabled={deleteConfirmText!=='DELETE'||deleting} style={{flex:1,padding:'12px',borderRadius:14,border:'none',background:deleteConfirmText==='DELETE'?'#FF4757':'var(--bg-card-2)',color:deleteConfirmText==='DELETE'?'#fff':'var(--text-quaternary)',fontWeight:700,cursor:deleteConfirmText==='DELETE'?'pointer':'not-allowed'}}>{deleting?'Deleting...':'Delete'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  )
+}
+
+// ── MY PROFILE ─────────────────────────────────────────────────────────────
+function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl }) {
+  const [posts, setPosts] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [followerCount, setFollowerCount] = useState(null)
+  const [followingCount, setFollowingCount] = useState(null)
+  const color = currentUser?.avatar_color||'#5B9CF6'
+
+  useEffect(() => {
+    supabase.from('posts').select('*,likes(user_id),reposts(user_id),comments(id)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(50)
+      .then(({data})=>{
+        setPosts((data||[]).map(p=>({...p,likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
+        setLoading(false)
+      })
+    supabase.from('profiles').select('followers_count,following_count').eq('id',currentUser.id).single()
+      .then(({data})=>{ if(data){ setFollowerCount(data.followers_count||0); setFollowingCount(data.following_count||0) } })
+  },[])
+
+  const deletePost = async (postId) => {
+    await supabase.from('posts').delete().eq('id',postId).eq('user_id',currentUser.id)
+    setPosts(prev=>prev.filter(p=>p.id!==postId))
+  }
+
+  return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>My Profile</span>
+        <button onClick={onSettings} style={{background:'none',border:'none',color:'var(--text-subtle)',cursor:'pointer',display:'flex'}}><Settings size={22}/></button>
+      </div>
+      <div style={{height:110,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
+      <div style={{padding:'0 16px',marginTop:-36,marginBottom:16}}>
+        <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
+      </div>
+      <div style={{padding:'0 16px 20px'}}>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
+        {currentUser?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
+        {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10,display:'flex',alignItems:'center',gap:4}}><MapPin size={13}/> {currentUser.location}</p>}
+        <div style={{display:'flex',gap:20,marginBottom:16}}>
+          <span style={{fontSize:14}}><strong>{followingCount===null?'–':followingCount}</strong> <span style={{color:'var(--text-secondary)'}}>Following</span></span>
+          <span style={{fontSize:14}}><strong>{followerCount===null?'–':followerCount}</strong> <span style={{color:'var(--text-secondary)'}}>Followers</span></span>
+        </div>
+      </div>
+      <div style={{borderTop:'1px solid var(--border-color)'}}>
+        <p style={{padding:'14px 16px',fontWeight:700,fontSize:15,borderBottom:'1px solid var(--border-color)'}}>My Posts</p>
+        {loading&&<FeedSkeleton count={3}/>}
+        {!loading&&posts.length===0&&<div style={{padding:'40px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><FileText size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No posts yet</p></div>}
+        {posts.map(post=>(
+          <div key={post.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+            <p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:10}}>{post.content}</p>
+            <div style={{display:'flex',gap:16,color:'var(--text-secondary)',fontSize:13,alignItems:'center'}}>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><MessageCircle size={14}/> {post.comments_count}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Heart size={14}/> {post.likes_count}</span>
+              <span style={{display:'inline-flex',alignItems:'center',gap:4}}><Repeat2 size={14}/> {post.reposts_count}</span>
+              <span style={{marginLeft:'auto'}}>{timeAgo(post.created_at)}</span>
+              <button onClick={()=>{ if(confirm('Delete this post?')) deletePost(post.id) }} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:8,padding:'4px 10px',color:'#FF4757',cursor:'pointer',fontSize:12,fontWeight:600}}>Delete</button>
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+// ── POST CARD ──────────────────────────────────────────────────────────────
+function ReelPreviewCard({ supabase, onOpen }) {
+  const [reel, setReel] = useState(null)
+  const videoRef = useRef(null)
+  const wrapRef = useRef(null)
+  useEffect(()=>{
+    let cancelled = false
+    supabase.from('reels').select('id,video_url,caption,author:profiles!user_id(display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}).limit(20).then(({data})=>{
+      if(cancelled||!data?.length) return
+      setReel(data[Math.floor(Math.random()*data.length)])
+    })
+    return ()=>{cancelled=true}
+  },[])
+  // Autoplay (always muted here — this is just a feed teaser, not the real
+  // Reels experience) once the card is mostly on screen, pause once it
+  // scrolls away, same as Instagram/TikTok feed previews.
+  useEffect(()=>{
+    const el = wrapRef.current
+    if(!el) return
+    const obs = new IntersectionObserver(([entry])=>{
+      const video = videoRef.current
+      if(!video) return
+      if(entry.isIntersecting) video.play?.().catch(()=>{}) // autoplay can reject if the browser hasn't decided this counts as a user-initiated context yet — harmless, the poster frame just stays put
+      else video.pause?.()
+    }, { threshold: 0.6 })
+    obs.observe(el)
+    return ()=>obs.disconnect()
+  },[reel])
+  if(!reel) return null
+  return (
+    <div ref={wrapRef} onClick={()=>onOpen(reel.id)} style={{margin:'10px 16px',borderRadius:18,overflow:'hidden',position:'relative',cursor:'pointer',height:200,background:'#000'}}>
+      <HlsVideo videoRef={videoRef} src={reel.video_url} muted loop playsInline preload="metadata" style={{width:'100%',height:'100%',objectFit:'cover',opacity:0.85}}/>
+      <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
+      <div style={{position:'absolute',top:12,left:12,display:'flex',alignItems:'center',gap:6,background:'rgba(0,0,0,0.5)',borderRadius:14,padding:'4px 10px'}}>
+        <Clapperboard size={13}/>
+        <span style={{color:'var(--text-primary)',fontSize:12,fontWeight:700}}>Reels</span>
+      </div>
+      <div style={{position:'absolute',bottom:10,left:12,right:12,display:'flex',alignItems:'center',gap:8}}>
+        <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={26}/>
+        <span style={{color:'var(--text-primary)',fontSize:13,fontWeight:600,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
+      </div>
+    </div>
+  )
+}
+
+function AdCard({ ad }) {
+  const openLink = () => {
+    if(!ad.link_url) return
+    const url = ad.link_url.startsWith('http')?ad.link_url:'https://'+ad.link_url
+    window.open(url,'_blank')
+  }
+  return (
+    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+      <style>{'@keyframes adCtaPulse{0%,100%{box-shadow:0 0 0 0 rgba(91,156,246,0.5)}50%{box-shadow:0 0 0 8px rgba(91,156,246,0)}}'}</style>
+      <div style={{display:'flex',gap:12}}>
+        <div style={{width:44,height:44,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'#fff',flexShrink:0}}>{ad.advertiser_name?.[0]||'A'}</div>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'flex-start',justifyContent:'space-between',marginBottom:6}}>
+            <span style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
+            <span style={{background:'rgba(247,183,49,0.15)',border:'1px solid rgba(247,183,49,0.3)',borderRadius:6,padding:'2px 7px',fontSize:10,color:'#F7B731',fontWeight:700,flexShrink:0,letterSpacing:0.3}}>SPONSORED</span>
+          </div>
+          {ad.content&&<p style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.6,marginBottom:12}}>{ad.content}</p>}
+          {ad.image_url&&<img onClick={openLink} src={ad.image_url} style={{width:'100%',borderRadius:12,maxHeight:300,objectFit:'cover',marginBottom:12,display:'block',cursor:ad.link_url?'pointer':'default'}} alt="ad" loading="lazy"/>}
+          {ad.link_url&&<button onClick={openLink} style={{animation:'adCtaPulse 2s ease-in-out infinite',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'10px 20px',display:'inline-flex',alignItems:'center',gap:6,color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>{ad.cta_text||'Learn More'} <ArrowRight size={14}/></button>}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+
+function CommentThread({ comment, depth, onUserClick, onReply, currentUser, onDelete, onReact }) {
+  const hasChildren = comment.children && comment.children.length > 0
+  const reactions = comment.comment_reactions || []
+  const myReaction = reactions.find(r=>r.user_id===currentUser?.id)
+  const isOwn = comment.user_id === currentUser?.id
+  return (
+    <div style={{position:'relative',marginLeft:depth>0?18:0}}>
+      {depth>0&&<div style={{position:'absolute',left:-14,top:0,bottom:hasChildren?14:20,width:2,background:'var(--border-color-2)'}}/>}
+      {depth>0&&<div style={{position:'absolute',left:-14,top:20,width:14,height:2,background:'var(--border-color-2)'}}/>}
+      <div style={{display:'flex',gap:10,marginBottom:8,alignItems:'flex-start'}}>
+        <Avatar url={comment.author?.avatar_url} name={comment.author?.display_name} color={comment.author?.avatar_color||'#5B9CF6'} size={depth>0?26:32}/>
+        <div style={{flex:1,background:'var(--bg-card-4)',borderRadius:12,padding:'8px 12px',minWidth:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'center',marginBottom:4}}>
+            <span onClick={()=>onUserClick(comment.author)} style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',cursor:'pointer'}}>{comment.author?.display_name}</span>
+            <span style={{color:'var(--text-secondary)',fontSize:11}}>{timeAgo(comment.created_at)}</span>
+          </div>
+          {comment.content&&<p style={{color:'var(--text-primary)',fontSize:14,lineHeight:1.5,margin:0,wordBreak:'break-word'}}><TextWithMentions text={comment.content} supabase={supabase} onUserClick={onUserClick}/></p>}
+          {comment.image_url&&<img src={comment.image_url} style={{maxWidth:'100%',maxHeight:220,borderRadius:10,marginTop:6,display:'block'}} alt="" loading="lazy"/>}
+          <div style={{display:'flex',alignItems:'center',gap:14,marginTop:6}}>
+            <span onClick={()=>onReply(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}><CornerUpLeft size={12}/> Reply</span>
+            <span onClick={()=>onReact(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,color:myReaction?'#FF4757':'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer'}}>
+              <Heart size={12} fill={myReaction?'#FF4757':'none'}/> {reactions.length>0?reactions.length:''}
+            </span>
+            {isOwn&&<span onClick={()=>onDelete(comment)} style={{display:'inline-flex',alignItems:'center',gap:4,color:'var(--text-tertiary)',fontSize:12,fontWeight:600,cursor:'pointer',marginLeft:'auto'}}><Trash2 size={12}/></span>}
+          </div>
+        </div>
+      </div>
+      {hasChildren&&(
+        <div>
+          {comment.children.map(child=>(
+            <CommentThread key={child.id} comment={child} depth={depth+1} onUserClick={onUserClick} onReply={onReply} currentUser={currentUser} onDelete={onDelete} onReact={onReact}/>
+          ))}
+        </div>
+      )}
+    </div>
+  )
+}
+
+function postCardPropsEqual(prev, next) {
+  return prev.post === next.post &&
+    prev.currentUser?.id === next.currentUser?.id &&
+    prev.autoExpandComments === next.autoExpandComments
+}
+// Compact, non-interactive preview of a reshared post — used only inside a
+// quote-repost (a repost with the reposter's own caption added). Deliberately
+// plain-text (no clickable mentions/links inside it): the whole card is one
+// tap target that opens the original post, matching how Twitter/Bluesky
+// quote-cards behave rather than nesting a second set of interactive
+// elements inside an already-interactive feed entry.
+function QuotedPostPreview({ post, onOpen, onUserClick }) {
+  const a = post.author || {}
+  const color = a.avatar_color || getColor(a.id)
+  return (
+    <div onClick={()=>onOpen&&onOpen(post.id)} style={{border:'1px solid var(--border-color-2)',borderRadius:14,padding:12,cursor:onOpen?'pointer':'default',marginBottom:12,overflow:'hidden'}}>
+      <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:6}}>
+        <Avatar url={a.avatar_url} name={a.display_name} color={color} size={22}/>
+        <button onClick={e=>{e.stopPropagation();onUserClick&&onUserClick(a)}} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:13}}>{a.display_name}</button>
+        {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:14,height:14,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><img src="/flitters-logo-white.svg" alt="Verified" width={8} height={8} style={{objectFit:'contain',display:'block'}}/></span>}
+        <span style={{color:'var(--text-faint)'}}>·</span>
+        <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
+      </div>
+      {post.content&&<p style={{color:'var(--text-secondary)',fontSize:13.5,lineHeight:1.45,margin:'0 0 8px',wordBreak:'break-word',display:'-webkit-box',WebkitLineClamp:4,WebkitBoxOrient:'vertical',overflow:'hidden'}}>{post.content}</p>}
+      {post.image_url&&<img src={post.image_url} alt="" loading="lazy" style={{width:'100%',maxHeight:220,objectFit:'cover',borderRadius:10,display:'block'}}/>}
+    </div>
+  )
+}
+
+// Long-press to do something extra (here: expand an image) without hijacking
+// the plain tap, which keeps doing whatever it already did (opening the
+// post). didFire() lets the click handler that follows a touch/mouse-up know
+// whether the long-press already handled this interaction, so it can bail
+// out instead of also firing.
+function useLongPress(onLongPress, delay=500) {
+  const timerRef = useRef(null)
+  const firedRef = useRef(false)
+  const start = () => {
+    firedRef.current = false
+    timerRef.current = setTimeout(()=>{ firedRef.current = true; onLongPress() }, delay)
+  }
+  const clear = () => clearTimeout(timerRef.current)
+  return {
+    onTouchStart:start, onTouchEnd:clear, onTouchMove:clear,
+    onMouseDown:start, onMouseUp:clear, onMouseLeave:clear,
+    didFire: () => firedRef.current
+  }
+}
+
+// Reporting mechanism required by Google Play's Child Safety Standards
+// policy — the published policy page can't just claim this exists, so it
+// has to actually work. Child safety is deliberately the first, visually
+// distinct option rather than buried alphabetically.
+const REPORT_REASONS = [
+  {id:'child_safety', label:'Child sexual abuse or exploitation', urgent:true},
+  {id:'nudity_sexual', label:'Nudity or sexual content'},
+  {id:'violence', label:'Violence or dangerous behavior'},
+  {id:'harassment', label:'Harassment or bullying'},
+  {id:'hate_speech', label:'Hate speech'},
+  {id:'spam', label:'Spam or scam'},
+  {id:'other', label:'Something else'},
+]
+
+function ReportModal({ onClose, onSubmit }) {
+  const [reason, setReason] = useState(null)
+  const [details, setDetails] = useState('')
+  const [submitting, setSubmitting] = useState(false)
+  const [done, setDone] = useState(false)
+
+  if(done) return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:18,padding:24,maxWidth:340,width:'100%',textAlign:'center'}}>
+        <CheckCircle2 size={40} color="#00C9A7" style={{marginBottom:10}}/>
+        <p style={{color:'var(--text-primary)',fontWeight:700,fontSize:16,marginBottom:6}}>Report submitted</p>
+        <p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:18}}>Thanks — our team will review this.</p>
+        <button onClick={onClose} style={{width:'100%',background:'var(--bg-card)',border:'none',borderRadius:14,padding:12,color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>Close</button>
+      </div>
+    </div>
+  )
+
+  return (
+    <div onClick={onClose} style={{position:'fixed',inset:0,zIndex:500,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 16px calc(20px + env(safe-area-inset-bottom))',maxWidth:500,width:'100%',maxHeight:'80vh',overflowY:'auto',boxSizing:'border-box'}}>
+        <p style={{color:'var(--text-primary)',fontWeight:800,fontSize:17,marginBottom:4}}>Report</p>
+        <p style={{color:'var(--text-quaternary)',fontSize:13,marginBottom:16}}>Why are you reporting this?</p>
+        {REPORT_REASONS.map(r=>(
+          <button key={r.id} onClick={()=>setReason(r.id)} style={{display:'flex',alignItems:'center',justifyContent:'space-between',width:'100%',background:reason===r.id?'rgba(91,156,246,0.12)':'var(--bg-card)',border:reason===r.id?'1px solid #5B9CF6':'1px solid transparent',borderRadius:12,padding:'13px 14px',marginBottom:8,cursor:'pointer',textAlign:'left'}}>
+            <span style={{color:r.urgent?'#FF4757':'var(--text-primary)',fontWeight:r.urgent?700:500,fontSize:14}}>{r.label}</span>
+            {reason===r.id&&<Check size={16} color="#5B9CF6"/>}
+          </button>
+        ))}
+        {reason&&<textarea value={details} onChange={e=>setDetails(e.target.value)} placeholder="Add any extra details (optional)" rows={3} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 14px',color:'var(--text-primary)',fontSize:14,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginTop:4,marginBottom:14}}/>}
+        <button onClick={async()=>{
+          if(!reason||submitting) return
+          setSubmitting(true)
+          try { await onSubmit(reason, details.trim()); setDone(true) }
+          catch(err) { alert('Could not submit report: '+err.message) }
+          setSubmitting(false)
+        }} disabled={!reason||submitting} style={{width:'100%',background:reason?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',borderRadius:14,padding:14,color:reason?'#fff':'var(--text-quaternary)',fontWeight:700,fontSize:15,cursor:reason?'pointer':'default'}}>{submitting?'Submitting...':'Submit Report'}</button>
+      </div>
+    </div>
+  )
+}
+
+const PostCard = memo(function PostCard({ post, currentUser, supabase, onUserClick, onDelete, onOpenPost, autoExpandComments, sendPush }) {
+  const [liked, setLiked] = useState(post.user_liked||false)
+  const [reposted, setReposted] = useState(post.user_reposted||false)
+  const [showRepostMenu, setShowRepostMenu] = useState(false)
+  const [showQuoteModal, setShowQuoteModal] = useState(false)
+  const [quoteText, setQuoteText] = useState('')
+  const [likes, setLikes] = useState(post.likes_count||0)
+  const [reposts, setReposts] = useState(post.reposts_count||0)
+  const [comments, setComments] = useState(post.comments_count||0)
+  const [showReply, setShowReply] = useState(false)
+  const [replyText, setReplyText] = useState('')
+  const [showComments, setShowComments] = useState(false)
+  const [commentsList, setCommentsList] = useState([])
+  const [loadingComments, setLoadingComments] = useState(false)
+  const [replyingTo, setReplyingTo] = useState(null) // comment object being replied to, or null = replying to post
+  const [replyImage, setReplyImage] = useState(null)
+  const [replyImagePreview, setReplyImagePreview] = useState('')
+  const [uploadingReply, setUploadingReply] = useState(false)
+  const replyImageRef = useRef(null)
+  const [showShareMenu, setShowShareMenu] = useState(false)
+
+  const shareUrl = (typeof window!=='undefined'?window.location.origin:'https://xchord.space')+'/p/'+post.id
+  const shareText = (post.content||(post.author?.display_name||'Someone')+' shared a post on Flitters').slice(0,100)
+  const handleShare = async () => {
+    if(navigator.share){
+      try { await navigator.share({title:'Flitters', text:shareText, url:shareUrl}) } catch(e){ /* user cancelled — no-op */ }
+    } else {
+      setShowShareMenu(true)
+    }
+  }
+  const copyShareLink = async () => {
+    try { await navigator.clipboard.writeText(shareUrl) } catch(e){}
+    setShowShareMenu(false)
+  }
+
+  const loadComments = async(forceOpen) => {
+    if(showComments && !forceOpen){setShowComments(false);return}
+    setLoadingComments(true)
+    // Comments and their reactions are fetched separately and merged here on
+    // purpose. Nesting comment_reactions(...) inside one embedded select made
+    // the entire query — real comments included — fail together any time
+    // that embed had a problem (e.g. PostgREST's schema cache not yet aware
+    // of the comment_reactions relationship). Splitting them means a broken
+    // reactions fetch can never wipe out comments that already loaded fine.
+    // comments now has two FK paths to profiles (its own user_id, and a
+    // second one PostgREST traces through comment_reactions) — !comments_user_id_fkey
+    // tells it explicitly which one we mean, or the whole query is rejected
+    // with an "ambiguous relationship" error and no comments load at all.
+    const {data, error} = await supabase.from('comments').select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_color,avatar_url)').eq('post_id',post.id).order('created_at',{ascending:true})
+    if (error) {
+      console.error('loadComments failed:', error)
+      setCommentsList([])
+      setLoadingComments(false)
+      setShowComments(true)
+      return
+    }
+    const comments = data || []
+    if (comments.length) {
+      const {data: reactions, error: reactErr} = await supabase.from('comment_reactions').select('comment_id,user_id,emoji').in('comment_id', comments.map(c=>c.id))
+      if (reactErr) {
+        console.error('loadComments: fetching comment_reactions failed (comments still shown):', reactErr)
+      } else {
+        const byComment = {}
+        for (const r of (reactions||[])) (byComment[r.comment_id] ||= []).push({user_id:r.user_id, emoji:r.emoji})
+        for (const c of comments) c.comment_reactions = byComment[c.id] || []
+      }
+    }
+    setCommentsList(comments)
+    setLoadingComments(false)
+    setShowComments(true)
+  }
+
+  useEffect(() => {
+    if (autoExpandComments) loadComments(true)
+  }, [autoExpandComments])
+
+  const deleteComment = async (comment) => {
+    setCommentsList(prev => prev.filter(c => c.id !== comment.id))
+    setComments(c => Math.max(0, c-1))
+    await supabase.from('comments').delete().eq('id', comment.id)
+  }
+
+  const toggleCommentReaction = async (comment, emoji='❤️') => {
+    const mine = comment.comment_reactions?.find(r=>r.user_id===currentUser.id)
+    const patch = (list) => list.map(c => c.id!==comment.id ? c : {
+      ...c,
+      comment_reactions: mine && mine.emoji===emoji
+        ? (c.comment_reactions||[]).filter(r=>r.user_id!==currentUser.id)
+        : [...(c.comment_reactions||[]).filter(r=>r.user_id!==currentUser.id), {user_id:currentUser.id, emoji}]
+    })
+    setCommentsList(prev => patch(prev))
+    if (mine && mine.emoji===emoji) {
+      await supabase.from('comment_reactions').delete().eq('comment_id',comment.id).eq('user_id',currentUser.id)
+    } else {
+      await supabase.from('comment_reactions').upsert({comment_id:comment.id,user_id:currentUser.id,emoji},{onConflict:'comment_id,user_id'})
+    }
+  }
+
+  const a = post.author||{}
+  const color = a.avatar_color||getColor(a.id)
+  const isOwn = a.id === currentUser.id
+  // A quote-repost (a repost with the reposter's own caption) shows the
+  // reposter as the header author and their caption as the body text — the
+  // original post becomes a compact QuotedPostPreview card instead of being
+  // rendered in full, so it reads as "their card, your caption" rather than
+  // looking like an indistinguishable duplicate of a normal post.
+  // Every repost — with or without an added caption — now uses the same
+  // "reposter's header + compact original-post card" layout. A plain repost
+  // just has no caption text to show, so only the header + QuotedPostPreview
+  // render below it.
+  const isQuote = !!post.isRepost
+  const headerUser = isQuote ? (post.reposter||{}) : a
+  const headerColor = isQuote ? (headerUser.avatar_color||getColor(headerUser.id)) : color
+  const headerTime = isQuote ? (post.sortTime||post.created_at) : post.created_at
+  const bodyText = isQuote ? post.quoteContent : post.content
+  const [fullscreenImg, setFullscreenImg] = useState(null)
+  const imageLongPress = useLongPress(()=>setFullscreenImg(post.image_url))
+  const [showPostMenu, setShowPostMenu] = useState(false)
+  const [showReportModal, setShowReportModal] = useState(false)
+
+  const likeInFlight = useRef(false)
+  const repostInFlight = useRef(false)
+  const replyInFlight = useRef(false)
+
+  const toggleLike = async () => {
+    if (likeInFlight.current) return
+    likeInFlight.current = true
+    try {
+      const next = !liked
+      setLiked(next); setLikes(l=>next?l+1:l-1)
+      if (next) {
+        const {error} = await supabase.from('likes').insert({post_id:post.id,user_id:currentUser.id})
+        if (error) { setLiked(!next); setLikes(l=>next?l-1:l+1) }
+        else if (post.user_id !== currentUser.id) {
+          await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'like',post_id:post.id})
+          sendPush&&sendPush(post.user_id, 'New Like', (currentUser.display_name||'Someone')+' liked your post')
+        }
+      } else {
+        await supabase.from('likes').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
+      }
+    } finally { likeInFlight.current = false }
+  }
+
+  const toggleRepost = async (content=null) => {
+    if (repostInFlight.current) return
+    repostInFlight.current = true
+    try {
+      const next = !reposted
+      setReposted(next); setReposts(r=>next?r+1:r-1)
+      if (next) {
+        const {error} = await supabase.from('reposts').insert({post_id:post.id,user_id:currentUser.id,content:content||null})
+        if (error) { setReposted(!next); setReposts(r=>next?r-1:r+1) }
+        else if (post.user_id !== currentUser.id) await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'repost',post_id:post.id})
+      } else {
+        await supabase.from('reposts').delete().eq('post_id',post.id).eq('user_id',currentUser.id)
+      }
+    } finally { repostInFlight.current = false }
+  }
+
+  const submitReply = async () => {
+    if (replyInFlight.current) return
+    if (!replyText.trim() && !replyImage) return
+    replyInFlight.current = true
+    setUploadingReply(true)
+    try {
+      let imageUrl = null
+      if (replyImage) {
+        const ext = replyImage.name.split('.').pop()
+        const path = `comments/${currentUser.id}_${Date.now()}.${ext}`
+        try {
+          const urlData = await uploadToR2(replyImage, path)
+          imageUrl = urlData.publicUrl
+        } catch { /* image is optional on a reply — fall through without it */ }
+      }
+      const { data: newComment, error } = await supabase.from('comments').insert({
+        post_id: post.id,
+        user_id: currentUser.id,
+        content: replyText.trim(),
+        reply_to_comment_id: replyingTo?.id || null,
+        image_url: imageUrl
+      }).select('id').single()
+      if (!error) {
+        setComments(c=>c+1)
+        const mentionedAi = AI_MENTION_RE.test(replyText)
+        const sentText = replyText.trim()
+        setReplyText('')
+        setReplyImage(null)
+        setReplyImagePreview('')
+        setShowReply(false)
+        setReplyingTo(null)
+        if (autoExpandComments) loadComments(true) // refresh thread so the new reply appears immediately, only when the thread is already showing
+        if (post.user_id !== currentUser.id) {
+          await supabase.from('notifications').insert({user_id:post.user_id,actor_id:currentUser.id,type:'comment',post_id:post.id})
+          sendPush&&sendPush(post.user_id, 'New Comment', (currentUser.display_name||'Someone')+' commented on your post')
+        }
+        if (mentionedAi) {
+          triggerAiMentionReply({ postId: post.id, postContent: post.content, mentionText: sentText, mentionCommentId: newComment?.id })
+        }
+      }
+    } finally {
+      setUploadingReply(false)
+      replyInFlight.current = false
+    }
+  }
+
+  const pickReplyImage = (file) => {
+    if (!file) return
+    setReplyImage(file)
+    setReplyImagePreview(URL.createObjectURL(file))
+  }
+
+  const startReply = (comment) => {
+    setReplyingTo(comment)
+    setShowReply(true)
+  }
+
+  // Build a nested tree from the flat comments list using reply_to_comment_id
+  const buildCommentTree = (list) => {
+    const byId = {}
+    list.forEach(c => { byId[c.id] = { ...c, children: [] } })
+    const roots = []
+    list.forEach(c => {
+      if (c.reply_to_comment_id && byId[c.reply_to_comment_id]) {
+        byId[c.reply_to_comment_id].children.push(byId[c.id])
+      } else {
+        roots.push(byId[c.id])
+      }
+    })
+    return roots
+  }
+
+  return (
+    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+      <div style={{display:'flex',gap:12}}>
+        <button onClick={()=>onUserClick(headerUser)} style={{background:'none',border:'none',padding:0,cursor:'pointer',flexShrink:0}}>
+          <Avatar url={headerUser.avatar_url} name={headerUser.display_name} color={headerColor} size={44}/>
+        </button>
+        <div style={{flex:1,minWidth:0}}>
+          <div style={{display:'flex',gap:6,alignItems:'center',flexWrap:'wrap',marginBottom:6,justifyContent:'space-between'}}>
+            <div style={{display:'flex',gap:6,alignItems:'center'}}>
+              <button onClick={()=>onUserClick(headerUser)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{headerUser.display_name}</button>
+              {isQuote&&<span title="Reposted with comment" style={{display:'inline-flex',color:'var(--text-tertiary)'}}><Repeat2 size={13}/></span>}
+              {headerUser.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{headerUser.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+              <span style={{color:'var(--text-faint)'}}>·</span>
+              <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(headerTime)}</span>
+            </div>
+            {isOwn&&<button onClick={()=>{if(window.confirm('Delete this post?'))onDelete(post.id)}} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><Trash2 size={15}/></button>}
+            {!isOwn&&<div style={{position:'relative'}}>
+              <button onClick={()=>setShowPostMenu(v=>!v)} style={{background:'none',border:'none',color:'var(--text-secondary)',cursor:'pointer',padding:'2px 6px',display:'flex'}}><MoreHorizontal size={17}/></button>
+              {showPostMenu&&<>
+                <div onClick={()=>setShowPostMenu(false)} style={{position:'fixed',inset:0,zIndex:19}}/>
+                <div style={{position:'absolute',top:'100%',right:0,marginTop:4,background:'var(--bg-card-8)',border:'1px solid var(--border-color-2)',borderRadius:12,overflow:'hidden',zIndex:20,minWidth:140,boxShadow:'0 8px 24px var(--shadow-color)'}}>
+                  <button onClick={()=>{setShowPostMenu(false);setShowReportModal(true)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'11px 14px',background:'none',border:'none',color:'#FF4757',cursor:'pointer',fontSize:13,fontWeight:600,textAlign:'left'}}><AlertTriangle size={14}/> Report</button>
+                </div>
+              </>}
+            </div>}
+          </div>
+          {bodyText&&<p onClick={()=>!autoExpandComments && onOpenPost && !isQuote && onOpenPost(post.id)} style={{color:'var(--text-primary)',fontSize:15,lineHeight:1.65,marginBottom:12,wordBreak:'break-word',cursor:(!autoExpandComments&&onOpenPost&&!isQuote)?'pointer':'default'}}><TextWithMentions text={bodyText} supabase={supabase} onUserClick={onUserClick}/></p>}
+          {isQuote ? (
+            <QuotedPostPreview post={post} onOpen={onOpenPost} onUserClick={onUserClick}/>
+          ) : (<>
+            {!post.image_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
+            {post.image_url&&<img {...imageLongPress} onClick={(e)=>{ if(imageLongPress.didFire()){e.preventDefault();return} !autoExpandComments && onOpenPost && onOpenPost(post.id) }} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default',WebkitTouchCallout:'none',userSelect:'none'}} alt="post" loading="lazy"/>}
+          </>)}
+          <div style={{display:'flex'}}>
+            <button onClick={()=>{setReplyingTo(null);setShowReply(v=>!v)}} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:(showComments||showReply)?'#5B9CF6':'#555',fontSize:13,padding:'6px 0'}}>
+              <MessageCircle size={16}/><span>{comments}</span>
+            </button>
+            <button onClick={()=>reposted?toggleRepost():setShowRepostMenu(true)} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:reposted?'#00C9A7':'#555',fontSize:13,padding:'6px 0'}}>
+              <Repeat2 size={16}/><span>{reposts}</span>
+            </button>
+            <button onClick={toggleLike} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:liked?'#FF4757':'#555',fontSize:13,padding:'6px 0'}}>
+              <Heart size={16} fill={liked?'#FF4757':'none'} color={liked?'#FF4757':'currentColor'}/><span>{likes}</span>
+            </button>
+            <button onClick={handleShare} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'var(--text-secondary)',fontSize:13,padding:'6px 0'}}>
+              <Share size={16}/>
+            </button>
+          </div>
+          {showShareMenu&&(
+            <div onClick={()=>setShowShareMenu(false)} style={{position:'fixed',inset:0,zIndex:400,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end',justifyContent:'center'}}>
+              <div onClick={e=>e.stopPropagation()} className="sheet-in" style={{width:'100%',maxWidth:600,background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px',display:'flex',flexDirection:'column',gap:6}}>
+                <div style={{fontWeight:700,fontSize:15,color:'var(--text-primary)',marginBottom:6}}>Share this post</div>
+                <button onClick={copyShareLink} style={{display:'flex',alignItems:'center',gap:12,background:'none',border:'none',padding:'12px 4px',cursor:'pointer',color:'var(--text-primary)',fontSize:15,textAlign:'left'}}><Link2 size={19}/> Copy link</button>
+                <a href={`https://wa.me/?text=${encodeURIComponent(shareText+' '+shareUrl)}`} target="_blank" rel="noopener noreferrer" onClick={()=>setShowShareMenu(false)} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 4px',cursor:'pointer',color:'#25D366',fontSize:15,textDecoration:'none',fontWeight:600}}><MessageCircle size={19}/> WhatsApp</a>
+                <a href={`https://www.facebook.com/sharer/sharer.php?u=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer" onClick={()=>setShowShareMenu(false)} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 4px',cursor:'pointer',color:'#1877F2',fontSize:15,textDecoration:'none',fontWeight:600}}><Share2 size={19}/> Facebook</a>
+                <a href={`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(shareUrl)}`} target="_blank" rel="noopener noreferrer" onClick={()=>setShowShareMenu(false)} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 4px',cursor:'pointer',color:'var(--text-primary)',fontSize:15,textDecoration:'none',fontWeight:600}}><Share2 size={19}/> X (Twitter)</a>
+                <button onClick={()=>setShowShareMenu(false)} style={{marginTop:8,background:'var(--bg-card)',border:'none',borderRadius:14,padding:'12px',color:'var(--text-secondary)',fontWeight:700,cursor:'pointer'}}>Cancel</button>
+              </div>
+            </div>
+          )}
+          {showComments&&(
+            <div className="sheet-in" style={{marginTop:12,borderTop:'1px solid var(--border-color)',paddingTop:12}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:10}}>
+                <span style={{color:'var(--text-tertiary)',fontSize:13}}>{comments} {comments===1?'comment':'comments'}</span>
+                <button onClick={()=>{setReplyingTo(null);setShowReply(!showReply)}} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:16,padding:'5px 12px',color:'#5B9CF6',cursor:'pointer',fontSize:13,fontWeight:600}}>+ Reply</button>
+              </div>
+              {loadingComments&&<RowSkeletonList count={2}/>}
+              {buildCommentTree(commentsList).map(cm=>(
+                <CommentThread key={cm.id} comment={cm} depth={0} onUserClick={onUserClick} onReply={startReply} currentUser={currentUser} onDelete={deleteComment} onReact={toggleCommentReaction}/>
+              ))}
+              {!loadingComments&&commentsList.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:13,textAlign:'center'}}>No comments yet</p>}
+            </div>
+          )}
+          {showReply&&(
+            <div style={{marginTop:10}}>
+              {replyingTo&&(
+                <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',background:'var(--bg-card-4)',borderRadius:10,padding:'6px 10px',marginBottom:8,fontSize:12,color:'var(--text-tertiary)'}}>
+                  <span>Replying to <strong style={{color:'var(--text-primary)'}}>{replyingTo.author?.display_name}</strong></span>
+                  <span onClick={()=>setReplyingTo(null)} style={{cursor:'pointer',color:'var(--text-secondary)',display:'flex'}}><X size={16}/></span>
+                </div>
+              )}
+              {replyImagePreview&&(
+                <div style={{position:'relative',display:'inline-block',marginBottom:8}}>
+                  <img src={replyImagePreview} style={{maxHeight:120,borderRadius:10,display:'block'}} alt="" loading="lazy"/>
+                  <span onClick={()=>{setReplyImage(null);setReplyImagePreview('')}} style={{position:'absolute',top:-8,right:-8,background:'#FF4757',borderRadius:'50%',width:22,height:22,display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',cursor:'pointer'}}><X size={13}/></span>
+                </div>
+              )}
+              <div style={{display:'flex',gap:8,alignItems:'center',minWidth:0}}>
+                <Avatar url={currentUser.avatar_url} name={currentUser.display_name} color={currentUser.avatar_color||'#5B9CF6'} size={28}/>
+                <div style={{position:'relative',flex:1,minWidth:0}}>
+                  <input value={replyText} onChange={e=>setReplyText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&submitReply()} placeholder={replyingTo?'Write a reply...':'Write a comment...'} autoFocus
+                    style={{width:'100%',minWidth:0,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'8px 38px 8px 14px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+                  <input ref={replyImageRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>pickReplyImage(e.target.files?.[0])}/>
+                  <button onClick={()=>replyImageRef.current?.click()} style={{position:'absolute',right:4,top:'50%',transform:'translateY(-50%)',background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',width:28,height:28}}><Camera size={15}/></button>
+                </div>
+                <button onClick={submitReply} disabled={uploadingReply} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:'50%',width:34,height:34,color:'#fff',cursor:'pointer',flexShrink:0,opacity:uploadingReply?0.6:1,display:'flex',alignItems:'center',justifyContent:'center'}}>{uploadingReply?'...':<Send size={15}/>}</button>
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+
+      {showRepostMenu && (
+        <div onClick={()=>setShowRepostMenu(false)} style={{position:'fixed',inset:0,zIndex:700,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 16px calc(20px + env(safe-area-inset-bottom))'}}>
+            <button onClick={()=>{setShowRepostMenu(false);toggleRepost()}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'14px 8px',background:'none',border:'none',color:'var(--text-primary)',fontSize:15,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
+              <Repeat2 size={20}/> Repost
+            </button>
+            <button onClick={()=>{setShowRepostMenu(false);setShowQuoteModal(true)}} style={{width:'100%',display:'flex',alignItems:'center',gap:12,padding:'14px 8px',background:'none',border:'none',color:'var(--text-primary)',fontSize:15,fontWeight:600,cursor:'pointer',textAlign:'left'}}>
+              <Pencil size={20}/> Quote (add your own text)
+            </button>
+          </div>
+        </div>
+      )}
+
+      {showQuoteModal && (
+        <div style={{position:'fixed',inset:0,zIndex:700,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+          <div style={{width:'100%',background:'var(--bg-app)',borderRadius:'20px 20px 0 0',padding:'20px 16px calc(20px + env(safe-area-inset-bottom))'}}>
+            <div style={{display:'flex',alignItems:'center',justifyContent:'space-between',marginBottom:14}}>
+              <span style={{fontWeight:800,fontSize:17}}>Quote</span>
+              <button onClick={()=>{setShowQuoteModal(false);setQuoteText('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
+            </div>
+            <textarea value={quoteText} onChange={e=>setQuoteText(e.target.value)} placeholder="Add a comment..." autoFocus rows={3}
+              style={{width:'100%',boxSizing:'border-box',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:14,padding:'12px 14px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',marginBottom:12}}/>
+            <div style={{border:'1px solid var(--border-color-2)',borderRadius:14,padding:12,marginBottom:16,display:'flex',gap:10}}>
+              <Avatar url={post.author?.avatar_url} name={post.author?.display_name} color={post.author?.avatar_color||'#5B9CF6'} size={32}/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{fontWeight:700,fontSize:13}}>{post.author?.display_name}</div>
+                <div style={{color:'var(--text-tertiary)',fontSize:13,overflow:'hidden',textOverflow:'ellipsis',display:'-webkit-box',WebkitLineClamp:2,WebkitBoxOrient:'vertical'}}>{post.content}</div>
+              </div>
+            </div>
+            <button onClick={()=>{toggleRepost(quoteText.trim()||null);setShowQuoteModal(false);setQuoteText('')}} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>
+              Repost
+            </button>
+          </div>
+        </div>
+      )}
+
+      {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
+      {showReportModal&&<ReportModal onClose={()=>setShowReportModal(false)} onSubmit={async(reason,details)=>{
+        const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_post_id:post.id, reason, details:details||null})
+        if(error) throw error
+      }}/>}
+    </div>
+  )
+}, postCardPropsEqual)
+
+// ── MAIN APP ───────────────────────────────────────────────────────────────
+
+function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick }) {
+  const [notifs, setNotifs] = useState([])
+  const [loading, setLoading] = useState(true)
+  const typeInfo = NOTIF_TYPE_INFO
+  useEffect(()=>{
+    supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('user_id',currentUser.id).order('created_at',{ascending:false}).limit(40).then(({data})=>{setNotifs(data||[]);setLoading(false)})
+    supabase.from('notifications').update({read:true}).eq('user_id',currentUser.id).eq('read',false).then(()=>{})
+    const ch = supabase.channel('notifs:'+currentUser.id).on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
+      const {data} = await supabase.from('notifications').select('*,actor:profiles!actor_id(id,display_name,username,avatar_color,avatar_url)').eq('id',payload.new.id).single()
+      if(data) setNotifs(prev=>[data,...prev])
+    }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[])
+  return(
+    <div>
+      <div style={{padding:'16px 16px 12px',fontWeight:800,fontSize:20,color:'var(--text-primary)',display:'flex',alignItems:'center',gap:8}}>Notifications <Bell size={18}/></div>
+      {loading&&<RowSkeletonList count={5}/>}
+      {!loading&&notifs.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Bell size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No notifications yet</p></div>}
+      {notifs.map((n,i)=>{
+        const info = typeInfo[n.type]||{icon:<Bell size={16}/>,text:''}
+        const actor = n.actor
+        const goesToPost = ['mention','like','comment','repost'].includes(n.type) && n.post_id
+        return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(91,156,246,0.05)'}}>
+          <div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
+            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span style={{color:'var(--text-secondary)',display:'flex'}}>{info.icon}</span>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Flitters'} </span>
+            <span style={{color:'var(--text-tertiary)',fontSize:14}}>{n.message||info.text}</span>
+          </div>
+          <span style={{color:'var(--text-quaternary)',fontSize:12,flexShrink:0}}>{timeAgo(n.created_at)}</span>
+        </div>)
+      })}
+    </div>
+  )
+}
+
+
+function GroupChat({ group, currentUser, supabase, onBack, onUserClick, onRead }) {
+  const [messages, setMessages] = useState([])
+  const [members, setMembers] = useState([])
+  const [msgText, setMsgText] = useState('')
+  const [showSettings, setShowSettings] = useState(false)
+  const [showMembers, setShowMembers] = useState(false)
+  const [showRequests, setShowRequests] = useState(false)
+  const [joinRequests, setJoinRequests] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [selectedMsg, setSelectedMsg] = useState(null)
+  const [reportingMsg, setReportingMsg] = useState(null)
+  const [editingMsg, setEditingMsg] = useState(null)
+  const [editText, setEditText] = useState('')
+  const [replyTo, setReplyTo] = useState(null)
+  const [replyToId, setReplyToId] = useState(null)
+  const [highlightMsgId, setHighlightMsgId] = useState(null)
+  const highlightTimer = useRef(null)
+  const scrollToMessage = (id) => {
+    if(!id) return
+    document.getElementById('gcmsg-'+id)?.scrollIntoView({behavior:'smooth',block:'center'})
+    setHighlightMsgId(id)
+    clearTimeout(highlightTimer.current)
+    highlightTimer.current = setTimeout(()=>setHighlightMsgId(null),1200)
+  }
+  const longPressTimer = useRef(null)
+  const [fullscreenImg, setFullscreenImg] = useState(null)
+  const gcChannelRef = useRef(null)
+  const gcTypingTimeouts = useRef({})
+  const gcMyTypingThrottle = useRef(0)
+  const [typingUsers, setTypingUsers] = useState({})
+  const sendGCTyping = () => {
+    const now = Date.now()
+    if(now - gcMyTypingThrottle.current < 2000) return
+    gcMyTypingThrottle.current = now
+    gcChannelRef.current?.send({type:'broadcast',event:'typing',payload:{user_id:currentUser.id,name:currentUser.display_name?.split(' ')[0]||'Someone'}})
+  }
+  const [editName, setEditName] = useState(group.name)
+  const [sendingImg, setSendingImg] = useState(false)
+  const [showStickerTray, setShowStickerTray] = useState(false)
+  const gcVoice = useVoiceRecorder()
+  const [sendingVoice, setSendingVoice] = useState(false)
+  const imgRef = useRef(null)
+  const [editDesc, setEditDesc] = useState(group.description||'')
+  const [editJoinMode, setEditJoinMode] = useState(group.join_mode||'open')
+  const [editSaving, setEditSaving] = useState(false)
+  const [groupAvatar, setGroupAvatar] = useState(group.avatar_url||null)
+  const [groupData, setGroupData] = useState(group)
+  const avatarRef = useRef(null)
+  const bottomRef = useRef(null)
+  const myRole = members.find(m=>m.user_id===currentUser.id)?.role||'member'
+  const isAdmin = myRole==='admin'
+  const isCreator = group.creator_id===currentUser.id
+  const scrollRef = useRef(null)
+  const isNearBottom = () => {
+    const el = scrollRef.current
+    if(!el) return true
+    return el.scrollHeight - el.scrollTop - el.clientHeight < 120
+  }
+  const userScrolledUp = useRef(false)
+
+  useEffect(()=>{ loadAll(); supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{onRead?.(group.id)}) },[])
+  useEffect(()=>{
+    if(!userScrolledUp.current) bottomRef.current?.scrollIntoView({behavior:'smooth'})
+  },[messages])
+  useEffect(()=>{
+    const ch = supabase.channel('gc:'+group.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},async(payload)=>{
+        let alreadyHave = false
+        setMessages(prev=>{ alreadyHave = prev.some(m=>m.id===payload.new.id); return prev })
+        if(alreadyHave) return // broadcast already delivered this one — skip the extra round trip
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+        if(data) setMessages(prev=>{
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
+          return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
+        })
+        supabase.from('group_members').update({last_read_at:new Date().toISOString()}).eq('group_id',group.id).eq('user_id',currentUser.id).then(()=>{onRead?.(group.id)})
+      })
+      .on('postgres_changes',{event:'UPDATE',schema:'public',table:'group_messages',filter:'group_id=eq.'+group.id},(payload)=>{
+        setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,...payload.new}:m))
+      })
+      .on('postgres_changes',{event:'DELETE',schema:'public',table:'group_messages'},(payload)=>{
+        setMessages(prev=>prev.filter(m=>m.id!==payload.old.id))
+      })
+      .on('postgres_changes',{event:'*',schema:'public',table:'group_message_reactions'},async(payload)=>{
+        const msgId = payload.new?.group_message_id || payload.old?.group_message_id
+        if(!msgId) return
+        const {data} = await supabase.from('group_message_reactions').select('user_id,emoji').eq('group_message_id',msgId)
+        if(data) setMessages(prev=>prev.map(m=>m.id===msgId?{...m,group_message_reactions:data}:m))
+      })
+      .on('broadcast',{event:'new_message'},async(payload)=>{
+        const msg = payload.payload
+        if(!msg?.id) return
+        // Use data directly from broadcast - no DB fetch needed, avoids RLS issues
+        setMessages(prev=>{
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===msg.content&&m.sender_id===msg.sender_id))
+          return filtered.some(m=>m.id===msg.id) ? filtered : [...filtered,{...msg,group_message_reactions:msg.group_message_reactions||[]}]
+        })
+      })
+      .on('broadcast',{event:'typing'},(payload)=>{
+        if(payload.payload?.user_id===currentUser.id) return
+        setTypingUsers(prev=>({...prev,[payload.payload.user_id]:payload.payload.name}))
+        clearTimeout(gcTypingTimeouts.current[payload.payload.user_id])
+        gcTypingTimeouts.current[payload.payload.user_id] = setTimeout(()=>{
+          setTypingUsers(prev=>{ const n={...prev}; delete n[payload.payload.user_id]; return n })
+        },3000)
+      })
+      .subscribe()
+    gcChannelRef.current = ch
+    return()=>supabase.removeChannel(ch)
+  },[])
+
+  const loadAll = async () => {
+    const [{data:msgs},{data:mems},{data:reqs}] = await Promise.all([
+      supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
+      supabase.from('group_members').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id),
+      supabase.from('group_join_requests').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id).eq('status','pending')
+    ])
+    setMessages(msgs||[])
+    setMembers(mems||[])
+    setJoinRequests(reqs||[])
+    setLoading(false)
+  }
+
+  const gcInputRef = useRef(null)
+  const gcSendInFlight = useRef(false)
+  const sendMsg = async () => {
+    if(gcSendInFlight.current) return
+    if(!msgText.trim()) return
+    gcSendInFlight.current = true
+    const text=msgText.trim(); const reply=replyTo; const replyId=replyToId
+    setMsgText(''); setReplyTo(null); setReplyToId(null)
+    if(gcInputRef.current) gcInputRef.current.style.height='auto'
+    const tempId = 'temp_'+Date.now()
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    setMessages(prev=>[...prev,tempMsg])
+    try {
+    let {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+    if(error && isMissingColumnError(error)) {
+      console.warn('reply_to_id column missing, retrying without it — run supabase_migration_reply_and_stickers.sql', error)
+      ;({data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:text,reply_to:reply}).select('id,created_at').single())
+    }
+    if(inserted){
+      const confirmed = {...tempMsg, id:inserted.id, created_at:inserted.created_at}
+      setMessages(prev=>prev.map(m=>m.id===tempId?confirmed:m))
+      // broadcast full message to other members
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id,
+        content:text, reply_to:reply, reply_to_id:replyId, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+      // one-time delayed fetch to sync with DB - merges not overwrites
+      setTimeout(async()=>{
+        const {data} = await supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
+        if(data) setMessages(prev=>{
+          const temps = prev.filter(m=>m.id.toString().startsWith('temp_'))
+          const confirmedIds = new Set(data.map(m=>m.id))
+          const stillPending = temps.filter(t=>!data.some(d=>d.content===t.content&&d.sender_id===t.sender_id&&Math.abs(new Date(d.created_at)-new Date(t.created_at))<10000))
+          return [...data,...stillPending]
+        })
+      }, 1500)
+    } else {
+      console.error('GC insert error:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+    }
+    } finally { gcSendInFlight.current = false }
+  }
+
+  const sendImage = async (file) => {
+    if(!file) return
+    setSendingImg(true)
+    const ext = file.name.split('.').pop()
+    const path = 'chats/gc_'+group.id+'_'+Date.now()+'.'+ext
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err){alert('Image upload failed: '+err.message);setSendingImg(false);return}
+    const url = urlData.publicUrl
+    const tempMsg = {id:'temp_img_'+Date.now(),group_id:group.id,sender_id:currentUser.id,content:'[image]',image_url:url,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    setMessages(prev=>[...prev,tempMsg])
+    const {data:inserted} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',image_url:url}).select('id,created_at').single()
+    if(inserted){
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', image_url:url, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+    }
+    setSendingImg(false)
+  }
+
+  const sendSticker = async (stickerUrl) => {
+    setShowStickerTray(false)
+    const tempId = 'temp_stk_'+Date.now()
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    setMessages(prev=>[...prev,tempMsg])
+    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,id:inserted.id,created_at:inserted.created_at}:m))
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', is_sticker:true, sticker_url:stickerUrl, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+    } else {
+      console.error('Sticker send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Stickers need one-time setup — run supabase_migration_reply_and_stickers.sql in Supabase first.')
+      else alert('Sticker failed to send: '+(error?.message||'unknown error'))
+    }
+  }
+
+  const sendVoiceNote = async () => {
+    const result = await gcVoice.stop()
+    if(!result || result.duration<1) return // too short to be a real note (also covers the "stop pressed instantly" case)
+    setSendingVoice(true)
+    const path = 'voice/'+group.id+'_'+currentUser.id+'_'+Date.now()+'.webm'
+    let urlData
+    try { urlData = await uploadToR2(new File([result.blob],'voice.webm',{type:result.blob.type||'audio/webm'}), path) }
+    catch(err) { alert('Voice note upload failed: '+err.message); setSendingVoice(false); return }
+    const voiceUrl = urlData.publicUrl
+    const tempId = 'temp_voice_'+Date.now()
+    const tempMsg = {id:tempId,group_id:group.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration,created_at:new Date().toISOString(),sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},group_message_reactions:[]}
+    setMessages(prev=>[...prev,tempMsg])
+    const {data:inserted,error} = await supabase.from('group_messages').insert({group_id:group.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,id:inserted.id,created_at:inserted.created_at}:m))
+      gcChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, group_id:group.id, sender_id:currentUser.id, content:'', is_voice:true, voice_url:voiceUrl, voice_duration:result.duration, created_at:inserted.created_at,
+        sender:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color},
+        group_message_reactions:[]
+      }})
+    } else {
+      console.error('Voice note send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Voice notes need one-time setup — run supabase_migration_voice_notes.sql in Supabase first.')
+      else alert('Voice note failed to send: '+(error?.message||'unknown error'))
+    }
+    setSendingVoice(false)
+  }
+
+  const promoteToAdmin = async (member) => {
+    await supabase.from('group_members').update({role:'admin'}).eq('group_id',group.id).eq('user_id',member.user_id)
+    setMembers(prev=>prev.map(m=>m.user_id===member.user_id?{...m,role:'admin'}:m))
+  }
+
+  const demoteAdmin = async (member) => {
+    await supabase.from('group_members').update({role:'member'}).eq('group_id',group.id).eq('user_id',member.user_id)
+    setMembers(prev=>prev.map(m=>m.user_id===member.user_id?{...m,role:'member'}:m))
+  }
+
+  const removeMember = async (member) => {
+    if(member.user_id===group.creator_id) return
+    const {error} = await supabase.from('group_members').delete().eq('group_id',group.id).eq('user_id',member.user_id)
+    if(!error) setMembers(prev=>prev.filter(m=>m.user_id!==member.user_id))
+    else alert('Could not remove member. Check admin permissions.')
+  }
+
+  const acceptRequest = async (req) => {
+    await supabase.from('group_join_requests').update({status:'accepted'}).eq('id',req.id)
+    await supabase.from('group_members').insert({group_id:group.id,user_id:req.user_id})
+    setJoinRequests(prev=>prev.filter(r=>r.id!==req.id))
+    setMembers(prev=>[...prev,{user_id:req.user_id,role:'member',profile:req.profile}])
+  }
+
+  const rejectRequest = async (req) => {
+    await supabase.from('group_join_requests').update({status:'rejected'}).eq('id',req.id)
+    setJoinRequests(prev=>prev.filter(r=>r.id!==req.id))
+  }
+
+  const copyInviteLink = () => {
+    const link = window.location.origin+'/join/'+group.tag
+    navigator.clipboard.writeText(link).then(()=>alert('Invite link copied!\n'+link))
+  }
+
+  const handleLongPress = (msg) => { longPressTimer.current = setTimeout(()=>setSelectedMsg(msg),500) }
+  const handlePressEnd = () => clearTimeout(longPressTimer.current)
+  const toggleGroupReaction = async(msg,emoji) => {
+    const mine = msg.group_message_reactions?.find(r=>r.user_id===currentUser.id)
+    setSelectedMsg(null)
+    if(mine && mine.emoji===emoji){
+      // tapping same emoji again removes it
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,group_message_reactions:(m.group_message_reactions||[]).filter(r=>r.user_id!==currentUser.id)}:m))
+      await supabase.from('group_message_reactions').delete().eq('group_message_id',msg.id).eq('user_id',currentUser.id)
+    } else {
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,group_message_reactions:[...(m.group_message_reactions||[]).filter(r=>r.user_id!==currentUser.id),{user_id:currentUser.id,emoji}]}:m))
+      await supabase.from('group_message_reactions').upsert({group_message_id:msg.id,user_id:currentUser.id,emoji},{onConflict:'group_message_id,user_id'})
+    }
+  }
+  const deleteGCMsg = async(msg) => {
+    setSelectedMsg(null)
+    // optimistic remove
+    setMessages(prev=>prev.filter(m=>m.id!==msg.id))
+    await supabase.from('group_messages').delete().eq('id',msg.id).eq('sender_id',currentUser.id)
+  }
+  const startEditGCMsg = (msg) => { setSelectedMsg(null); setEditingMsg(msg.id); setEditText(msg.content) }
+  const saveEditGCMsg = async() => { if(!editText.trim()) return; await supabase.from('group_messages').update({content:editText.trim()}).eq('id',editingMsg).eq('sender_id',currentUser.id); setMessages(prev=>prev.map(m=>m.id===editingMsg?{...m,content:editText.trim()}:m)); setEditingMsg(null); setEditText('') }
+
+  const uploadGroupAvatar = async (file) => {
+    if(!file) return
+    const ext = file.name.split('.').pop()
+    const path = 'groups/'+group.id+'.'+ext
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err){alert('Upload failed: '+err.message);return}
+    const url = urlData.publicUrl+'?t='+Date.now()
+    const {data:updated,error:dbErr} = await supabase.from('groups').update({avatar_url:urlData.publicUrl}).eq('id',group.id).select().single()
+    if(dbErr){alert('DB error: '+dbErr.message+' groupid:'+group.id);return}
+    if(!updated){alert('No rows updated - group id mismatch?');return}
+    group.avatar_url = urlData.publicUrl
+    setGroupAvatar(url)
+    alert('Done! url:'+url.slice(0,40))
+  }
+
+  const saveGroupSettings = async () => {
+    if(!editName.trim()){alert('Group name cannot be empty');return}
+    setEditSaving(true)
+    await supabase.from('groups').update({name:editName.trim(),description:editDesc.trim(),join_mode:editJoinMode}).eq('id',group.id)
+    group.name = editName.trim()
+    group.description = editDesc.trim()
+    group.join_mode = editJoinMode
+    setEditSaving(false)
+    alert('Group updated!')
+  }
+
+  const leaveGroup = async () => {
+    if(isCreator){ alert('You cannot leave a group you created. Delete it instead.'); return }
+    await supabase.from('group_members').delete().eq('group_id',group.id).eq('user_id',currentUser.id)
+    onBack()
+  }
+
+  const deleteGroup = async () => {
+    if(!isCreator && !isAdmin) return
+    await supabase.from('groups').delete().eq('id',group.id)
+    onBack()
+  }
+
+  if(showRequests) return (
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowRequests(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>Join Requests ({joinRequests.length})</span>
+      </div>
+      {joinRequests.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Inbox size={40}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No pending requests</p></div>}
+      {joinRequests.map(req=>(
+        <div key={req.id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
+          <Avatar url={req.profile?.avatar_url} name={req.profile?.display_name} color={req.profile?.avatar_color||'#5B9CF6'} size={46}/>
+          <div style={{flex:1}}>
+            <div style={{fontWeight:700,fontSize:15}}>{req.profile?.display_name}</div>
+            <div style={{color:'var(--text-secondary)',fontSize:13}}>@{req.profile?.username} · {timeAgo(req.created_at)}</div>
+          </div>
+          <div style={{display:'flex',gap:6}}>
+            <button onClick={()=>acceptRequest(req)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:10,padding:'8px 12px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Accept</button>
+            <button onClick={()=>rejectRequest(req)} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:10,padding:'8px 12px',color:'#FF4757',fontWeight:700,fontSize:13,cursor:'pointer'}}>Reject</button>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  if(showMembers) return (
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowMembers(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>Members ({members.length})</span>
+      </div>
+      {members.map(m=>{
+        const isThisCreator = m.user_id===group.creator_id
+        const isThisAdmin = m.role==='admin'
+        return(
+          <div key={m.user_id} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
+            <button onClick={()=>onUserClick(m.profile)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
+              <Avatar url={m.profile?.avatar_url} name={m.profile?.display_name} color={m.profile?.avatar_color||'#5B9CF6'} size={46}/>
+            </button>
+            <div style={{flex:1}}>
+              <div style={{display:'flex',alignItems:'center',gap:6}}>
+                <span style={{fontWeight:700,fontSize:15}}>{m.profile?.display_name}</span>
+                {isThisCreator&&<span style={{background:'linear-gradient(135deg,#FFD700,#FFA500)',borderRadius:8,padding:'2px 7px',fontSize:10,fontWeight:800,color:'#000'}}>Creator</span>}
+                {isThisAdmin&&!isThisCreator&&<span style={{background:'rgba(91,156,246,0.2)',border:'1px solid rgba(91,156,246,0.4)',borderRadius:8,padding:'2px 7px',fontSize:10,fontWeight:700,color:'#5B9CF6'}}>Admin</span>}
+              </div>
+              <div style={{color:'var(--text-secondary)',fontSize:13}}>@{m.profile?.username}</div>
+            </div>
+            {(isAdmin||isCreator)&&m.user_id!==currentUser.id&&!isThisCreator&&(
+              <div style={{display:'flex',gap:6}}>
+                {!isThisAdmin&&<button onClick={()=>promoteToAdmin(m)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:10,padding:'6px 10px',color:'#5B9CF6',fontSize:12,fontWeight:700,cursor:'pointer'}}>Promote</button>}
+                {isThisAdmin&&isCreator&&<button onClick={()=>demoteAdmin(m)} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:10,padding:'6px 10px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>Demote</button>}
+                {isCreator&&<button onClick={()=>removeMember(m)} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:10,padding:'6px 10px',color:'#FF4757',fontSize:12,fontWeight:700,cursor:'pointer'}}>Remove</button>}
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+
+  if(showSettings) return (
+    <div className="screen-in" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowSettings(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>Group Settings</span>
+        {isCreator&&<button onClick={saveGroupSettings} disabled={editSaving} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:16,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>{editSaving?'Saving...':'Save'}</button>}
+      </div>
+      <div style={{padding:20}}>
+        <div style={{textAlign:'center',marginBottom:24}}>
+          <div onClick={()=>isCreator&&avatarRef.current?.click()} style={{width:88,height:88,borderRadius:24,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:36,fontWeight:800,color:'var(--text-primary)',margin:'0 auto 8px',cursor:isCreator?'pointer':'default',overflow:'hidden',position:'relative'}}>
+            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:editName[0]||'G'}
+            {isCreator&&<div style={{position:'absolute',bottom:0,left:0,right:0,background:'rgba(0,0,0,0.5)',padding:'4px',textAlign:'center',fontSize:11,color:'var(--text-primary)'}}>Edit</div>}
+          </div>
+          {isCreator&&<input ref={avatarRef} type="file" accept="image/*" onChange={e=>uploadGroupAvatar(e.target.files[0])} style={{display:'none'}}/>}
+          <p style={{color:'var(--text-secondary)',fontSize:13}}>{members.length} members · @{group.tag}</p>
+        </div>
+        {isCreator&&<>
+          <input value={editName} onChange={e=>setEditName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+          <textarea value={editDesc} onChange={e=>setEditDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
+          <div style={{display:'flex',gap:8,marginBottom:20}}>
+            <button onClick={()=>setEditJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:editJoinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:editJoinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Globe size={15}/> Anyone</button>
+            <button onClick={()=>setEditJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(editJoinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:editJoinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:editJoinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Lock size={15}/> Request</button>
+          </div>
+        </>}
+        <div style={{borderRadius:16,overflow:'hidden',border:'1px solid var(--border-color)'}}>
+          <button onClick={()=>{setShowSettings(false);setShowMembers(true)}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'var(--text-primary)',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}><Users size={16}/> Members</span><span style={{color:'var(--text-secondary)'}}>{members.length} ›</span>
+          </button>
+          <button onClick={copyInviteLink} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'#00C9A7',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}><Link2 size={16}/> Copy Invite Link</span><span style={{color:'var(--text-secondary)',fontSize:13}}>@{group.tag}</span>
+          </button>
+          {(isAdmin||isCreator)&&<button onClick={()=>{setShowSettings(false);setShowRequests(true)}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:'1px solid var(--border-color)',padding:'16px',color:'#F7B731',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',justifyContent:'space-between'}}>
+            <span style={{display:'inline-flex',alignItems:'center',gap:8}}><Inbox size={16}/> Join Requests</span>{joinRequests.length>0&&<span style={{background:'#FF4757',borderRadius:10,padding:'2px 8px',fontSize:12,color:'var(--text-primary)'}}>{joinRequests.length}</span>}
+          </button>}
+          <button onClick={leaveGroup} style={{width:'100%',background:'var(--bg-card-5)',border:'none',borderBottom:isCreator?'1px solid rgba(255,255,255,0.07)':'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
+            <LogOut size={16}/> Leave Group
+          </button>
+          {(isCreator||isAdmin)&&<button onClick={()=>{if(window.confirm('Delete this group? This cannot be undone.'))deleteGroup()}} style={{width:'100%',background:'var(--bg-card-5)',border:'none',padding:'16px',color:'#FF4757',fontWeight:600,fontSize:15,cursor:'pointer',textAlign:'left'}}>
+            <Trash2 size={16}/> Delete Group
+          </button>}
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div className="screen-in-safe full-screen-height" style={{background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+      {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
+      <div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
+        <div onClick={()=>setShowSettings(true)} style={{display:'flex',alignItems:'center',gap:10,flex:1,cursor:'pointer'}}>
+          <div style={{width:38,height:38,borderRadius:12,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:18,color:'var(--text-primary)',overflow:'hidden'}}>
+            {groupAvatar?<img src={groupAvatar} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:group.name[0]}
+          </div>
+          <div>
+            <div style={{fontWeight:700,fontSize:16}}>{group.name}</div>
+            <div style={{color:'var(--text-secondary)',fontSize:12}}>{members.length} members</div>
+          </div>
+        </div>
+        <button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',color:'var(--text-muted)',cursor:'pointer',display:'flex'}}><Settings size={22}/></button>
+      </div>
+
+      <div ref={scrollRef} onScroll={()=>{ userScrolledUp.current = !isNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,paddingTop:80,overflowY:'auto',height:0}}>
+        {loading&&<ChatSkeleton count={6}/>}
+        {!loading&&messages.length===0&&<div style={{textAlign:'center',marginTop:60}}>
+          <p style={{fontSize:40}}>👋</p>
+          <p style={{color:'var(--text-quaternary)',fontSize:14,marginTop:8}}>Say hello to the group!</p>
+        </div>}
+        {selectedMsg&&<div onClick={()=>setSelectedMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+          <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
+            <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 16px'}}/>
+            <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:8,marginBottom:16,padding:'0 12px',maxHeight:170,overflowY:'auto'}}>
+              {QUICK_REACTIONS.map(e=>{
+                const mine = selectedMsg.group_message_reactions?.find(r=>r.user_id===currentUser.id)
+                const isMineActive = mine?.emoji===e
+                return (
+                <button key={e} onClick={()=>toggleGroupReaction(selectedMsg,e)} style={{background:isMineActive?'rgba(91,156,246,0.25)':'var(--bg-card-6)',border:isMineActive?'1px solid #5B9CF6':'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
+                )
+              })}
+            </div>
+            <button onClick={()=>{setReplyTo(selectedMsg.sender?.display_name+': '+selectedMsg.content?.slice(0,50));setReplyToId(selectedMsg.id);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><CornerUpLeft size={17}/> Reply</button>
+            {selectedMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedMsg.content);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Copy size={17}/> Copy</button>}
+            {selectedMsg.sender_id===currentUser.id&&<>
+              <button onClick={()=>startEditGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Pencil size={17}/> Edit</button>
+              <button onClick={()=>deleteGCMsg(selectedMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Trash2 size={17}/> Delete</button>
+            </>}
+            {selectedMsg.sender_id!==currentUser.id&&<button onClick={()=>{setReportingMsg(selectedMsg);setSelectedMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><AlertTriangle size={17}/> Report</button>}
+          </div>
+        </div>}
+        {reportingMsg&&<ReportModal onClose={()=>setReportingMsg(null)} onSubmit={async(reason,details)=>{
+          const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_message_id:reportingMsg.id, reason, details:details||null})
+          if(error) throw error
+        }}/>}
+        {messages.map(msg=>{
+          const own = msg.sender_id===currentUser.id
+          return(
+            <MessageBubble key={msg.id}
+              rowId={'gcmsg-'+msg.id}
+              msg={msg} own={own} showSenderInfo currentUserId={currentUser.id}
+              onAvatarClick={()=>onUserClick(msg.sender)}
+              onImageClick={setFullscreenImg}
+              onLongPress={()=>handleLongPress(msg)} onPressEnd={handlePressEnd}
+              reactions={msg.group_message_reactions}
+              onToggleReaction={(emoji)=>toggleGroupReaction(msg,emoji)}
+              isEditing={editingMsg===msg.id}
+              editValue={editText} onEditChange={e=>setEditText(e.target.value)}
+              onSaveEdit={saveEditGCMsg} onCancelEdit={()=>setEditingMsg(null)}
+              onJumpToReply={scrollToMessage} highlighted={highlightMsgId===msg.id}
+            />
+          )
+        })}
+        <div ref={bottomRef}/>
+      </div>
+
+      <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+        {Object.keys(typingUsers).length>0&&<div style={{padding:'6px 14px 0',color:'#5B9CF6',fontSize:12,fontStyle:'italic'}}>{Object.values(typingUsers).join(', ')} {Object.keys(typingUsers).length===1?'is':'are'} typing...</div>}
+        <ReplyComposerBar text={replyTo} onCancel={()=>{setReplyTo(null);setReplyToId(null)}}/>
+        {showStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendSticker} onEmojiSelect={e=>setMsgText(t=>t+e)} onClose={()=>setShowStickerTray(false)}/>}
+        {gcVoice.recording ? (
+          <VoiceRecordingBar seconds={gcVoice.seconds} onCancel={gcVoice.cancel} onSend={sendVoiceNote}/>
+        ) : (
+        <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
+          <input ref={imgRef} type="file" accept="image/*" onChange={e=>sendImage(e.target.files[0])} style={{display:'none'}}/>
+          <button onClick={()=>imgRef.current?.click()} disabled={sendingImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
+          <button onClick={()=>setShowStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
+        <textarea ref={gcInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendGCTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder="Message group..." style={{flex:1,minWidth:0,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:20,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4}}/>
+          {msgText.trim() ? (
+            <button onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+          ) : (
+            <button onClick={gcVoice.start} disabled={sendingVoice} style={{width:46,height:46,borderRadius:'50%',background:'var(--bg-card-3)',border:'none',cursor:'pointer',color:'var(--text-primary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingVoice?<Loader2 size={19} className="xspin"/>:<Mic size={19}/>}</button>
+          )}
+        </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId }) {
+  const [reels, setReels] = useState([])
+  const [reelAds, setReelAds] = useState([])
+  const [currentIdx, setCurrentIdx] = useState(0)
+  const [uploading, setUploading] = useState(false)
+  const [showUpload, setShowUpload] = useState(false)
+  const [caption, setCaption] = useState('')
+  const [videoFile, setVideoFile] = useState(null)
+  const [videoPreviewUrl, setVideoPreviewUrl] = useState(null)
+  const [videoDuration, setVideoDuration] = useState(null)
+  const [videoIssue, setVideoIssue] = useState('')
+  const [uploadProgress, setUploadProgress] = useState(0)
+  const [liked, setLiked] = useState({})
+  const [likes, setLikes] = useState({})
+  const [reportingReel, setReportingReel] = useState(null)
+  const [playing, setPlaying] = useState(true)
+  // Reels/ads autoplay muted by default (tap the speaker to unmute) — was
+  // previously hardcoded muted={false}. This restores the original muted-
+  // autoplay design, and separately is good practice regardless of any
+  // WebView issue: nobody wants unsolicited audio blasting on scroll.
+  const [reelMuted, setReelMuted] = useState(false) // unmuted by default in the actual Reels tab — muted-by-default only applies to the feed teaser card, which never changes this state at all
+  const [buffering, setBuffering] = useState(false)
+  const [animDir, setAnimDir] = useState(null) // 'up' | 'down' | null
+  const [animating, setAnimating] = useState(false)
+  const [showComments, setShowComments] = useState(false)
+  const [comments, setComments] = useState([])
+  const [commentText, setCommentText] = useState('')
+  const [commentCounts, setCommentCounts] = useState({})
+  const videoRef = useRef(null)
+  const fileRef = useRef(null)
+  const touchStart = useRef(null)
+  const containerRef = useRef(null)
+  const isMounted = useRef(false)
+
+  useEffect(()=>{ loadReels() },[])
+  useEffect(()=>{
+    // lock body scroll/overscroll while reels are open
+    const prev = document.body.style.overscrollBehavior
+    document.body.style.overscrollBehavior = 'none'
+    document.body.style.overflow = 'hidden'
+    return ()=>{ document.body.style.overscrollBehavior = prev; document.body.style.overflow = '' }
+  },[])
+  useEffect(()=>{ supabase.from('ads').select('*').eq('active',true).eq('type','reel').then(({data})=>setReelAds(data||[])) },[])
+  useEffect(()=>{
+    if(!isMounted.current){ isMounted.current=true; return }
+    if(videoRef.current){ videoRef.current.currentTime=0; videoRef.current.play().catch(()=>{}) }
+    setPlaying(true)
+  },[currentIdx])
+  useEffect(()=>{
+    if(!videoRef.current) return
+    playing?videoRef.current.play().catch(()=>{}):videoRef.current.pause()
+  },[playing])
+
+  const loadReels = async() => {
+    const {data} = await supabase.from('reels').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color,verified,is_authentic),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
+    if(!data) return
+    setReels(data)
+    const likedMap={}, likesMap={}
+    data.forEach(r=>{ likedMap[r.id]=r.reel_likes?.some(l=>l.user_id===currentUser.id); likesMap[r.id]=r.reel_likes?.length||0 })
+    setLiked(likedMap); setLikes(likesMap)
+    // load real comment counts for all reels
+    const ids = data.map(r=>r.id)
+    if(ids.length>0){
+      const {data:cc} = await supabase.from('comments').select('reel_id').in('reel_id',ids)
+      if(cc){
+        const countMap={}
+        cc.forEach(c=>{ countMap[c.reel_id]=(countMap[c.reel_id]||0)+1 })
+        setCommentCounts(countMap)
+      }
+    }
+    // preload first two videos
+    data.slice(0,2).forEach(r=>{ const v=document.createElement('video'); v.src=r.video_url; v.preload='auto' })
+    // jump to specific reel if opened from feed preview
+    if(initialReelId){ const idx=data.findIndex(r=>r.id===initialReelId); if(idx>=0) setCurrentIdx(idx) }
+  }
+
+  const goToReel = (nextIdx, dir) => {
+    if(animating) return
+    setAnimDir(dir)
+    setAnimating(true)
+    setTimeout(()=>{ setCurrentIdx(nextIdx); setAnimDir(null); setAnimating(false); setBuffering(false)
+      // preload next video
+      if(reels[nextIdx+1]) { const v=document.createElement('video'); v.src=reels[nextIdx+1].video_url; v.preload='auto' }
+    }, 320)
+  }
+
+  const toggleLike = async(reel) => {
+    const isLiked = liked[reel.id]
+    setLiked(p=>({...p,[reel.id]:!isLiked}))
+    setLikes(p=>({...p,[reel.id]:(p[reel.id]||0)+(isLiked?-1:1)}))
+    if(isLiked) await supabase.from('reel_likes').delete().eq('reel_id',reel.id).eq('user_id',currentUser.id)
+    else await supabase.from('reel_likes').insert({reel_id:reel.id,user_id:currentUser.id})
+  }
+
+  const openComments = async(reel) => {
+    setShowComments(true)
+    setComments([]) // clear stale comments from a previously viewed reel immediately
+    const {data, error} = await supabase.from('comments').select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_url,avatar_color)').eq('reel_id',reel.id).order('created_at',{ascending:true})
+    if (error) console.error('openComments (reel) failed:', error)
+    setComments(data||[])
+    setCommentCounts(p=>({...p,[reel.id]:data?.length||0}))
+  }
+
+  const postComment = async(reel) => {
+    if(!commentText.trim()) return
+    const text = commentText.trim()
+    setCommentText('')
+    // optimistic insert immediately so it never disappears
+    const optimistic = {id:'tmp_'+Date.now(),reel_id:reel.id,user_id:currentUser.id,content:text,author:{id:currentUser.id,display_name:currentUser.display_name,username:currentUser.username,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}}
+    setComments(p=>[...p,optimistic])
+    setCommentCounts(p=>({...p,[reel.id]:(p[reel.id]||0)+1}))
+    const {data:c} = await supabase.from('comments').insert({reel_id:reel.id,user_id:currentUser.id,content:text}).select('*,author:profiles!comments_user_id_fkey(id,display_name,username,avatar_url,avatar_color)').single()
+    // replace optimistic with real
+    if(c) setComments(p=>p.map(x=>x.id===optimistic.id?c:x))
+  }
+
+  // Free accounts get short-form only; is_authentic (verified) accounts can
+  // post up to a minute. Defined once here so the picker's inline check and
+  // the actual upload always agree.
+  const REEL_MAX_DURATION = currentUser.is_authentic ? 60 : 20
+  const REEL_MAX_SIZE_MB = currentUser.is_authentic ? 100 : 40
+
+  useEffect(()=>()=>{ if(videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl) },[videoPreviewUrl])
+
+  const pickVideoFile = async (file) => {
+    if(!file) return
+    if(videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+    setVideoFile(file)
+    setVideoPreviewUrl(URL.createObjectURL(file))
+    setVideoDuration(null)
+    setVideoIssue('')
+    try {
+      const duration = await getVideoDuration(file)
+      setVideoDuration(duration)
+      if(duration > REEL_MAX_DURATION + 0.5) setVideoIssue(`This is ${Math.round(duration)}s — trim it to ${REEL_MAX_DURATION}s or under.`)
+      else if(file.size > REEL_MAX_SIZE_MB*1024*1024) setVideoIssue(`This file is ${(file.size/1024/1024).toFixed(1)}MB — the limit here is ${REEL_MAX_SIZE_MB}MB.`)
+    } catch(err) {
+      setVideoIssue(err.message||"Couldn't read that video file.")
+    }
+  }
+
+  const clearVideoFile = () => {
+    if(videoPreviewUrl) URL.revokeObjectURL(videoPreviewUrl)
+    setVideoFile(null); setVideoPreviewUrl(null); setVideoDuration(null); setVideoIssue('')
+  }
+
+  const uploadReel = async() => {
+    if(!videoFile || videoIssue) return
+    setUploading(true)
+    setUploadProgress(0)
+    const ext = (videoFile.name.split('.').pop()||'mp4').toLowerCase()
+    const path = 'reels/'+currentUser.id+'_'+Date.now()+'.'+ext
+    let urlData
+    try {
+      urlData = await uploadVideoChunked(videoFile, path, { maxDurationSeconds:REEL_MAX_DURATION, maxSizeBytes:REEL_MAX_SIZE_MB*1024*1024, onProgress:setUploadProgress })
+    } catch(err) {
+      alert(err.message||'Upload failed')
+      setUploading(false)
+      return
+    }
+    const {data:reel} = await supabase.from('reels').insert({user_id:currentUser.id,video_url:urlData.publicUrl,caption:caption.trim()}).select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').single()
+    if(reel){ setReels(prev=>[reel,...prev]); setLikes(p=>({...p,[reel.id]:0})); setLiked(p=>({...p,[reel.id]:false})) }
+    clearVideoFile(); setCaption(''); setShowUpload(false); setUploading(false); setUploadProgress(0)
+  }
+
+  const deleteReel = async(reel) => {
+    await supabase.from('reels').delete().eq('id',reel.id)
+    const newReels = reels.filter(r=>r.id!==reel.id)
+    setReels(newReels)
+    if(currentIdx>=newReels.length) setCurrentIdx(Math.max(0,newReels.length-1))
+  }
+
+  const handleTouchStart = (e) => { if(showComments) return; touchStart.current = e.touches[0].clientY }
+  const handleTouchEnd = (e) => {
+    if(showComments||!touchStart.current) return
+    const diff = touchStart.current - e.changedTouches[0].clientY
+    if(Math.abs(diff)>60){
+      if(diff>0 && currentIdx<reels.length-1) goToReel(currentIdx+1,'up')
+      else if(diff<0 && currentIdx>0) goToReel(currentIdx-1,'down')
+    }
+    touchStart.current = null
+  }
+
+  const slideStyle = animDir==='up' ? {transform:'translateY(-100%)',transition:'transform 0.32s cubic-bezier(0.4,0,0.2,1)'}
+    : animDir==='down' ? {transform:'translateY(100%)',transition:'transform 0.32s cubic-bezier(0.4,0,0.2,1)'}
+    : {transform:'translateY(0)',transition:'transform 0.32s cubic-bezier(0.4,0,0.2,1)'}
+
+  const isAdSlot = reelAds.length>0 && (currentIdx+1)%5===0
+  const currentAd = isAdSlot ? reelAds[Math.floor(currentIdx/5)%reelAds.length] : null
+  const reel = reels[currentIdx]
+
+  if(showUpload) return (
+    <div style={{position:'fixed',inset:0,zIndex:400,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
+        <button onClick={()=>{setShowUpload(false);clearVideoFile();setCaption('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>New Reel</span>
+        <button onClick={uploadReel} disabled={!videoFile||!!videoIssue||uploading} style={{background:(videoFile&&!videoIssue)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-2)',border:'none',borderRadius:20,padding:'8px 20px',color:(videoFile&&!videoIssue)?'#fff':'var(--text-quaternary)',fontWeight:700,cursor:(videoFile&&!videoIssue&&!uploading)?'pointer':'default',fontSize:14}}>{uploading?Math.round(uploadProgress*100)+'%':'Post'}</button>
+      </div>
+      <div style={{flex:1,overflowY:'auto',padding:20,display:'flex',flexDirection:'column',gap:16}}>
+        <input ref={fileRef} type="file" accept="video/*" onChange={e=>{pickVideoFile(e.target.files[0]);e.target.value=''}} style={{display:'none'}}/>
+
+        {!videoFile ? (
+          <div onClick={()=>fileRef.current?.click()} style={{aspectRatio:'9/13',maxHeight:'52vh',background:'linear-gradient(165deg,var(--bg-card-4),var(--bg-card))',border:'1.5px dashed var(--border-color-2)',borderRadius:20,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:14,margin:'0 auto',width:'100%'}}>
+            <div style={{width:64,height:64,borderRadius:'50%',background:'linear-gradient(135deg,rgba(91,156,246,0.18),rgba(132,94,247,0.18))',display:'flex',alignItems:'center',justifyContent:'center'}}>
+              <Video size={28} color="#5B9CF6"/>
+            </div>
+            <div style={{textAlign:'center'}}>
+              <p style={{color:'var(--text-primary)',fontSize:15,fontWeight:600,margin:0}}>Select a video</p>
+              <p style={{color:'var(--text-quaternary)',fontSize:12,margin:'4px 0 0'}}>{currentUser.is_authentic ? 'Verified accounts can post up to 60s' : 'Free accounts can post up to 20s'}</p>
+            </div>
+          </div>
+        ) : (
+          <div style={{position:'relative',aspectRatio:'9/13',maxHeight:'52vh',borderRadius:20,overflow:'hidden',background:'#000',margin:'0 auto',width:'100%'}}>
+            <video src={videoPreviewUrl} muted loop autoPlay playsInline style={{width:'100%',height:'100%',objectFit:'contain'}}/>
+            <button onClick={()=>fileRef.current?.click()} disabled={uploading} style={{position:'absolute',top:10,right:10,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',border:'none',borderRadius:14,padding:'6px 12px',color:'#fff',fontSize:12,fontWeight:600,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><Pencil size={12}/> Change</button>
+            {videoDuration!=null&&<div style={{position:'absolute',bottom:10,left:10,background:'rgba(0,0,0,0.55)',backdropFilter:'blur(4px)',borderRadius:10,padding:'3px 9px',color:'#fff',fontSize:12,fontWeight:600}}>{formatVoiceDuration(videoDuration)} / {REEL_MAX_DURATION}s</div>}
+            {uploading&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10}}>
+              <Loader2 size={30} className="xspin"/>
+              <div style={{width:'60%',height:5,borderRadius:3,background:'rgba(255,255,255,0.25)',overflow:'hidden'}}>
+                <div style={{height:'100%',width:(uploadProgress*100)+'%',background:'#fff',transition:'width 0.2s'}}/>
+              </div>
+            </div>}
+          </div>
+        )}
+
+        {videoIssue&&(
+          <div style={{display:'flex',alignItems:'flex-start',gap:8,background:'rgba(248,113,113,0.1)',border:'1px solid rgba(248,113,113,0.3)',borderRadius:12,padding:'10px 12px'}}>
+            <AlertTriangle size={16} color="#F87171" style={{flexShrink:0,marginTop:1}}/>
+            <span style={{color:'#F87171',fontSize:13,lineHeight:1.4}}>{videoIssue}</span>
+          </div>
+        )}
+
+        <div>
+          <textarea value={caption} onChange={e=>setCaption(e.target.value.slice(0,280))} placeholder="Write a caption..." rows={3} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box'}}/>
+          <p style={{textAlign:'right',color:'var(--text-quaternary)',fontSize:11,margin:'4px 2px 0'}}>{caption.length}/280</p>
+        </div>
+      </div>
+    </div>
+  )
+
+  return (
+    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',color:'#fff',overflow:'hidden',overscrollBehavior:'none',touchAction:'pan-y'}}
+      onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+
+      {/* top controls */}
+      <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={20}/></button>
+      <button onClick={()=>setShowUpload(true)} style={{position:'absolute',top:16,right:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:20,padding:'8px 14px',color:'#fff',fontSize:13,fontWeight:700,cursor:'pointer'}}>+ Reel</button>
+
+      {reels.length===0&&<div style={{height:'100%',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:16,color:'#fff'}}>
+        <div style={{display:'flex',justifyContent:'center'}}><Clapperboard size={44}/></div>
+        <p style={{fontSize:18,fontWeight:700}}>No reels yet</p>
+        <button onClick={()=>setShowUpload(true)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:24,padding:'12px 28px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer'}}>Post First Reel</button>
+      </div>}
+
+      {/* animated reel container */}
+      {reels.length>0&&<div style={{...slideStyle,position:'absolute',inset:0}}>
+        {isAdSlot&&currentAd?<>
+          <HlsVideo src={currentAd.video_url} style={{width:'100%',height:'100%',objectFit:'cover',background:'#000'}} loop playsInline autoPlay muted={reelMuted}/>
+          <div style={{position:'absolute',top:16,right:12,cursor:'pointer',color:'#fff',zIndex:4}} onClick={(e)=>{e.stopPropagation();setReelMuted(m=>!m)}}>
+            {reelMuted ? <VolumeX size={22}/> : <Volume2 size={22}/>}
+          </div>
+          <div style={{position:'absolute',inset:0,background:'linear-gradient(to top,rgba(0,0,0,0.7) 0%,transparent 50%)'}}/>
+          <div style={{position:'absolute',bottom:100,left:16,right:80,color:'#fff'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8}}>
+              <div style={{width:36,height:36,borderRadius:'50%',background:'linear-gradient(135deg,#F7B731,#FF6B35)',display:'flex',alignItems:'center',justifyContent:'center',fontWeight:800,fontSize:16,color:'#fff'}}>{currentAd.advertiser_name?.[0]||'A'}</div>
+              <div style={{display:'flex',gap:6,alignItems:'center'}}>
+                <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{currentAd.advertiser_name}</span>
+                <span style={{background:'rgba(247,183,49,0.2)',border:'1px solid rgba(247,183,49,0.4)',borderRadius:6,padding:'1px 6px',fontSize:10,color:'#F7B731',fontWeight:700}}>Sponsored</span>
+              </div>
+            </div>
+            {currentAd.content&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{currentAd.content}</p>}
+            {currentAd.link_url&&<button onClick={()=>window.open(currentAd.link_url.startsWith('http')?currentAd.link_url:'https://'+currentAd.link_url,'_blank')} style={{marginTop:10,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'10px 20px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Learn More</button>}
+          </div>
+        </>:reel?<>
+          {/* dark background while buffering — no gray flash */}
+          <div style={{position:'absolute',inset:0,background:'#000',zIndex:0}}/>
+          {buffering&&<div style={{position:'absolute',inset:0,zIndex:2,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            <div style={{width:48,height:48,borderRadius:'50%',border:'3px solid rgba(255,255,255,0.15)',borderTopColor:'#fff',animation:'spin 0.8s linear infinite'}}/>
+          </div>}
+          <HlsVideo videoRef={videoRef} src={reel.video_url} style={{position:'absolute',inset:0,width:'100%',height:'100%',objectFit:'contain',zIndex:1,background:'#000'}}
+            loop playsInline autoPlay muted={reelMuted}
+            onWaiting={()=>setBuffering(true)}
+            onPlaying={()=>setBuffering(false)}
+            onCanPlay={()=>setBuffering(false)}
+            onClick={()=>setPlaying(p=>!p)}/>
+          {/* gradient overlay */}
+          <div style={{position:'absolute',inset:0,zIndex:2,background:'linear-gradient(to top,rgba(0,0,0,0.75) 0%,transparent 45%)',pointerEvents:'none'}}/>
+          {!playing&&<div style={{position:'absolute',inset:0,zIndex:3,display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}>
+            <div style={{width:72,height:72,borderRadius:'50%',background:'rgba(0,0,0,0.5)',backdropFilter:'blur(4px)',display:'flex',alignItems:'center',justifyContent:'center'}}><Play size={30} fill="#fff" color="#fff" style={{marginLeft:4}}/></div>
+          </div>}
+
+          {/* author + caption */}
+          <div style={{position:'absolute',bottom:showComments?'52%':110,left:16,right:80,color:'#fff',zIndex:4,transition:'bottom 0.3s'}}>
+            <div style={{display:'flex',alignItems:'center',gap:10,marginBottom:8,cursor:'pointer'}} onClick={()=>onUserClick(reel.author)}>
+              <Avatar url={reel.author?.avatar_url} name={reel.author?.display_name} color={reel.author?.avatar_color||'#5B9CF6'} size={38}/>
+              <div>
+                <div style={{display:'flex',alignItems:'center',gap:5}}>
+                  <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
+                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><img src="/flitters-logo-white.svg" alt="Verified" width={9} height={9} style={{objectFit:'contain',display:'block'}}/></span>}
+                  {reel.author?.is_authentic&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'#1877F2',flexShrink:0}}><svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'><polyline points='2,6 5,9 10,3' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+                </div>
+                <div style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>@{reel.author?.username}</div>
+              </div>
+            </div>
+            {reel.caption&&<p style={{fontSize:14,lineHeight:1.5,textShadow:'0 1px 4px rgba(0,0,0,0.8)',margin:0}}>{reel.caption}</p>}
+          </div>
+
+          {/* action buttons */}
+          <div style={{position:'absolute',bottom:130,right:12,display:'flex',flexDirection:'column',alignItems:'center',gap:22,zIndex:4}}>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>toggleLike(reel)}>
+              <Heart size={28} fill={liked[reel.id]?'#FF4757':'none'} color={liked[reel.id]?'#FF4757':'currentColor'}/>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{likes[reel.id]||0}</span>
+            </div>
+            <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:2,cursor:'pointer'}} onClick={()=>openComments(reel)}>
+              <MessageCircle size={26}/>
+              <span style={{color:'#fff',fontSize:12,fontWeight:700,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{commentCounts[reel.id]||0}</span>
+            </div>
+            {reel.user_id===currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>deleteReel(reel)}>
+              <Trash2 size={24}/>
+            </div>}
+            {reel.user_id!==currentUser.id&&<div style={{cursor:'pointer'}} onClick={()=>setReportingReel(reel)}>
+              <AlertTriangle size={24}/>
+            </div>}
+            <div style={{cursor:'pointer'}} onClick={(e)=>{e.stopPropagation();setReelMuted(m=>!m)}}>
+              {reelMuted ? <VolumeX size={24}/> : <Volume2 size={24}/>}
+            </div>
+          </div>
+
+          {currentIdx<reels.length-1&&<div style={{position:'absolute',bottom:20,left:'50%',transform:'translateX(-50%)',color:'rgba(255,255,255,0.35)',fontSize:11,zIndex:4,display:'flex',flexDirection:'column',alignItems:'center',gap:2,pointerEvents:'none'}}>
+            <ArrowRight size={14} style={{transform:'rotate(-90deg)'}}/><span>swipe up</span>
+          </div>}
+
+          {/* comments panel */}
+          {showComments&&<div className="sheet-in" style={{position:'absolute',bottom:0,left:0,right:0,height:'55%',background:'rgba(10,10,15,0.97)',borderRadius:'20px 20px 0 0',zIndex:10,display:'flex',flexDirection:'column'}}>
+            <div style={{padding:'14px 16px',display:'flex',alignItems:'center',justifyContent:'space-between',borderBottom:'1px solid rgba(255,255,255,0.1)'}}>
+              <span style={{fontWeight:700,fontSize:15,color:'#fff'}}>Comments</span>
+              <button onClick={()=>setShowComments(false)} style={{background:'none',border:'none',color:'rgba(255,255,255,0.5)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
+            </div>
+            <div style={{flex:1,overflowY:'auto',padding:'12px 16px',display:'flex',flexDirection:'column',gap:12}}>
+              {comments.length===0&&<p style={{color:'rgba(255,255,255,0.55)',textAlign:'center',marginTop:20,fontSize:14}}>No comments yet. Be first!</p>}
+              {comments.map(c=>(
+                <div key={c.id} style={{display:'flex',gap:10,alignItems:'flex-end'}}>
+                  <div style={{cursor:'pointer',flexShrink:0}} onClick={()=>{ setShowComments(false); onUserClick(c.author) }}>
+                    <Avatar url={c.author?.avatar_url} name={c.author?.display_name} color={c.author?.avatar_color||'#5B9CF6'} size={32}/>
+                  </div>
+                  <div style={{flex:1,maxWidth:'80%'}}>
+                    <div style={{fontSize:11,color:'rgba(255,255,255,0.55)',marginBottom:3,paddingLeft:4}}>{c.author?.display_name}</div>
+                    <div style={{background:'rgba(255,255,255,0.09)',borderRadius:'18px 18px 18px 4px',padding:'9px 14px',display:'inline-block',maxWidth:'100%'}}>
+                      <span style={{fontSize:14,color:'rgba(255,255,255,0.92)',lineHeight:1.4}}><TextWithMentions text={c.content} supabase={supabase} onUserClick={onUserClick}/></span>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div style={{padding:'10px 14px',borderTop:'1px solid rgba(255,255,255,0.1)',display:'flex',gap:10,alignItems:'center',paddingBottom:'env(safe-area-inset-bottom,10px)'}}>
+              <Avatar url={currentUser?.avatar_url} name={currentUser?.display_name} color={currentUser?.avatar_color||'#5B9CF6'} size={32}/>
+              <input value={commentText} onChange={e=>setCommentText(e.target.value)} onKeyDown={e=>e.key==='Enter'&&postComment(reel)} placeholder="Add a comment..." style={{flex:1,background:'rgba(255,255,255,0.08)',border:'none',borderRadius:20,padding:'10px 14px',color:'#fff',fontSize:14,outline:'none'}}/>
+              <button onClick={()=>postComment(reel)} disabled={!commentText.trim()} style={{background:commentText.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'rgba(255,255,255,0.1)',border:'none',borderRadius:20,padding:'8px 16px',color:'#fff',fontWeight:700,fontSize:13,cursor:'pointer'}}>Post</button>
+            </div>
+          </div>}
+        </>:null}
+      </div>}
+
+      {reportingReel&&<ReportModal onClose={()=>setReportingReel(null)} onSubmit={async(reason,details)=>{
+        const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_reel_id:reportingReel.id, reason, details:details||null})
+        if(error) throw error
+      }}/>}
+
+      <style>{`@keyframes spin{to{transform:rotate(360deg)}}`}</style>
+    </div>
+  )
+}
+
+const STORE_CATEGORIES = ['Electronics','Fashion','Services','Food','Home','Vehicles','Other']
+
+// Mini Store — everyone can browse and message a seller; only is_authentic
+// (verified) accounts can list something (enforced both here, by hiding the
+// "Sell" action, and at the database level via RLS, since hiding a button
+// is never real access control on its own).
+// Simple dot-indicator carousel for a listing's photos — only rendered with
+// controls when there's more than one image; a single image just shows
+// directly with no carousel chrome.
+function ListingCarousel({ images }) {
+  const [idx, setIdx] = useState(0)
+  if(!images.length) return null
+  if(images.length===1) return <img src={images[0]} style={{width:'100%',maxHeight:280,objectFit:'cover',display:'block'}} alt=""/>
+  return (
+    <div style={{position:'relative'}}>
+      <div style={{display:'flex',overflowX:'auto',scrollSnapType:'x mandatory',WebkitOverflowScrolling:'touch'}}
+        onScroll={e=>{ const w=e.target.clientWidth; if(w) setIdx(Math.round(e.target.scrollLeft/w)) }}>
+        {images.map((url,i)=>(
+          <img key={i} src={url} style={{width:'100%',flexShrink:0,scrollSnapAlign:'start',maxHeight:280,objectFit:'cover',display:'block'}} alt=""/>
+        ))}
+      </div>
+      <div style={{position:'absolute',bottom:10,left:0,right:0,display:'flex',justifyContent:'center',gap:5}}>
+        {images.map((_,i)=><span key={i} style={{width:6,height:6,borderRadius:'50%',background:i===idx?'#fff':'rgba(255,255,255,0.4)'}}/>)}
+      </div>
+    </div>
+  )
+}
+
+function StoreSection({ currentUser, supabase, onUserClick, onMessageUser }) {
+  const [listings, setListings] = useState([])
+  const [loading, setLoading] = useState(true)
+  const [category, setCategory] = useState('All')
+  const [search, setSearch] = useState('')
+  const [view, setView] = useState('browse') // 'browse' | 'create' | 'mine' | 'detail'
+  const [selected, setSelected] = useState(null)
+  const [myListings, setMyListings] = useState([])
+
+  const [title, setTitle] = useState('')
+  const [description, setDescription] = useState('')
+  const [price, setPrice] = useState('')
+  const [formCategory, setFormCategory] = useState(STORE_CATEGORIES[0])
+  const [ctaText, setCtaText] = useState('')
+  const [ctaUrl, setCtaUrl] = useState('')
+  const [imageFiles, setImageFiles] = useState([]) // up to 3
+  const [imagePreviews, setImagePreviews] = useState([])
+  const [saving, setSaving] = useState(false)
+  const [activeCount, setActiveCount] = useState(0)
+  const fileRef = useRef(null)
+  const MAX_IMAGES = 3
+  const MAX_ACTIVE_LISTINGS = 5
+
+  useEffect(()=>{ loadListings() },[])
+  // Deliberately no blanket cleanup-on-every-change effect here — since new
+  // previews are appended to the existing array rather than replacing it,
+  // that would revoke blob URLs still being displayed. Revocation happens
+  // explicitly in removeImage/resetForm instead.
+
+  const loadListings = async () => {
+    setLoading(true)
+    const {data} = await supabase.from('store_listings').select('*,seller:profiles!seller_id(id,display_name,username,avatar_url,avatar_color,is_authentic,verified)').order('created_at',{ascending:false})
+    setListings(data||[])
+    setLoading(false)
+    if(data) setActiveCount(data.filter(l=>l.seller_id===currentUser.id && l.status==='active').length)
+  }
+
+  const loadMyListings = async () => {
+    const {data} = await supabase.from('store_listings').select('*').eq('seller_id',currentUser.id).order('created_at',{ascending:false})
+    setMyListings(data||[])
+  }
+
+  const pickImages = (files) => {
+    const room = MAX_IMAGES - imageFiles.length
+    if(room<=0) return
+    const picked = Array.from(files).slice(0,room)
+    setImageFiles(prev=>[...prev,...picked])
+    setImagePreviews(prev=>[...prev,...picked.map(f=>URL.createObjectURL(f))])
+  }
+
+  const removeImage = (idx) => {
+    URL.revokeObjectURL(imagePreviews[idx])
+    setImageFiles(prev=>prev.filter((_,i)=>i!==idx))
+    setImagePreviews(prev=>prev.filter((_,i)=>i!==idx))
+  }
+
+  const resetForm = () => {
+    setTitle('');setDescription('');setPrice('');setFormCategory(STORE_CATEGORIES[0]);setCtaText('');setCtaUrl('')
+    imagePreviews.forEach(u=>URL.revokeObjectURL(u))
+    setImageFiles([]);setImagePreviews([])
+  }
+
+  // A link typed without a scheme ("wa.me/234...", "myshop.com") would
+  // otherwise render as a broken relative link inside the app instead of
+  // opening the intended external site.
+  const normalizeUrl = (url) => {
+    const trimmed = url.trim()
+    if(!trimmed) return null
+    return /^https?:\/\//i.test(trimmed) ? trimmed : 'https://'+trimmed
+  }
+
+  const openCreateForm = () => {
+    if(activeCount >= MAX_ACTIVE_LISTINGS) { alert(`You can have at most ${MAX_ACTIVE_LISTINGS} active listings at a time — mark one as sold, out of stock, or delete it before adding another.`); return }
+    setView('create')
+  }
+
+  const createListing = async () => {
+    if(!title.trim()) { alert('Title required'); return }
+    if(activeCount >= MAX_ACTIVE_LISTINGS) { alert(`You can have at most ${MAX_ACTIVE_LISTINGS} active listings at a time.`); return }
+    if((ctaText.trim() && !ctaUrl.trim()) || (!ctaText.trim() && ctaUrl.trim())) { alert('Fill in both the button text and its link, or leave both empty'); return }
+    setSaving(true)
+    const imageUrls = []
+    try {
+      for(const file of imageFiles) {
+        const ext = (file.name.split('.').pop()||'jpg').toLowerCase()
+        const path = 'store/'+currentUser.id+'_'+Date.now()+'_'+imageUrls.length+'.'+ext
+        const urlData = await uploadToR2(file, path)
+        imageUrls.push(urlData.publicUrl)
+      }
+    } catch(err) { alert('Image upload failed: '+err.message); setSaving(false); return }
+    const {data,error} = await supabase.from('store_listings').insert({
+      seller_id: currentUser.id, title: title.trim(), description: description.trim()||null,
+      price: price.trim()||null, category: formCategory, image_urls: imageUrls,
+      cta_text: ctaText.trim()||null, cta_url: normalizeUrl(ctaUrl),
+    }).select('*,seller:profiles!seller_id(id,display_name,username,avatar_url,avatar_color,is_authentic,verified)').single()
+    if(data) {
+      setListings(prev=>[data,...prev])
+      setActiveCount(c=>c+1)
+      resetForm()
+      setView('browse')
+    } else alert('Error: '+(error?.message||'could not create listing — make sure you\'re verified (is_authentic).'))
+    setSaving(false)
+  }
+
+  const updateStatus = async (listing, status) => {
+    if(status==='active' && listing.status!=='active' && activeCount >= MAX_ACTIVE_LISTINGS) {
+      alert(`You can have at most ${MAX_ACTIVE_LISTINGS} active listings at a time — mark another one as sold or out of stock first.`)
+      return
+    }
+    const {error} = await supabase.from('store_listings').update({status, updated_at:new Date().toISOString()}).eq('id',listing.id)
+    if(error) { alert(error.message); return }
+    setMyListings(prev=>prev.map(l=>l.id===listing.id?{...l,status}:l))
+    setListings(prev=>prev.map(l=>l.id===listing.id?{...l,status}:l))
+    if(status==='active' && listing.status!=='active') setActiveCount(c=>c+1)
+    else if(status!=='active' && listing.status==='active') setActiveCount(c=>Math.max(0,c-1))
+  }
+
+  const deleteListing = async (listing) => {
+    if(!window.confirm('Delete this listing permanently?')) return
+    await supabase.from('store_listings').delete().eq('id',listing.id)
+    setMyListings(prev=>prev.filter(l=>l.id!==listing.id))
+    setListings(prev=>prev.filter(l=>l.id!==listing.id))
+    if(listing.status==='active') setActiveCount(c=>Math.max(0,c-1))
+  }
+
+  const filtered = listings.filter(l=>
+    (category==='All'||l.category===category) &&
+    (!search.trim() || l.title.toLowerCase().includes(search.trim().toLowerCase()) || (l.description||'').toLowerCase().includes(search.trim().toLowerCase()))
+  )
+
+  if(view==='create') return (
+    <div style={{minHeight:'60vh'}}>
+      <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>{setView('browse');resetForm()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>List a Product</span>
+        <button onClick={createListing} disabled={saving||!title.trim()} style={{background:title.trim()?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card-3)',border:'none',borderRadius:20,padding:'8px 18px',color:title.trim()?'#fff':'var(--text-quaternary)',fontWeight:700,cursor:title.trim()?'pointer':'default'}}>{saving?'Posting...':'Post'}</button>
+      </div>
+      <div style={{padding:16,display:'flex',flexDirection:'column',gap:12}}>
+        <input ref={fileRef} type="file" accept="image/*" multiple onChange={e=>{pickImages(e.target.files);e.target.value=''}} style={{display:'none'}}/>
+        <div style={{display:'flex',gap:8}}>
+          {imagePreviews.map((url,i)=>(
+            <div key={i} style={{position:'relative',width:'calc((100% - 16px)/3)',aspectRatio:'1',borderRadius:12,overflow:'hidden',background:'#000',flexShrink:0}}>
+              <img src={url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt=""/>
+              <button onClick={()=>removeImage(i)} style={{position:'absolute',top:4,right:4,width:20,height:20,borderRadius:'50%',background:'rgba(0,0,0,0.6)',border:'none',color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}><X size={12}/></button>
+            </div>
+          ))}
+          {imageFiles.length<MAX_IMAGES&&(
+            <div onClick={()=>fileRef.current?.click()} style={{width:imagePreviews.length?'calc((100% - 16px)/3)':'100%',aspectRatio:imagePreviews.length?'1':undefined,height:imagePreviews.length?undefined:160,borderRadius:12,border:'1.5px dashed var(--border-color-2)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:6,cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0}}>
+              <ImageIcon size={imagePreviews.length?20:28}/>
+              <span style={{fontSize:imagePreviews.length?10:13}}>{imagePreviews.length?'Add':'Add photos'}</span>
+            </div>
+          )}
+        </div>
+        <p style={{color:'var(--text-quaternary)',fontSize:11,margin:'-6px 0 0'}}>Up to {MAX_IMAGES} photos</p>
+        <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Product or service name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Description (optional)" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+        <input value={price} onChange={e=>setPrice(e.target.value)} placeholder="Price — e.g. $25, ₦15,000, Contact for price" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none'}}/>
+        <div>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Category</p>
+          <div style={{display:'flex',gap:8,flexWrap:'wrap'}}>
+            {STORE_CATEGORIES.map(c=>(
+              <button key={c} onClick={()=>setFormCategory(c)} style={{padding:'6px 14px',borderRadius:14,border:'none',background:formCategory===c?'rgba(91,156,246,0.2)':'var(--bg-card)',color:formCategory===c?'#5B9CF6':'var(--text-secondary)',fontSize:13,fontWeight:600,cursor:'pointer'}}>{c}</button>
+            ))}
+          </div>
+        </div>
+        <div style={{display:'flex',gap:10}}>
+          <input value={ctaText} onChange={e=>setCtaText(e.target.value)} placeholder="Button text (optional) — e.g. Order Now" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+          <input value={ctaUrl} onChange={e=>setCtaUrl(e.target.value)} placeholder="Button link (optional)" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+        </div>
+        <p style={{color:'var(--text-quaternary)',fontSize:12,margin:0}}>Buyers can always message you directly too — this button is for an extra action like a payment link, WhatsApp order line, or website.</p>
+      </div>
+    </div>
+  )
+
+  if(view==='mine') return (
+    <div style={{minHeight:'60vh'}}>
+      <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setView('browse')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>My Listings</span>
+      </div>
+      {myListings.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><ShoppingBag size={40} color="var(--text-quaternary)"/><p style={{color:'var(--text-secondary)',marginTop:10}}>You haven't listed anything yet</p></div>}
+      {myListings.map(l=>(
+        <div key={l.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',gap:12}}>
+          <div style={{width:56,height:56,borderRadius:10,background:'var(--bg-card)',overflow:'hidden',flexShrink:0}}>
+            {(l.image_urls?.[0]||l.image_url)&&<img src={l.image_urls?.[0]||l.image_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>}
+          </div>
+          <div style={{flex:1,minWidth:0}}>
+            <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:2,flexWrap:'wrap'}}>
+              <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{l.title}</span>
+              {l.status==='sold'&&<span style={{fontSize:10,fontWeight:700,color:'#00C9A7',background:'rgba(0,201,167,0.12)',borderRadius:6,padding:'1px 6px'}}>SOLD</span>}
+              {l.status==='out_of_stock'&&<span style={{fontSize:10,fontWeight:700,color:'#F7B731',background:'rgba(247,183,49,0.12)',borderRadius:6,padding:'1px 6px'}}>OUT OF STOCK</span>}
+            </div>
+            {l.price&&<p style={{color:'var(--text-secondary)',fontSize:13,margin:'0 0 8px'}}>{l.price}</p>}
+            <div style={{display:'flex',gap:6,flexWrap:'wrap'}}>
+              {l.status!=='sold'&&<button onClick={()=>updateStatus(l,'sold')} style={{background:'rgba(0,201,167,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#00C9A7',fontSize:11,fontWeight:700,cursor:'pointer'}}>Mark Sold</button>}
+              {l.status!=='out_of_stock'&&<button onClick={()=>updateStatus(l,'out_of_stock')} style={{background:'rgba(247,183,49,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#F7B731',fontSize:11,fontWeight:700,cursor:'pointer'}}>Out of Stock</button>}
+              {l.status!=='active'&&<button onClick={()=>updateStatus(l,'active')} style={{background:'rgba(91,156,246,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#5B9CF6',fontSize:11,fontWeight:700,cursor:'pointer'}}>Relist</button>}
+              <button onClick={()=>deleteListing(l)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'5px 10px',color:'#FF4757',fontSize:11,fontWeight:700,cursor:'pointer'}}>Delete</button>
+            </div>
+          </div>
+        </div>
+      ))}
+    </div>
+  )
+
+  if(view==='detail'&&selected) {
+    const l = selected
+    const images = (l.image_urls?.length ? l.image_urls : (l.image_url ? [l.image_url] : []))
+    const isOwn = l.seller_id === currentUser.id
+    return (
+      <div style={{minHeight:'60vh'}}>
+        <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+          <button onClick={()=>setView('browse')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+          <span style={{fontWeight:700,fontSize:17,flex:1}}>Listing</span>
+        </div>
+        {images.length>0&&<div style={{position:'relative'}}>
+          <ListingCarousel key={l.id} images={images}/>
+          {l.status!=='active'&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center',pointerEvents:'none'}}><span style={{color:'#fff',fontWeight:800,fontSize:20,letterSpacing:1,border:'2px solid #fff',padding:'6px 20px',borderRadius:10,transform:'rotate(-8deg)'}}>{l.status==='sold'?'SOLD':'OUT OF STOCK'}</span></div>}
+        </div>}
+        <div style={{padding:16}}>
+          <h2 style={{color:'var(--text-primary)',fontSize:19,fontWeight:800,margin:'0 0 4px'}}>{l.title}</h2>
+          {l.price&&<p style={{color:'#5B9CF6',fontSize:17,fontWeight:700,margin:'0 0 10px'}}>{l.price}</p>}
+          {l.description&&<p style={{color:'var(--text-secondary)',fontSize:14,lineHeight:1.5,margin:'0 0 16px',wordBreak:'break-word'}}>{l.description}</p>}
+          <div onClick={()=>onUserClick(l.seller)} style={{display:'flex',alignItems:'center',gap:10,padding:'12px',background:'var(--bg-card)',borderRadius:14,cursor:'pointer',marginBottom:16}}>
+            <Avatar url={l.seller?.avatar_url} name={l.seller?.display_name} color={l.seller?.avatar_color||getColor(l.seller?.id)} size={40}/>
+            <div style={{flex:1,minWidth:0}}>
+              <div style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{l.seller?.display_name}</div>
+              <div style={{color:'var(--text-quaternary)',fontSize:12}}>@{l.seller?.username}</div>
+            </div>
+            <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
+          </div>
+          <div style={{display:'flex',gap:10}}>
+            <button onClick={()=>!isOwn&&onMessageUser(l.seller)} disabled={isOwn} title={isOwn?"This is your own listing":undefined} style={{flex:1,background:'var(--bg-card-3)',border:'none',borderRadius:14,padding:'13px',color:isOwn?'var(--text-quaternary)':'var(--text-primary)',fontWeight:700,fontSize:14,cursor:isOwn?'default':'pointer',opacity:isOwn?0.5:1,display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><MessageCircle size={16}/> Message</button>
+            {l.cta_text&&l.cta_url&&l.status==='active'&&<a href={l.cta_url} target="_blank" rel="noopener noreferrer" style={{flex:1,background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'13px',color:'#fff',fontWeight:700,fontSize:14,cursor:'pointer',textDecoration:'none',textAlign:'center'}}>{l.cta_text}</a>}
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  return (
+    <div>
+      <div style={{padding:'4px 16px 12px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <span style={{fontWeight:800,fontSize:18,display:'inline-flex',alignItems:'center',gap:6}}><ShoppingBag size={17}/> Store</span>
+        <div style={{display:'flex',gap:8}}>
+          {currentUser.is_authentic&&<button onClick={()=>{loadMyListings();setView('mine')}} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'6px 12px',color:'var(--text-secondary)',cursor:'pointer',fontWeight:700,fontSize:12}}>My Listings</button>}
+          {currentUser.is_authentic ? (
+            <button onClick={openCreateForm} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'6px 14px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ Sell {activeCount>0&&`(${activeCount}/${MAX_ACTIVE_LISTINGS})`}</button>
+          ) : (
+            <span title="Verified accounts only" style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'6px 12px',color:'var(--text-quaternary)',fontWeight:600,fontSize:12,display:'inline-flex',alignItems:'center',gap:5}}><Lock size={12}/> Sell</span>
+          )}
+        </div>
+      </div>
+      <div style={{padding:'0 16px 10px'}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search the store..." style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:24,padding:'10px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',boxSizing:'border-box'}}/>
+      </div>
+      <div style={{display:'flex',gap:8,padding:'0 16px 14px',overflowX:'auto',scrollbarWidth:'none'}}>
+        {['All',...STORE_CATEGORIES].map(c=>(
+          <button key={c} onClick={()=>setCategory(c)} style={{flexShrink:0,padding:'6px 14px',borderRadius:14,border:'none',background:category===c?'rgba(91,156,246,0.2)':'var(--bg-card)',color:category===c?'#5B9CF6':'var(--text-secondary)',fontSize:13,fontWeight:600,cursor:'pointer'}}>{c}</button>
+        ))}
+      </div>
+      {loading&&<div style={{padding:'40px',textAlign:'center'}}><Loader2 size={28} className="xspin" color="var(--text-quaternary)"/></div>}
+      {!loading&&filtered.length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><ShoppingBag size={40} color="var(--text-quaternary)"/><p style={{color:'var(--text-secondary)',marginTop:10}}>{search.trim()||category!=='All'?'No matching listings':'No listings yet'}{currentUser.is_authentic&&!search.trim()&&category==='All'?' — be the first to sell something!':''}</p></div>}
+      <div style={{display:'grid',gridTemplateColumns:'repeat(2,1fr)',gap:10,padding:'0 16px 20px'}}>
+        {filtered.map(l=>{
+          const thumb = l.image_urls?.[0] || l.image_url
+          return (
+          <div key={l.id} onClick={()=>{setSelected(l);setView('detail')}} style={{borderRadius:14,overflow:'hidden',background:'var(--bg-card)',cursor:'pointer',position:'relative'}}>
+            <div style={{aspectRatio:'1',background:'var(--bg-card-2)',position:'relative'}}>
+              {thumb?<img src={thumb} style={{width:'100%',height:'100%',objectFit:'cover',display:'block'}} alt="" loading="lazy"/>:<div style={{width:'100%',height:'100%',display:'flex',alignItems:'center',justifyContent:'center'}}><ShoppingBag size={28} color="var(--text-quaternary)"/></div>}
+              {l.status!=='active'&&<div style={{position:'absolute',inset:0,background:'rgba(0,0,0,0.55)',display:'flex',alignItems:'center',justifyContent:'center'}}><span style={{color:'#fff',fontWeight:800,fontSize:11,letterSpacing:0.5,border:'1.5px solid #fff',padding:'3px 10px',borderRadius:6}}>{l.status==='sold'?'SOLD':'OUT OF STOCK'}</span></div>}
+            </div>
+            <div style={{padding:'8px 10px'}}>
+              <p style={{color:'var(--text-primary)',fontSize:13,fontWeight:700,margin:'0 0 2px',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.title}</p>
+              {l.price&&<p style={{color:'#5B9CF6',fontSize:13,fontWeight:700,margin:0}}>{l.price}</p>}
+              <div style={{display:'flex',alignItems:'center',gap:4,marginTop:4}}>
+                <Avatar url={l.seller?.avatar_url} name={l.seller?.display_name} color={l.seller?.avatar_color||getColor(l.seller?.id)} size={14}/>
+                <span style={{color:'var(--text-quaternary)',fontSize:11,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{l.seller?.display_name}</span>
+              </div>
+            </div>
+          </div>
+        )})}
+      </div>
+    </div>
+  )
+}
+
+function PulseTab({ currentUser, supabase, onUserClick, pendingReelId, onReelsOpened, reelsRef, onMessageUser }) {
+  const [pulses, setPulses] = useState([])
+  const [myPulse, setMyPulse] = useState([])
+  const [viewingPulse, setViewingPulse] = useState(null)
+  const [showCreatePulse, setShowCreatePulse] = useState(false)
+  const [showReels, setShowReels] = useState(false)
+  const [pulseText, setPulseText] = useState('')
+  const [pulseBg, setPulseBg] = useState('#5B9CF6')
+  const [saving, setSaving] = useState(false)
+  const COLORS = ['#5B9CF6','#845EF7','#FF6B35','#00C9A7','#FF4757','#F7B731','#FD79A8','#A29BFE']
+
+  useEffect(()=>{ loadAll() },[])
+  const [openedReelId, setOpenedReelId] = useState(null)
+  useEffect(()=>{
+    if(pendingReelId){
+      // Capture the value into local state first — telling the parent to
+      // clear pendingReelId (via onReelsOpened) can land in the same React
+      // batch as showReels becoming true, meaning ReelsView could end up
+      // reading pendingReelId after it's already been reset to null. Local
+      // state driven only by this effect can't be raced like that.
+      setOpenedReelId(pendingReelId)
+      setShowReels(true)
+      onReelsOpened&&onReelsOpened()
+    }
+  },[pendingReelId])
+
+  const loadAll = async () => {
+    const [{data:p},{data:mp}] = await Promise.all([
+      supabase.from('pulses').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').order('created_at',{ascending:false}),
+      supabase.from('pulses').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').eq('user_id',currentUser.id).gt('expires_at',new Date().toISOString()).order('created_at',{ascending:false}),
+    ])
+    setPulses((p||[]).filter(x=>x.user_id!==currentUser.id))
+    setMyPulse(mp||[])
+  }
+
+  const createPulse = async () => {
+    if(!pulseText.trim()) return
+    setSaving(true)
+    const {data} = await supabase.from('pulses').insert({user_id:currentUser.id,content:pulseText.trim(),bg_color:pulseBg}).select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color)').single()
+    if(data) { setMyPulse(prev=>[data,...(Array.isArray(prev)?prev:[])].filter(Boolean)); setPulseText(''); setShowCreatePulse(false) }
+    setSaving(false)
+  }
+
+  if(showReels){
+    if(reelsRef) reelsRef.current = {closeReels:()=>{setShowReels(false)}}
+    return <ReelsView currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} initialReelId={openedReelId} onClose={()=>{setShowReels(false);if(reelsRef)reelsRef.current=null}}/>
+  }
+  if(reelsRef) reelsRef.current = null
+
+  if(viewingPulse) {
+    const allPulses=[...(Array.isArray(myPulse)?myPulse:[]),...pulses]
+    const currentIdx=allPulses.findIndex(p=>p.id===viewingPulse.id)
+    const goNext=()=>{ if(currentIdx<allPulses.length-1)setViewingPulse(allPulses[currentIdx+1]); else{setViewingPulse(null)} }
+    const goPrev=()=>{ if(currentIdx>0)setViewingPulse(allPulses[currentIdx-1]) }
+  return (
+    <div style={{position:'fixed',inset:0,zIndex:300,background:viewingPulse.bg_color||'#090B10',display:'flex',flexDirection:'column'}}>
+    <style>{'@keyframes shrink{from{width:100%}to{width:0%}}'}</style>
+      <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',gap:2,padding:'4px 8px',zIndex:10}}>
+        {allPulses.map((p,i)=>(
+          <div key={p.id} style={{flex:1,height:3,borderRadius:2,background:'rgba(255,255,255,0.2)',overflow:'hidden'}}>
+            <div style={{height:'100%',background:'#fff',borderRadius:2,animation:i===currentIdx?'shrink 5s linear forwards':'none',width:i<currentIdx?'100%':'0%'}} onAnimationEnd={goNext}/>
+          </div>
+        ))}
+      </div>
+      <style>{'@keyframes progress{from{width:0}to{width:100%}}'}</style>
+      <div style={{padding:'20px 16px 8px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>{setViewingPulse(null)}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
+        <Avatar url={viewingPulse.author?.avatar_url} name={viewingPulse.author?.display_name} color={viewingPulse.author?.avatar_color||'#5B9CF6'} size={38}/>
+        <div>
+          <div style={{color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{viewingPulse.author?.display_name}</div>
+          <div style={{color:'rgba(255,255,255,0.6)',fontSize:12}}>{timeAgo(viewingPulse.created_at)}</div>
+        </div>
+      </div>
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <p style={{color:'var(--text-primary)',fontSize:24,fontWeight:700,textAlign:'center',lineHeight:1.5}}>{viewingPulse.content}</p>
+      </div>
+      <div style={{position:'absolute',top:60,left:0,bottom:80,width:'40%'}} onClick={goPrev}/>
+      <div style={{position:'absolute',top:60,right:0,bottom:80,width:'40%'}} onClick={goNext}/>
+      <div style={{padding:'0 16px 40px',display:'flex',gap:10}}>
+        <button onClick={()=>onUserClick(viewingPulse.author)} style={{flex:1,background:'var(--bg-card-8)',border:'1px solid rgba(255,255,255,0.3)',borderRadius:24,padding:'12px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>View Profile</button>
+      </div>
+    </div>
+  )}
+
+  if(showCreatePulse) return (
+    <div className="screen-in" style={{minHeight:'100dvh',background:pulseBg,color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowCreatePulse(false)} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>New Pulse</span>
+        <button onClick={createPulse} disabled={saving||!pulseText.trim()} style={{background:'rgba(255,255,255,0.2)',border:'1px solid rgba(255,255,255,0.4)',borderRadius:20,padding:'8px 20px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Posting...':'Share'}</button>
+      </div>
+      <div style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <textarea value={pulseText} onChange={e=>setPulseText(e.target.value)} placeholder="What's your pulse?" autoFocus style={{background:'transparent',border:'none',color:'var(--text-primary)',fontSize:24,fontWeight:700,textAlign:'center',outline:'none',resize:'none',width:'100%',lineHeight:1.5,fontFamily:'sans-serif'}} rows={4}/>
+      </div>
+      <div style={{padding:'16px',display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center'}}>
+        {COLORS.map(c=><div key={c} onClick={()=>setPulseBg(c)} style={{width:32,height:32,borderRadius:'50%',background:c,border:pulseBg===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{paddingBottom:20}}>
+      <p style={{padding:'12px 16px 8px',color:'var(--text-secondary)',fontSize:13,fontWeight:600}}>PULSES</p>
+      <div style={{display:'flex',gap:12,padding:'0 16px 20px',overflowX:'auto',scrollbarWidth:'none'}}>
+        <div style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0}}>
+          <div onClick={()=>setShowCreatePulse(true)} style={{width:64,height:64,borderRadius:'50%',background:'var(--bg-card)',border:'2px dashed #5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:28,color:'#5B9CF6',cursor:'pointer'}}>＋</div>
+          <span style={{color:'var(--text-subtle)',fontSize:11}}>Add Pulse</span>
+        </div>
+        {(Array.isArray(myPulse)?myPulse:[]).map(mp=>(
+          <div key={mp.id} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,flexShrink:0,position:'relative'}}>
+            <div onClick={()=>setViewingPulse({...mp,author:{id:currentUser.id,display_name:currentUser.display_name,avatar_url:currentUser.avatar_url,avatar_color:currentUser.avatar_color}})} style={{width:64,height:64,borderRadius:'50%',background:mp.bg_color||'#5B9CF6',border:'3px solid #00C9A7',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',cursor:'pointer'}}><Zap size={22}/></div>
+            <button onClick={async(e)=>{e.stopPropagation();await supabase.from('pulses').delete().eq('id',mp.id);setMyPulse(prev=>prev.filter(p=>p.id!==mp.id))}} style={{position:'absolute',top:-4,right:-4,width:20,height:20,borderRadius:'50%',background:'#FF4757',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={12}/></button>
+            <span style={{color:'var(--text-subtle)',fontSize:11}}>My Pulse</span>
+          </div>
+        ))}
+        {pulses.map(p=>(
+          <div key={p.id} onClick={()=>setViewingPulse(p)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
+            <div style={{width:64,height:64,borderRadius:'50%',background:p.bg_color||'#5B9CF6',border:'3px solid #845EF7',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
+              {p.author?.avatar_url?<img src={p.author.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span style={{color:'var(--text-primary)',fontWeight:800,fontSize:20}}>{p.author?.display_name?.[0]}</span>}
+            </div>
+            <span style={{color:'var(--text-subtle)',fontSize:11,maxWidth:64,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.author?.display_name}</span>
+          </div>
+        ))}
+        {pulses.length===0&&<p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0'}}>No pulses yet</p>}
+      </div>
+
+      <StoreSection currentUser={currentUser} supabase={supabase} onUserClick={onUserClick} onMessageUser={onMessageUser}/>
+    </div>
+  )
+}
+
+function FlittersAI({ currentUser, onClose }) {
+  const STORAGE_KEY = 'flittersai_history_'+(currentUser?.id||'guest')
+  const defaultMsg = [{role:'assistant',content:'Hey ' + (currentUser?.display_name?.split(' ')[0]||'there') + '! I\'m Flitters AI. How can I help you today?'}]
+  const [messages, setMessages] = useState(()=>{
+    try { const saved = localStorage.getItem(STORAGE_KEY); return saved ? JSON.parse(saved) : defaultMsg } catch(e) { return defaultMsg }
+  })
+  const [input, setInput] = useState('')
+  const [loading, setLoading] = useState(false)
+  const [genImg, setGenImg] = useState('')
+  const [imgPrompt, setImgPrompt] = useState('')
+  const [generatingImg, setGeneratingImg] = useState(false)
+  const [showImgGen, setShowImgGen] = useState(false)
+  const [showAbout, setShowAbout] = useState(false)
+  const [deepThink, setDeepThink] = useState(false)
+  const bottomRef = useRef(null)
+  const AI_GRADIENT = 'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)'
+
+  useEffect(()=>{ bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  useEffect(()=>{ try { localStorage.setItem(STORAGE_KEY, JSON.stringify(messages)) } catch(e){} },[messages])
+
+  const clearHistory = () => { try { localStorage.removeItem(STORAGE_KEY) } catch(e){} ; setMessages(defaultMsg) }
+
+  const generateImage = async() => {
+    if(!imgPrompt.trim()) return
+    setGeneratingImg(true)
+    setGenImg(null)
+    try {
+      const res = await fetch('/api/flittersai-image',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify({prompt:imgPrompt})})
+      const data = await res.json()
+      if(data.image) setGenImg(data.image)
+      else alert(data.error||'Generation failed, try again')
+    } catch(e) { alert('Error: '+e.message) }
+    setGeneratingImg(false)
+  }
+
+  const send = async() => {
+    if(!input.trim()||loading) return
+    const userMsg = {role:'user',content:input.trim()}
+    setMessages(prev=>[...prev,userMsg])
+    setInput('')
+    setLoading(true)
+    try {
+      const res = await fetch('/api/flittersai',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify({messages:[...messages,userMsg].filter(m=>m.role!=='system'),deepThink})})
+      if(!res.body) throw new Error('No response stream')
+      const reader = res.body.getReader()
+      const decoder = new TextDecoder()
+      let fullText = ''
+      let started = false
+      while(true) {
+        const {done, value} = await reader.read()
+        if(done) break
+        fullText += decoder.decode(value, {stream:true})
+        if(!started) {
+          started = true
+          setLoading(false)
+          setMessages(prev=>[...prev,{role:'assistant',content:fullText}])
+        } else {
+          setMessages(prev=>{
+            const copy=[...prev]
+            copy[copy.length-1] = {role:'assistant',content:fullText}
+            return copy
+          })
+        }
+      }
+      if(!started) setMessages(prev=>[...prev,{role:'assistant',content:fullText||'Sorry, I am having trouble connecting. Please try again.'}])
+    } catch(e) {
+      setMessages(prev=>[...prev,{role:'assistant',content:'Sorry, I am having trouble connecting. Please try again.'}])
+    }
+    setLoading(false)
+  }
+
+  return (
+    <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+      <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
+        <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+        <img src="/flitters-ai-icon.png" alt="Flitters AI" style={{width:38,height:38,objectFit:'contain'}} loading="lazy"/>
+        <div onClick={()=>setShowAbout(true)} style={{cursor:'pointer'}}>
+          <div style={{display:'flex',alignItems:'center',gap:6}}>
+            <div style={{fontWeight:800,fontSize:16,background:AI_GRADIENT,WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent'}}>Flitters AI</div>
+            {deepThink&&<span style={{fontSize:10,background:AI_GRADIENT,color:'var(--text-primary)',borderRadius:6,padding:'1px 6px',fontWeight:700}}>DEEP THINK</span>}
+          </div>
+          <div style={{color:'#00C9A7',fontSize:11}}>● Always online</div>
+        </div>
+        <button onClick={()=>setDeepThink(d=>!d)} title="Toggle deep thinking mode" style={{marginLeft:'auto',background:deepThink?AI_GRADIENT:'var(--bg-card)',border:'none',borderRadius:14,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}>
+          <Brain size={14}/> {deepThink?'Deep':'Fast'}
+        </button>
+        <button onClick={clearHistory} style={{background:'rgba(255,71,87,0.1)',border:'1px solid rgba(255,71,87,0.2)',borderRadius:14,padding:'6px 10px',color:'#FF4757',fontWeight:700,cursor:'pointer',display:'flex'}}><Trash2 size={14}/></button>
+      </div>
+
+      <div style={{flex:1,overflowY:'auto',padding:'16px 14px',display:'flex',flexDirection:'column',gap:12}}>
+        {messages.map((msg,i)=>(
+          <div key={i} style={{display:'flex',justifyContent:msg.role==='user'?'flex-end':'flex-start',gap:8,alignItems:'flex-end'}}>
+            {msg.role==='assistant'&&<img src="/flitters-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain',flexShrink:0}} loading="lazy"/>}
+            <div style={{maxWidth:'80%',padding:'11px 15px',borderRadius:msg.role==='user'?'20px 20px 5px 20px':'20px 20px 20px 5px',background:msg.role==='user'?AI_GRADIENT:'var(--bg-card-6)',color:'var(--text-primary)',fontSize:15,lineHeight:1.6,wordBreak:'break-word',whiteSpace:'pre-wrap'}}>
+              {msg.content}
+            </div>
+          </div>
+        ))}
+        {loading&&<div style={{display:'flex',gap:8,alignItems:'flex-end'}}>
+          <img src="/flitters-ai-icon.png" alt="" style={{width:28,height:28,objectFit:'contain'}} loading="lazy"/>
+          <div style={{padding:'11px 15px',borderRadius:'20px 20px 20px 5px',background:'var(--bg-card-6)',color:'var(--text-tertiary)',fontSize:15}}>{deepThink?'Thinking deeply...':'Thinking...'}</div>
+        </div>}
+        <div ref={bottomRef}/>
+      </div>
+
+      {showAbout&&<div className="backdrop-in" onClick={()=>setShowAbout(false)} style={{position:'fixed',inset:0,zIndex:20,background:'rgba(0,0,0,0.85)',display:'flex',alignItems:'center',justifyContent:'center',padding:24}}>
+        <div className="sheet-in" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:380,background:'#12141c',borderRadius:20,padding:'28px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
+          <img src="/flitters-ai-logo.png" alt="Flitters AI" style={{width:160,objectFit:'contain',marginBottom:6}} loading="lazy"/>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7,marginTop:8}}>
+            Flitters AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>Flitters Labs Corp</strong>.
+          </p>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7}}>
+            Founded by <strong style={{color:'var(--text-primary)'}}>Dara Samuel</strong>, popularly known as <strong style={{color:'var(--text-primary)'}}>Samzy Bankz</strong>, with support from <strong style={{color:'var(--text-primary)'}}>Beauty</strong>.
+          </p>
+          <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7}}>
+            Logo design by <strong style={{color:'var(--text-primary)'}}>Artist Bigkizz</strong>.
+          </p>
+          <button onClick={()=>setShowAbout(false)} style={{marginTop:14,background:AI_GRADIENT,border:'none',borderRadius:14,padding:'10px 24px',color:'var(--text-primary)',fontWeight:700,fontSize:14,cursor:'pointer'}}>Close</button>
+        </div>
+      </div>}
+
+      {showImgGen&&<div className="backdrop-in" style={{position:'fixed',inset:0,zIndex:10,background:'rgba(0,0,0,0.85)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',padding:24,gap:12}}>
+        <div className="sheet-in" style={{width:'100%',maxWidth:400,background:'#1a1d26',borderRadius:20,padding:20,display:'flex',flexDirection:'column',gap:12}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'center'}}>
+            <span style={{fontWeight:700,fontSize:17,color:'var(--text-primary)',display:'inline-flex',alignItems:'center',gap:8}}><Palette size={17}/> Image Generator</span>
+            <button onClick={()=>{setShowImgGen(false);setGenImg('')}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',display:'flex'}}><X size={22}/></button>
+          </div>
+          <input value={imgPrompt} onChange={e=>setImgPrompt(e.target.value)} placeholder="Describe the image..." style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+          <button onClick={generateImage} disabled={generatingImg||!imgPrompt.trim()} style={{background:AI_GRADIENT,border:'none',borderRadius:12,padding:'12px',color:'var(--text-primary)',fontWeight:700,fontSize:15,cursor:'pointer'}}>{generatingImg?'Generating...':'Generate Image'}</button>
+          {genImg&&<img src={genImg} style={{width:'100%',borderRadius:12,marginTop:4}} alt="generated" loading="lazy"/>}
+          {genImg&&<button onClick={()=>{
+            const a=document.createElement('a')
+            a.href=genImg
+            a.download='flitters-ai-image-'+Date.now()+'.jpg'
+            document.body.appendChild(a)
+            a.click()
+            document.body.removeChild(a)
+          }} style={{background:'var(--bg-card)',border:'none',borderRadius:12,padding:'10px',color:'var(--text-primary)',fontSize:13,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Save size={15}/> Save Image</button>}
+        </div>
+      </div>}
+      <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',padding:'10px 14px',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',display:'flex',gap:10,alignItems:'center',paddingBottom:'calc(10px + env(safe-area-inset-bottom,0px))'}}>
+        <button onClick={()=>setShowImgGen(true)} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Palette size={18}/></button>
+        <input value={input} onChange={e=>setInput(e.target.value)} onKeyDown={e=>e.key==='Enter'&&send()} placeholder="Ask Flitters AI anything..." style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:26,padding:'12px 18px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif'}}/>
+        <button onClick={send} disabled={!input.trim()||loading} style={{width:46,height:46,borderRadius:'50%',background:input.trim()&&!loading?AI_GRADIENT:'var(--bg-card-3)',border:'none',cursor:input.trim()&&!loading?'pointer':'not-allowed',color:input.trim()&&!loading?'#fff':'#333',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+      </div>
+    </div>
+  )
+}
+
+function AdminPanel({ currentUser, supabase, onBack }) {
+  const [adminTab, setAdminTab] = useState('ads') // 'ads' | 'announcements' | 'reports'
+  const [reports, setReports] = useState([])
+  const [reportsFilter, setReportsFilter] = useState('pending') // 'pending' | 'all'
+  const [ads, setAds] = useState([])
+  const [showForm, setShowForm] = useState(false)
+  const [advertiserName, setAdvertiserName] = useState('')
+  const [content, setContent] = useState('')
+  const [linkUrl, setLinkUrl] = useState('')
+  const [adCtaText, setAdCtaText] = useState('')
+  const [adType, setAdType] = useState('post')
+  const [mediaFile, setMediaFile] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const fileRef = useRef(null)
+
+  const [announcements, setAnnouncements] = useState([])
+  const [annMessage, setAnnMessage] = useState('')
+  const [annDescription, setAnnDescription] = useState('')
+  const [annButtonText, setAnnButtonText] = useState('')
+  const [annButtonUrl, setAnnButtonUrl] = useState('')
+  const [annDurationHours, setAnnDurationHours] = useState(24)
+  const [annSaving, setAnnSaving] = useState(false)
+
+  useEffect(()=>{ loadAds(); loadAnnouncements(); loadReports() },[])
+
+  const loadReports = async () => {
+    const {data} = await supabase.from('reports').select('*,reporter:profiles!reporter_id(display_name,username),reported_user:profiles!reported_user_id(display_name,username)').order('created_at',{ascending:false})
+    setReports(data||[])
+  }
+
+  const markReportStatus = async (report, status) => {
+    await supabase.from('reports').update({status, reviewed_at:new Date().toISOString()}).eq('id',report.id)
+    setReports(prev=>prev.map(r=>r.id===report.id?{...r,status}:r))
+  }
+
+  const loadAnnouncements = async() => {
+    const {data} = await supabase.from('announcements').select('*').order('created_at',{ascending:false})
+    setAnnouncements(data||[])
+  }
+
+  const createAnnouncement = async() => {
+    if(!annMessage.trim()) { alert('Headline required'); return }
+    if((annButtonText.trim() && !annButtonUrl.trim()) || (!annButtonText.trim() && annButtonUrl.trim())) {
+      alert('Fill in both the button text and its link, or leave both empty'); return
+    }
+    setAnnSaving(true)
+    const expiresAt = new Date(Date.now() + annDurationHours*60*60*1000).toISOString()
+    const {error} = await supabase.from('announcements').insert({
+      message: annMessage.trim(),
+      description: annDescription.trim()||null,
+      button_text: annButtonText.trim()||null,
+      button_url: annButtonUrl.trim()||null,
+      expires_at: expiresAt,
+      created_by: currentUser.id
+    })
+    if(error) alert('Error: '+error.message)
+    else { setAnnMessage(''); setAnnDescription(''); setAnnButtonText(''); setAnnButtonUrl(''); loadAnnouncements() }
+    setAnnSaving(false)
+  }
+
+  const endAnnouncementNow = async(ann) => {
+    await supabase.from('announcements').update({expires_at: new Date().toISOString()}).eq('id',ann.id)
+    loadAnnouncements()
+  }
+
+  const deleteAnnouncement = async(ann) => {
+    if(!window.confirm('Delete this announcement?')) return
+    await supabase.from('announcements').delete().eq('id',ann.id)
+    setAnnouncements(prev=>prev.filter(a=>a.id!==ann.id))
+  }
+
+  const loadAds = async() => {
+    const {data} = await supabase.from('ads').select('*').order('created_at',{ascending:false})
+    setAds(data||[])
+  }
+
+  const createAd = async() => {
+    if(!advertiserName.trim()) { alert('Advertiser name required'); return }
+    setSaving(true)
+    let imageUrl = null, videoUrl = null
+    if(mediaFile) {
+      const ext = mediaFile.name.split('.').pop()
+      const path = 'ads/'+Date.now()+'.'+ext
+      let urlData
+      try { urlData = mediaFile.type.startsWith('video/') ? await uploadVideoChunked(mediaFile, path, {maxDurationSeconds:300, maxSizeBytes:200*1024*1024}) : await uploadToR2(mediaFile, path) }
+      catch(err) { alert('Upload failed: '+err.message); setSaving(false); return }
+      if(adType==='reel') videoUrl = urlData.publicUrl
+      else imageUrl = urlData.publicUrl
+    }
+    const {error} = await supabase.from('ads').insert({
+      advertiser_name: advertiserName.trim(),
+      content: content.trim(),
+      image_url: imageUrl,
+      video_url: videoUrl,
+      link_url: linkUrl.trim()||null,
+      cta_text: adCtaText.trim()||null,
+      type: adType,
+      active: true
+    })
+    if(error) alert('Error: '+error.message)
+    else {
+      setAdvertiserName(''); setContent(''); setLinkUrl(''); setAdCtaText(''); setMediaFile(null); setShowForm(false)
+      loadAds()
+    }
+    setSaving(false)
+  }
+
+  const toggleActive = async(ad) => {
+    await supabase.from('ads').update({active:!ad.active}).eq('id',ad.id)
+    setAds(prev=>prev.map(a=>a.id===ad.id?{...a,active:!a.active}:a))
+  }
+
+  const deleteAd = async(ad) => {
+    if(!window.confirm('Delete this ad?')) return
+    await supabase.from('ads').delete().eq('id',ad.id)
+    setAds(prev=>prev.filter(a=>a.id!==ad.id))
+  }
+
+  if(showForm) return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={()=>setShowForm(false)} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>New Ad</span>
+        <button onClick={createAd} disabled={saving} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 18px',color:'var(--text-primary)',fontWeight:700,cursor:'pointer'}}>{saving?'Saving...':'Create'}</button>
+      </div>
+      <div style={{padding:20,display:'flex',flexDirection:'column',gap:12}}>
+        <div style={{display:'flex',gap:8}}>
+          <button onClick={()=>setAdType('post')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='post'?'#F7B731':'var(--bg-card-2)'),background:adType==='post'?'rgba(247,183,49,0.15)':'transparent',color:adType==='post'?'#F7B731':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><FileText size={15}/> Feed Post</button>
+          <button onClick={()=>setAdType('reel')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(adType==='reel'?'#F7B731':'var(--bg-card-2)'),background:adType==='reel'?'rgba(247,183,49,0.15)':'transparent',color:adType==='reel'?'#F7B731':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Clapperboard size={15}/> Reel Video</button>
+        </div>
+        <input value={advertiserName} onChange={e=>setAdvertiserName(e.target.value)} placeholder="Advertiser/Brand name" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <textarea value={content} onChange={e=>setContent(e.target.value)} placeholder="Ad text/caption" rows={3} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+        <input value={linkUrl} onChange={e=>setLinkUrl(e.target.value)} placeholder="Link URL (optional)" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <input value={adCtaText} onChange={e=>setAdCtaText(e.target.value)} placeholder="Button text (default: Learn More)" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+        <div onClick={()=>fileRef.current?.click()} style={{height:120,background:'var(--bg-card-4)',border:'2px dashed rgba(255,255,255,0.15)',borderRadius:16,display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',cursor:'pointer',gap:6}}>
+          {mediaFile?<span style={{color:'#00C9A7',fontSize:13}}>{mediaFile.name}</span>:<>{adType==='reel'?<Video size={26}/>:<ImageIcon size={26}/>}<span style={{color:'var(--text-secondary)',fontSize:13}}>Tap to select {adType==='reel'?'video':'image'} (optional)</span></>}
+        </div>
+        <input ref={fileRef} type="file" accept={adType==='reel'?'video/*':'image/*'} onChange={e=>setMediaFile(e.target.files[0])} style={{display:'none'}}/>
+      </div>
+    </div>
+  )
+
+  return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={onBack} style={{background:'none',border:'none',color:'var(--text-primary)',fontSize:24,cursor:'pointer'}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17,flex:1}}>{adminTab==='ads'?'Ad Manager':adminTab==='announcements'?'Announcements':'Reports'}</span>
+        {adminTab==='ads'&&<button onClick={()=>setShowForm(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>+ New</button>}
+      </div>
+      <div style={{display:'flex',borderBottom:'1px solid var(--border-color)'}}>
+        <button onClick={()=>setAdminTab('ads')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='ads'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='ads'?'#fff':'#555',fontWeight:adminTab==='ads'?700:500,fontSize:14,cursor:'pointer'}}>Ads</button>
+        <button onClick={()=>setAdminTab('announcements')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='announcements'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='announcements'?'#fff':'#555',fontWeight:adminTab==='announcements'?700:500,fontSize:14,cursor:'pointer'}}>Announcements</button>
+        <button onClick={()=>setAdminTab('reports')} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:adminTab==='reports'?'2px solid #F7B731':'2px solid transparent',color:adminTab==='reports'?'#fff':'#555',fontWeight:adminTab==='reports'?700:500,fontSize:14,cursor:'pointer',position:'relative'}}>
+          Reports
+          {reports.filter(r=>r.status==='pending').length>0&&<span style={{position:'absolute',top:6,right:'calc(50% - 34px)',minWidth:16,height:16,borderRadius:8,background:'#FF4757',color:'#fff',fontSize:10,fontWeight:800,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px'}}>{reports.filter(r=>r.status==='pending').length}</span>}
+        </button>
+      </div>
+
+      {adminTab==='ads'&&<>
+      {ads.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No ads yet</p></div>}
+      {ads.map(ad=>(
+        <div key={ad.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+          <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6}}>
+            <div>
+              <div style={{display:'flex',gap:8,alignItems:'center'}}>
+                <span style={{fontWeight:700,fontSize:15}}>{ad.advertiser_name}</span>
+                <span style={{background:ad.type==='reel'?'rgba(255,71,87,0.15)':'rgba(91,156,246,0.15)',borderRadius:6,padding:'1px 6px',fontSize:10,color:ad.type==='reel'?'#FF4757':'#5B9CF6',fontWeight:700,display:'inline-flex',alignItems:'center',gap:3}}>{ad.type==='reel'?<><Clapperboard size={10}/> REEL</>:<><FileText size={10}/> POST</>}</span>
+              </div>
+              <span style={{color:ad.active?'#00C9A7':'#555',fontSize:12}}>{ad.active?'● Active':'○ Inactive'}</span>
+            </div>
+            <div style={{display:'flex',gap:8}}>
+              <button onClick={()=>toggleActive(ad)} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,cursor:'pointer'}}>{ad.active?'Pause':'Activate'}</button>
+              <button onClick={()=>deleteAd(ad)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,cursor:'pointer'}}>Delete</button>
+            </div>
+          </div>
+          {ad.content&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:0}}>{ad.content}</p>}
+        </div>
+      ))}
+      </>}
+
+      {adminTab==='announcements'&&<>
+        <div style={{padding:16,display:'flex',flexDirection:'column',gap:10,borderBottom:'1px solid var(--border-color)'}}>
+          <input value={annMessage} onChange={e=>setAnnMessage(e.target.value)} placeholder="Headline — e.g. See posts in any language" style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none'}}/>
+          <textarea value={annDescription} onChange={e=>setAnnDescription(e.target.value)} placeholder="Description (optional) — e.g. Update your settings to add any language you want." rows={2} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',resize:'none',fontFamily:'sans-serif'}}/>
+          <div style={{display:'flex',gap:10}}>
+            <input value={annButtonText} onChange={e=>setAnnButtonText(e.target.value)} placeholder="Button text (optional)" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+            <input value={annButtonUrl} onChange={e=>setAnnButtonUrl(e.target.value)} placeholder="Button link (optional)" style={{flex:1,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:14,outline:'none',minWidth:0}}/>
+          </div>
+          <div style={{display:'flex',gap:8,alignItems:'center'}}>
+            <span style={{color:'var(--text-tertiary)',fontSize:13}}>Show for</span>
+            <select value={annDurationHours} onChange={e=>setAnnDurationHours(Number(e.target.value))} style={{background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:10,padding:'8px 10px',color:'var(--text-primary)',fontSize:14}}>
+              <option value={1}>1 hour</option>
+              <option value={6}>6 hours</option>
+              <option value={24}>1 day</option>
+              <option value={72}>3 days</option>
+              <option value={168}>7 days</option>
+            </select>
+            <button onClick={createAnnouncement} disabled={annSaving||!annMessage.trim()} style={{marginLeft:'auto',background:annMessage.trim()?'linear-gradient(135deg,#F7B731,#FF6B35)':'var(--bg-card-3)',border:'none',borderRadius:20,padding:'8px 18px',color:annMessage.trim()?'var(--text-primary)':'var(--text-quaternary)',fontWeight:700,cursor:annMessage.trim()?'pointer':'default'}}>{annSaving?'Posting...':'Post'}</button>
+          </div>
+          {(annMessage.trim()||annDescription.trim())&&(
+            <div style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',borderRadius:12,padding:'14px 16px'}}>
+              <p style={{color:'rgba(255,255,255,0.7)',fontSize:10,fontWeight:700,letterSpacing:0.5,textTransform:'uppercase',margin:'0 0 8px'}}>Preview</p>
+              <h3 style={{color:'#fff',fontSize:16,fontWeight:800,margin:'0 0 4px',lineHeight:1.25}}>{annMessage||'Headline goes here'}</h3>
+              {annDescription&&<p style={{color:'rgba(255,255,255,0.85)',fontSize:13,lineHeight:1.4,margin:'0 0 10px'}}>{annDescription}</p>}
+              {annButtonText&&annButtonUrl&&<span style={{display:'inline-block',background:'#fff',color:'#111',fontWeight:700,fontSize:12.5,padding:'7px 16px',borderRadius:20}}>{annButtonText}</span>}
+            </div>
+          )}
+        </div>
+        {announcements.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Megaphone size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>No announcements yet</p></div>}
+        {announcements.map(ann=>{
+          const isLive = new Date(ann.expires_at) > new Date()
+          return (
+            <div key={ann.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:6,gap:10}}>
+                <span style={{color:isLive?'#00C9A7':'#555',fontSize:12,flexShrink:0}}>{isLive?'● Live until '+new Date(ann.expires_at).toLocaleString():'○ Ended'}</span>
+                <div style={{display:'flex',gap:8,flexShrink:0}}>
+                  {isLive&&<button onClick={()=>endAnnouncementNow(ann)} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-primary)',fontSize:12,cursor:'pointer'}}>End now</button>}
+                  <button onClick={()=>deleteAnnouncement(ann)} style={{background:'rgba(255,71,87,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#FF4757',fontSize:12,cursor:'pointer'}}>Delete</button>
+                </div>
+              </div>
+              <p style={{color:'var(--text-primary)',fontSize:14,fontWeight:700,margin:'0 0 2px',wordBreak:'break-word'}}>{ann.message}</p>
+              {ann.description&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:'0 0 4px',wordBreak:'break-word'}}>{ann.description}</p>}
+              {ann.button_text&&ann.button_url&&<p style={{color:'#5B9CF6',fontSize:12,margin:0}}>🔗 {ann.button_text} → {ann.button_url}</p>}
+            </div>
+          )
+        })}
+      </>}
+
+      {adminTab==='reports'&&<>
+        <div style={{display:'flex',gap:8,padding:'12px 16px',borderBottom:'1px solid var(--border-color)'}}>
+          <button onClick={()=>setReportsFilter('pending')} style={{flex:1,padding:'8px',borderRadius:10,border:'none',background:reportsFilter==='pending'?'rgba(255,71,87,0.15)':'var(--bg-card)',color:reportsFilter==='pending'?'#FF4757':'var(--text-secondary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>Pending</button>
+          <button onClick={()=>setReportsFilter('all')} style={{flex:1,padding:'8px',borderRadius:10,border:'none',background:reportsFilter==='all'?'rgba(91,156,246,0.15)':'var(--bg-card)',color:reportsFilter==='all'?'#5B9CF6':'var(--text-secondary)',fontWeight:700,fontSize:13,cursor:'pointer'}}>All</button>
+        </div>
+        {(()=>{
+          const visible = reports.filter(r=>reportsFilter==='all'||r.status==='pending')
+          // Child-safety reports always float to the top regardless of sort,
+          // since those need the fastest possible response.
+          const sorted = [...visible].sort((a,b)=>{
+            if(a.reason==='child_safety'&&b.reason!=='child_safety') return -1
+            if(b.reason==='child_safety'&&a.reason!=='child_safety') return 1
+            return new Date(b.created_at)-new Date(a.created_at)
+          })
+          if(sorted.length===0) return <div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><AlertTriangle size={44}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>{reportsFilter==='pending'?'No pending reports':'No reports yet'}</p></div>
+          return sorted.map(r=>{
+            const reasonLabel = REPORT_REASONS.find(x=>x.id===r.reason)?.label || r.reason
+            const isChildSafety = r.reason==='child_safety'
+            const targetLabel = r.reported_user_id ? `User @${r.reported_user?.username||'?'}`
+              : r.reported_post_id ? `Post ${r.reported_post_id.slice(0,8)}`
+              : r.reported_comment_id ? `Comment ${r.reported_comment_id.slice(0,8)}`
+              : r.reported_message_id ? `Message ${r.reported_message_id.slice(0,8)}`
+              : r.reported_reel_id ? `Reel ${r.reported_reel_id.slice(0,8)}`
+              : 'Unknown'
+            return (
+              <div key={r.id} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',background:isChildSafety&&r.status==='pending'?'rgba(255,71,87,0.06)':'none'}}>
+                <div style={{display:'flex',justifyContent:'space-between',alignItems:'flex-start',marginBottom:8,gap:10}}>
+                  <div>
+                    <span style={{fontWeight:800,fontSize:13,color:isChildSafety?'#FF4757':'var(--text-primary)'}}>{isChildSafety&&'🚨 '}{reasonLabel}</span>
+                    <div style={{color:'var(--text-quaternary)',fontSize:11,marginTop:2}}>{targetLabel} · reported by {r.reporter?.display_name||'?'} · {timeAgo(r.created_at)}</div>
+                  </div>
+                  <span style={{flexShrink:0,fontSize:10,fontWeight:700,padding:'3px 8px',borderRadius:8,background:r.status==='pending'?'rgba(247,183,49,0.15)':r.status==='actioned'?'rgba(0,201,167,0.15)':'var(--bg-card)',color:r.status==='pending'?'#F7B731':r.status==='actioned'?'#00C9A7':'var(--text-quaternary)'}}>{r.status.toUpperCase()}</span>
+                </div>
+                {r.details&&<p style={{color:'var(--text-subtle)',fontSize:13,margin:'0 0 10px',wordBreak:'break-word'}}>{r.details}</p>}
+                {r.status==='pending'&&<div style={{display:'flex',gap:8}}>
+                  <button onClick={()=>markReportStatus(r,'actioned')} style={{background:'rgba(0,201,167,0.1)',border:'none',borderRadius:10,padding:'6px 12px',color:'#00C9A7',fontSize:12,fontWeight:700,cursor:'pointer'}}>Mark Actioned</button>
+                  <button onClick={()=>markReportStatus(r,'reviewed')} style={{background:'var(--bg-card)',border:'none',borderRadius:10,padding:'6px 12px',color:'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer'}}>Dismiss</button>
+                </div>}
+              </div>
+            )
+          })
+        })()}
+      </>}
+    </div>
+  )
+}
+
+// Card-style announcement, matching the X/Twitter promo-card look — bold
+// headline, a lighter description line, and an optional pill button that
+// links wherever the admin points it. Dismissing it is remembered in
+// localStorage keyed by the announcement's own id, so a new announcement
+// will show again even if the person dismissed a previous one, but the same
+// one never reappears once closed.
+function AnnouncementBanner({ supabase }) {
+  const [ann, setAnn] = useState(null)
+  const [dismissed, setDismissed] = useState(false)
+  useEffect(()=>{
+    let cancelled = false
+    supabase.from('announcements').select('*').gt('expires_at', new Date().toISOString()).order('created_at',{ascending:false}).limit(1).maybeSingle().then(({data})=>{
+      if(cancelled || !data) return
+      try { if(localStorage.getItem('dismissed_announcement_'+data.id)) return } catch(e){}
+      setAnn(data)
+    })
+    return ()=>{cancelled=true}
+  },[])
+  if(!ann || dismissed) return null
+  const close = () => {
+    try { localStorage.setItem('dismissed_announcement_'+ann.id, '1') } catch(e){}
+    setDismissed(true)
+  }
+  return (
+    <div style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',padding:'18px 44px 18px 18px',position:'relative'}}>
+      <button onClick={close} style={{position:'absolute',top:14,right:14,background:'rgba(255,255,255,0.2)',border:'none',borderRadius:'50%',width:24,height:24,cursor:'pointer',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',padding:0}}><X size={14}/></button>
+      <h3 style={{color:'#fff',fontSize:18,fontWeight:800,margin:'0 0 4px',lineHeight:1.25,wordBreak:'break-word'}}>{ann.message}</h3>
+      {ann.description&&<p style={{color:'rgba(255,255,255,0.85)',fontSize:13.5,lineHeight:1.45,margin:'0 0 14px',wordBreak:'break-word'}}>{ann.description}</p>}
+      {ann.button_text&&ann.button_url&&<a href={ann.button_url} target="_blank" rel="noopener noreferrer" style={{display:'inline-block',background:'#fff',color:'#111',fontWeight:700,fontSize:13.5,padding:'9px 20px',borderRadius:24,textDecoration:'none',marginTop:ann.description?0:2}}>{ann.button_text}</a>}
+    </div>
+  )
+}
+
+// Brief popup for new activity that arrives while you're looking at
+// something else — tap to jump straight there, or it clears itself after a
+// few seconds. Deliberately one at a time rather than a queue/stack: a
+// burst of activity (e.g. several messages in a row) just keeps replacing
+// this with the latest, which is what most chat apps do too.
+function InAppToast({ toast, onClose, onClick }) {
+  useEffect(()=>{
+    if(!toast) return
+    const t = setTimeout(onClose, 4500)
+    return ()=>clearTimeout(t)
+  },[toast])
+  if(!toast) return null
+  return (
+    <div onClick={onClick} style={{position:'fixed',top:'calc(12px + env(safe-area-inset-top))',left:12,right:12,zIndex:600,background:'var(--bg-card-8)',backdropFilter:'blur(10px)',border:'1px solid var(--border-color-2)',borderRadius:16,padding:'12px 14px',display:'flex',alignItems:'center',gap:10,cursor:'pointer',boxShadow:'0 8px 24px rgba(0,0,0,0.4)',maxWidth:500,margin:'0 auto'}}>
+      {toast.avatarUrl?<img src={toast.avatarUrl} style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',flexShrink:0}} alt=""/>:<div style={{width:36,height:36,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,color:'var(--text-secondary)'}}><Bell size={16}/></div>}
+      <div style={{flex:1,minWidth:0}}>
+        <div style={{fontWeight:700,fontSize:13,color:'var(--text-primary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{toast.title}</div>
+        <div style={{fontSize:12,color:'var(--text-secondary)',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{toast.body}</div>
+      </div>
+    </div>
+  )
+}
+
+// Shared between NotificationsPanel and the in-app toast — the
+// notifications table has a `type` column, not a plain text message, so
+// both places that render a notification need the same type→text mapping.
+const NOTIF_TYPE_INFO = {
+  like:{icon:<Heart size={16} fill="#FF4757" color="#FF4757"/>,text:'liked your post'},
+  comment:{icon:<MessageCircle size={16}/>,text:'commented on your post'},
+  follow:{icon:<User size={16}/>,text:'started following you'},
+  repost:{icon:<Repeat2 size={16}/>,text:'reposted your flit'},
+  welcome:{icon:<Globe size={16}/>,text:'Welcome to Flitters!'},
+  follow_request:{icon:<User size={16}/>,text:'sent you a follow request'},
+  follow_accepted:{icon:<CheckCircle2 size={16}/>,text:'accepted your follow request'},
+  mention:{icon:<MessageSquare size={16}/>,text:'tagged you in a post'},
+}
+
+function FlittersAppInner({ currentUser }) {
+  const { theme } = useTheme()
+  const [ads, setAds] = useState([])
+  const [showAdmin, setShowAdmin] = useState(false)
+  const ADMIN_ID = 'b29fa752-34f5-4a3e-a3e7-8178c2b176ae'
+
+  // Keeps --vvh (visible height) and --vv-top (how far the visible area has
+  // scrolled from the page's actual top) in sync with the real, live visual
+  // viewport. This exists because the `interactive-widget=resizes-visual`
+  // viewport meta setting — the standards-based fix for "keyboard drags
+  // fixed headers around" — isn't being honored by this app's WebView engine
+  // (GeckoView). Reading window.visualViewport directly works regardless of
+  // that, since it's a broadly-supported API independent of that newer meta
+  // tag. Full-screen overlays with a composer (DM chat, group chat, post
+  // detail) use these vars instead of inset:0/100dvh so they track the
+  // actual visible area rather than getting dragged along with whatever the
+  // browser does to scroll a focused input into view.
+  useEffect(() => {
+    const vv = window.visualViewport
+    if (!vv) return
+    const update = () => {
+      document.documentElement.style.setProperty('--vvh', vv.height + 'px')
+      document.documentElement.style.setProperty('--vv-top', vv.offsetTop + 'px')
+    }
+    update()
+    vv.addEventListener('resize', update)
+    vv.addEventListener('scroll', update)
+    return () => { vv.removeEventListener('resize', update); vv.removeEventListener('scroll', update) }
+  }, [])
+
+  // URL-based navigation
+  const getHashTab = () => {
+    const h = window.location.hash.replace('#','')
+    return ['home','messages','pulse','people','notifications'].includes(h) ? h : 'home'
+  }
+  const [tab, setTab] = useState(getHashTab)
+  const setTabWithHash = (t) => {
+    // history.replaceState only updates the URL bar and never triggers
+    // browser navigation — assigning to location.hash does, and inside the
+    // Android WebView wrapper that was causing a full page reload (re-running
+    // the whole auth/profile fetch in page.js) on every single tab tap,
+    // which is what made tab switching feel like a full refresh.
+    window.history.replaceState(null, '', '#'+t)
+    setTab(t)
+    if(t==='messages') setDmView('list')
+  }
+  const [pendingReelId, setPendingReelId] = useState(null)
+  const [feedTab, setFeedTab] = useState('foryou')
+  const [posts, setPosts] = useState([])
+  const [visibleCount, setVisibleCount] = useState(10) // feed renders 10 posts at a time, grows as you scroll near the end
+  const [loading, setLoading] = useState(true)
+  const [showCompose, setShowCompose] = useState(false)
+  const [composeText, setComposeText] = useState('')
+  const [composeImage, setComposeImage] = useState(null)
+  const [composeImageUrl, setComposeImageUrl] = useState(null)
+  const composeImgRef = useRef(null)
+  const [conversations, setConversations] = useState([])
+  const [convosLoading, setConvosLoading] = useState(true)
+  const [selectedConv, setSelectedConv] = useState(null)
+  const [messages, setMessages] = useState([])
+  const [msgText, setMsgText] = useState('')
+  const [dmBlocked, setDmBlocked] = useState(false)
+  const [dmView, setDmView] = useState('list')
+  const [searchQ, setSearchQ] = useState('')
+  const [searchResults, setSearchResults] = useState([])
+  const [followed, setFollowed] = useState({})
+  const [friendsSubTab, setFriendsSubTab] = useState('friends')
+  const [selectedDMMsg, setSelectedDMMsg] = useState(null)
+  const [reportingDMMsg, setReportingDMMsg] = useState(null)
+  const [editingDMMsg, setEditingDMMsg] = useState(null)
+  const [editDMText, setEditDMText] = useState('')
+  const [dmReplyTo, setDmReplyTo] = useState(null)
+  const [dmReplyToId, setDmReplyToId] = useState(null)
+  const [dmHighlightMsgId, setDmHighlightMsgId] = useState(null)
+  const dmHighlightTimer = useRef(null)
+  const scrollToDMMessage = (id) => {
+    if(!id) return
+    document.getElementById('dmmsg-'+id)?.scrollIntoView({behavior:'smooth',block:'center'})
+    setDmHighlightMsgId(id)
+    clearTimeout(dmHighlightTimer.current)
+    dmHighlightTimer.current = setTimeout(()=>setDmHighlightMsgId(null),1200)
+  }
+  const dmLongPressTimer = useRef(null)
+  const selectedConvRef = useRef(null)
+  useEffect(()=>{ selectedConvRef.current = selectedConv },[selectedConv])
+  const dmImgRef = useRef(null)
+  const dmChannelRef = useRef(null)
+  const dmTypingTimeoutRef = useRef(null)
+  const dmMyTypingThrottle = useRef(0)
+  const [otherTyping, setOtherTyping] = useState(false)
+  const sendDMTyping = () => {
+    const now = Date.now()
+    if(now - dmMyTypingThrottle.current < 2000) return
+    dmMyTypingThrottle.current = now
+    dmChannelRef.current?.send({type:'broadcast',event:'typing',payload:{user_id:currentUser.id}})
+  }
+  const [sendingDMImg, setSendingDMImg] = useState(false)
+  const [showDMStickerTray, setShowDMStickerTray] = useState(false)
+  const dmVoice = useVoiceRecorder()
+  const [sendingDMVoice, setSendingDMVoice] = useState(false)
+  const [fullscreenImg, setFullscreenImg] = useState(null)
+  const [unreadDM, setUnreadDM] = useState(0)
+  const [unreadNotifs, setUnreadNotifs] = useState(0)
+  const [unreadGC, setUnreadGC] = useState(false)
+  // Backing store for the badges above. Kept as refs (not state) because
+  // they're mutated inside realtime callbacks and mark-as-read handlers —
+  // using plain state here would mean every handler needs the latest
+  // closure-captured value, which realtime callbacks registered once on
+  // mount don't have. The public unreadDM/unreadGC numbers/booleans are
+  // just a derived snapshot recomputed whenever a set changes.
+  const unreadConvoIdsRef = useRef(new Set())
+  const unreadGroupIdsRef = useRef(new Set())
+  const myConversationIdsRef = useRef([])
+  const myGroupIdsRef = useRef([])
+  const recomputeDMBadge = () => setUnreadDM(unreadConvoIdsRef.current.size)
+  const recomputeGCBadge = () => setUnreadGC(unreadGroupIdsRef.current.size>0)
+  // Shared between the instant realtime listener and the polling backup
+  // further down, so an item that already got shown once (whichever path
+  // caught it first) doesn't get shown again by the other one.
+  const notifiedIdsRef = useRef(new Set())
+  const [toast, setToast] = useState(null)
+
+  const loadUnreadCounts = async () => {
+    try {
+      const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
+      myConversationIdsRef.current = (parts||[]).map(p=>p.conversation_id)
+      unreadConvoIdsRef.current = new Set()
+      if(parts?.length){
+        await Promise.all(parts.map(async p=>{
+          const {count:c} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',p.conversation_id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
+          if(c>0) unreadConvoIdsRef.current.add(p.conversation_id)
+        }))
+      }
+      recomputeDMBadge()
+
+      const {count:nc} = await supabase.from('notifications').select('id',{count:'exact',head:true}).eq('user_id',currentUser.id).eq('read',false)
+      setUnreadNotifs(nc||0)
+
+      const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+      myGroupIdsRef.current = (mems||[]).map(m=>m.group_id)
+      unreadGroupIdsRef.current = new Set()
+      if(mems?.length){
+        await Promise.all(mems.map(async m=>{
+          const {count:gc} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',m.group_id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
+          if(gc>0) unreadGroupIdsRef.current.add(m.group_id)
+        }))
+      }
+      recomputeGCBadge()
+    } catch(e) { /* tables may not have these columns yet */ }
+  }
+
+  // One initial fetch to establish correct baseline counts (unavoidable —
+  // a fresh page load has no live history to react to), then realtime
+  // takes over entirely. No more 15-second re-polling: new messages, new
+  // group messages, and new notifications each arrive as their own event
+  // and update just the affected badge, instantly, instead of re-scanning
+  // every conversation and group on a timer regardless of whether
+  // anything changed.
+  useEffect(()=>{
+    loadUnreadCounts()
+    const ch = supabase.channel('unread-badges:'+currentUser.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages'},async(payload)=>{
+        const m = payload.new
+        if(m.sender_id===currentUser.id) return
+        if(!myConversationIdsRef.current.includes(m.conversation_id)) return
+        if(notifiedIdsRef.current.has(m.id)) return
+        notifiedIdsRef.current.add(m.id)
+        unreadConvoIdsRef.current.add(m.conversation_id)
+        recomputeDMBadge()
+        const s = stateRef.current
+        const isViewingThisConvo = s.tab==='messages' && s.dmView==='chat' && s.selectedConv?.id===m.conversation_id
+        if(isViewingThisConvo) return
+        const {data:sender} = await supabase.from('profiles').select('display_name,avatar_url').eq('id',m.sender_id).maybeSingle()
+        setToast({
+          title: sender?.display_name || 'New message',
+          body: m.is_sticker ? 'Sent a sticker' : m.is_voice ? 'Sent a voice message' : (m.content||'').slice(0,80),
+          avatarUrl: sender?.avatar_url,
+          action: {type:'dm', conv:{id:m.conversation_id, other:sender?{id:m.sender_id,...sender}:null}},
+        })
+      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'group_messages'},async(payload)=>{
+        const m = payload.new
+        if(m.sender_id===currentUser.id) return
+        if(!myGroupIdsRef.current.includes(m.group_id)) return
+        if(notifiedIdsRef.current.has(m.id)) return
+        notifiedIdsRef.current.add(m.id)
+        unreadGroupIdsRef.current.add(m.group_id)
+        recomputeGCBadge()
+        const s = stateRef.current
+        const isViewingThisGroup = s.viewingGroupChat?.id===m.group_id
+        if(isViewingThisGroup) return
+        const [{data:sender},{data:group}] = await Promise.all([
+          supabase.from('profiles').select('display_name,avatar_url').eq('id',m.sender_id).maybeSingle(),
+          supabase.from('groups').select('*,group_members(user_id)').eq('id',m.group_id).maybeSingle(),
+        ])
+        setToast({
+          title: (sender?.display_name||'Someone')+' in '+(group?.name||'a group'),
+          body: m.is_sticker ? 'Sent a sticker' : m.is_voice ? 'Sent a voice message' : (m.content||'').slice(0,80),
+          avatarUrl: sender?.avatar_url,
+          action: {type:'group', group},
+        })
+      })
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:`user_id=eq.${currentUser.id}`},async(payload)=>{
+        const n = payload.new
+        if(notifiedIdsRef.current.has(n.id)) return
+        notifiedIdsRef.current.add(n.id)
+        setUnreadNotifs(c=>c+1)
+        if(stateRef.current.tab==='notifications') return
+        const {data:actor} = n.actor_id ? await supabase.from('profiles').select('display_name,avatar_url').eq('id',n.actor_id).maybeSingle() : {data:null}
+        setToast({
+          title: actor?.display_name || 'Flitters',
+          body: NOTIF_TYPE_INFO[n.type]?.text || 'You have a new notification',
+          avatarUrl: actor?.avatar_url,
+          action: {type:'notif'},
+        })
+      })
+      .subscribe()
+    return ()=>supabase.removeChannel(ch)
+  },[])
+  useEffect(()=>{
+    const params = new URLSearchParams(window.location.search)
+    const gid = params.get('opengroup')
+    if(gid){
+      supabase.from('groups').select('*,group_members(user_id)').eq('id',gid).single().then(({data})=>{
+        if(data){setTabWithHash('messages');setViewingGroupChat(data)}
+      })
+      window.history.replaceState({},'',window.location.pathname)
+    }
+    const pid = params.get('openpost')
+    if(pid){
+      openPost(pid)
+      window.history.replaceState({},'',window.location.pathname)
+    }
+  },[])
+  const [people, setPeople] = useState([])
+  const [peopleLoading, setPeopleLoading] = useState(true)
+  const [notifs, setNotifs] = useState([])
+  const [viewingUser, setViewingUser] = useState(null)
+  const [viewingPost, setViewingPost] = useState(null)
+  // The feed scrolls at the window level (no dedicated scroll container), and
+  // opening a post/profile swaps in a totally separate full-screen view that
+  // replaces the feed in the DOM entirely. So going "back" was landing back
+  // at the top instead of where you were — nothing was remembering the
+  // scroll position across that swap. This ref is that memory.
+  const feedScrollPosRef = useRef(0)
+  const openPost = async(postId) => {
+    feedScrollPosRef.current = window.scrollY
+    const {data} = await supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').eq('id',postId).single()
+    if(data) setViewingPost({...data,user_liked:data.likes?.some(l=>l.user_id===currentUser.id),user_reposted:data.reposts?.some(r=>r.user_id===currentUser.id),likes_count:data.likes?.length||0,reposts_count:data.reposts?.length||0,comments_count:data.comments?.length||0})
+    setHideNav(true)
+  }
+  const closePost = () => { setViewingPost(null); setHideNav(false) }
+  const [showMyProfile, setShowMyProfile] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
+  const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
+  const color = currentUser?.avatar_color||'#5B9CF6'
+  const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
+  const handleSignOut = async() => { await supabase.auth.signOut(); window.location.href='/auth' }
+
+  useEffect(()=>{
+    supabase.from('ads').select('*').eq('active',true).eq('type','post').order('created_at',{ascending:false}).then(({data})=>setAds(data||[]))
+  },[])
+  const [navVisible, setNavVisible] = useState(true)
+  const [hideNav, setHideNav] = useState(false)
+  const OMNICORE_ID = 'omnicore-ai'
+  const OMNICORE_PROFILE = {id:'omnicore-ai',display_name:'Flitters AI',username:'flittersai',avatar_color:'#A855F7',avatar_url:'/flitters-ai-icon.png',is_ai:true}
+  const [onlineUsers, setOnlineUsers] = useState({})
+  const stateRef = useRef({})
+  const reelsRef = useRef(null)
+  const [viewingGroupChat, setViewingGroupChat] = useState(null)
+  const [groupsForList, setGroupsForList] = useState([])
+  const [showComposeMenu, setShowComposeMenu] = useState(false)
+  const [gcName, setGcName] = useState('')
+  const [gcDesc, setGcDesc] = useState('')
+  const [gcTag, setGcTag] = useState('')
+  const [gcJoinMode, setGcJoinMode] = useState('open')
+  const [gcColor, setGcColor] = useState('#5B9CF6')
+  const [gcSaving, setGcSaving] = useState(false)
+  useEffect(()=>{
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroupChat,viewingReels:reelsRef.current,viewingPost,selectedConv}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost,viewingGroupChat,selectedConv])
+
+  // Restore the feed's scroll position once you're actually back on it. Wait
+  // a frame so the feed's DOM has repainted first — scrolling before that
+  // would target a page that isn't tall enough yet.
+  useEffect(()=>{
+    if(!viewingPost && !viewingUser && !showMyProfile){
+      requestAnimationFrame(()=>window.scrollTo(0, feedScrollPosRef.current))
+    }
+  },[viewingPost,viewingUser,showMyProfile])
+
+  // Global listener for push notifications regardless of tab
+  useEffect(()=>{
+    const ch = supabase.channel('global_notifs_'+currentUser.id)
+      .on('postgres_changes',{event:'INSERT',schema:'public',table:'notifications',filter:'user_id=eq.'+currentUser.id},async(payload)=>{
+        loadUnreadCounts()
+        const n = payload.new
+        if(notifiedIdsRef.current.has(n.id)) return
+        notifiedIdsRef.current.add(n.id)
+        const typeText = {
+          like:'liked your post', comment:'commented on your post', follow:'started following you',
+          repost:'reposted your flit', follow_request:'sent you a follow request',
+          follow_accepted:'accepted your follow request', mention:'tagged you in a post',
+        }
+        let name = 'Someone'
+        if(n.actor_id){ const {data:actor} = await supabase.from('profiles').select('display_name').eq('id',n.actor_id).maybeSingle(); name = actor?.display_name || 'Someone' }
+        const body = n.type==='welcome' ? 'Welcome to Flitters!' : `${name} ${typeText[n.type]||'sent you a notification'}`
+        showLocalNotif('Flitters', body)
+      })
+      .subscribe()
+
+    // Separate channel for DMs - filter by user's conversations
+    supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id).then(({data:convs})=>{
+      if(!convs?.length) return
+      convs.forEach(({conversation_id})=>{
+        supabase.channel('dm_notif_'+conversation_id)
+          .on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:'conversation_id=eq.'+conversation_id},async(payload)=>{
+            if(payload.new.sender_id === currentUser.id) return
+            loadUnreadCounts()
+            const m = payload.new
+            if(notifiedIdsRef.current.has(m.id)) return
+            notifiedIdsRef.current.add(m.id)
+            const {data:sender} = await supabase.from('profiles').select('display_name').eq('id',m.sender_id).maybeSingle()
+            const name = sender?.display_name || 'Someone'
+            const body = m.is_sticker ? `${name} sent you a sticker` : m.is_voice ? `${name} sent a voice message` : `${name}: ${(m.content||'').slice(0,100)}`
+            showLocalNotif('Flitters', body)
+          })
+          .subscribe()
+      })
+    })
+
+    return()=>{ supabase.removeChannel(ch) }
+  },[])
+
+  // Polling backup for notifications/messages — Supabase Realtime (websockets)
+  // is unreliable inside WebView-wrapped apps (background connection gets
+  // killed, auth token refresh isn't always handled). This polls on an
+  // interval instead, so notifications keep working even if the websocket dies.
+  useEffect(()=>{
+    const notifiedIds = notifiedIdsRef.current
+    let lastPollTime = new Date().toISOString()
+
+    const poll = async () => {
+      try {
+        const pollStart = new Date().toISOString()
+
+        // New notifications (likes, comments, follows, reposts, mentions)
+        const {data:newNotifs} = await supabase.from('notifications')
+          .select('*,actor:profiles!actor_id(display_name,avatar_url)')
+          .eq('user_id', currentUser.id)
+          .gt('created_at', lastPollTime)
+          .order('created_at', {ascending:true})
+        if(newNotifs?.length){
+          for(const n of newNotifs){
+            if(notifiedIds.has(n.id)) continue
+            notifiedIds.add(n.id)
+            const name = n.actor?.display_name || 'Someone'
+            const body = n.type==='welcome' ? 'Welcome to Flitters!' : `${name} ${NOTIF_TYPE_INFO[n.type]?.text||'sent you a notification'}`
+            showLocalNotif('Flitters', body)
+            setUnreadNotifs(c=>c+1)
+            if(stateRef.current.tab!=='notifications') setToast({title:name, body:NOTIF_TYPE_INFO[n.type]?.text||'sent you a notification', avatarUrl:n.actor?.avatar_url, action:{type:'notif'}})
+          }
+        }
+
+        // New DM messages across all of the user's conversations
+        const {data:convs} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id', currentUser.id)
+        if(convs?.length){
+          const convIds = convs.map(c=>c.conversation_id)
+          const {data:newMsgs} = await supabase.from('messages')
+            .select('*,sender:profiles!sender_id(display_name,avatar_url)')
+            .in('conversation_id', convIds)
+            .gt('created_at', lastPollTime)
+            .order('created_at', {ascending:true})
+          if(newMsgs?.length){
+            for(const m of newMsgs){
+              if(notifiedIds.has(m.id)) continue
+              notifiedIds.add(m.id)
+              if(m.sender_id === currentUser.id) continue
+              unreadConvoIdsRef.current.add(m.conversation_id)
+              recomputeDMBadge()
+              const name = m.sender?.display_name || 'Someone'
+              const body = m.is_sticker ? `${name} sent you a sticker` : m.is_voice ? `${name} sent a voice message` : `${name}: ${(m.content||'').slice(0,100)}`
+              showLocalNotif('Flitters', body)
+              const s = stateRef.current
+              const isViewingThisConvo = s.tab==='messages' && s.dmView==='chat' && s.selectedConv?.id===m.conversation_id
+              if(!isViewingThisConvo) setToast({title:name, body: m.is_sticker?'Sent a sticker':m.is_voice?'Sent a voice message':(m.content||'').slice(0,80), avatarUrl:m.sender?.avatar_url, action:{type:'dm',conv:{id:m.conversation_id,other:{id:m.sender_id,...m.sender}}}})
+            }
+          }
+        }
+
+        // New group messages across all of the user's groups
+        const {data:myGroups} = await supabase.from('group_members').select('group_id').eq('user_id', currentUser.id)
+        if(myGroups?.length){
+          const groupIds = myGroups.map(g=>g.group_id)
+          const {data:newGroupMsgs} = await supabase.from('group_messages')
+            .select('*,sender:profiles!sender_id(display_name,avatar_url),group:groups!group_id(id,name,cover_color,avatar_url)')
+            .in('group_id', groupIds)
+            .gt('created_at', lastPollTime)
+            .order('created_at', {ascending:true})
+          if(newGroupMsgs?.length){
+            for(const m of newGroupMsgs){
+              if(notifiedIds.has(m.id)) continue
+              notifiedIds.add(m.id)
+              if(m.sender_id === currentUser.id) continue
+              unreadGroupIdsRef.current.add(m.group_id)
+              recomputeGCBadge()
+              const name = m.sender?.display_name || 'Someone'
+              const body = m.is_sticker ? `${name} sent a sticker in ${m.group?.name||'a group'}` : m.is_voice ? `${name} sent a voice message in ${m.group?.name||'a group'}` : `${name} in ${m.group?.name||'a group'}: ${(m.content||'').slice(0,100)}`
+              showLocalNotif('Flitters', body)
+              if(stateRef.current.viewingGroupChat?.id!==m.group_id) setToast({title:`${name} in ${m.group?.name||'a group'}`, body: m.is_sticker?'Sent a sticker':m.is_voice?'Sent a voice message':(m.content||'').slice(0,80), avatarUrl:m.sender?.avatar_url, action:{type:'group',group:m.group}})
+            }
+          }
+        }
+
+        lastPollTime = pollStart
+      } catch(e) { console.log('Notification poll error:', e.message) }
+    }
+
+    const interval = setInterval(poll, 25000)
+    return () => clearInterval(interval)
+  },[])
+
+  useEffect(()=>{
+    const presenceChannel = supabase.channel('online_users')
+      .on('presence',{event:'sync'},()=>{
+        const state = presenceChannel.presenceState()
+        const online = {}
+        Object.values(state).flat().forEach(p=>{ online[p.user_id]=true })
+        setOnlineUsers(online)
+      })
+      .subscribe(async(status)=>{
+        if(status==='SUBSCRIBED'){
+          await presenceChannel.track({user_id:currentUser.id,online_at:new Date().toISOString()})
+        }
+      })
+    return()=>supabase.removeChannel(presenceChannel)
+  },[])
+
+  // WebToApp's wrapper shell sets window.__webtoapp_notification_polyfill__
+  // = true to claim it has polyfilled the standard Notification API — but in
+  // practice Notification.permission/requestPermission() here are just the
+  // native, unmodified browser API surface (no special bridge function
+  // exists to call), and the permission property doesn't reliably reflect
+  // the real OS-level grant. So: call the standard API, but don't trust its
+  // reported result as the final word when this flag is present.
+  const requestNotifPermission = async () => {
+    try {
+      if('Notification' in window) {
+        console.log('Triggering permission prompt...')
+        return await Notification.requestPermission()
+      }
+      return 'unsupported'
+    } catch(e) {
+      console.error('Error requesting permission:', e)
+      return 'error'
+    }
+  }
+
+  const setupPush = useCallback(async() => {
+    const setStatus = (s) => { try { localStorage.setItem('flitters_push_status', s) } catch(e){} }
+    try {
+      setStatus('Starting...')
+      if(!('Notification' in window)) { setStatus('No Notification API in this browser'); return }
+      if(!('serviceWorker' in navigator)) { setStatus('No serviceWorker support in this browser'); return }
+      if(!('PushManager' in window)) { setStatus('No PushManager support in this browser'); return }
+
+      const vapidKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY
+      if(!vapidKey) { setStatus('NEXT_PUBLIC_VAPID_PUBLIC_KEY is not set at build time'); return }
+
+      // Clean up any other service worker registration (e.g. a leftover
+      // OneSignal worker from a previous, now-removed setup) so it can't
+      // compete for the same push scope and cause duplicate/conflicting
+      // deliveries.
+      setStatus('Checking for stale service workers...')
+      const existingRegs = await navigator.serviceWorker.getRegistrations()
+      for(const r of existingRegs){
+        const scriptUrl = r.active?.scriptURL || r.installing?.scriptURL || r.waiting?.scriptURL || ''
+        if(scriptUrl && !scriptUrl.endsWith('/sw.js')) await r.unregister()
+      }
+
+      setStatus('Registering service worker...')
+      const reg = await navigator.serviceWorker.register('/sw.js')
+      await navigator.serviceWorker.ready
+
+      let permission = Notification.permission
+      if(permission === 'default') permission = await requestNotifPermission()
+      if(permission !== 'granted') { setStatus('Permission is "'+permission+'", not granted'); return }
+
+      setStatus('Refreshing subscription...')
+      let sub = await reg.pushManager.getSubscription()
+      // Don't trust a cached subscription — the push service can silently
+      // invalidate it, and the browser has no way of knowing that on its
+      // own; it'll keep handing back the same dead subscription
+      // indefinitely, surviving even an app uninstall/reinstall. Always
+      // re-verify with a fresh subscribe so a dead one can't linger.
+      if(sub) { try { await sub.unsubscribe() } catch(e){}; sub = null }
+      sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: vapidKey
+      })
+
+      setStatus('Saving subscription to account...')
+      const {error} = await supabase.from('push_subscriptions').upsert({
+        user_id:currentUser.id,
+        subscription: JSON.parse(JSON.stringify(sub))
+      },{onConflict:'user_id'})
+      if(error) setStatus('DB save failed: '+error.message)
+      else setStatus('Ready — subscribed at '+new Date().toLocaleTimeString())
+    } catch(e) {
+      setStatus('Error: '+(e.name?e.name+': ':'')+e.message)
+    }
+  }, [currentUser.id])
+
+  useEffect(()=>{
+    setupPush()
+  },[setupPush])
+
+  useEffect(()=>{
+    // Prevent back button from ever going to auth/login
+    window.history.pushState({flitters:true},'',window.location.href)
+    const handlePop = (e) => {
+      // Always push a new state to stay in-app
+      window.history.pushState({flitters:true},'',window.location.href)
+      const s = stateRef.current
+      // Priority order: deepest screen first
+      if(s.viewingPost){setViewingPost(null);setHideNav(false);return}
+      if(s.viewingUser){setViewingUser(null);return}
+      if(s.showMyProfile){setShowMyProfile(false);return}
+      if(s.showSettings){setShowSettings(false);return}
+      if(s.dmView==='chat'){setDmView('list');setSelectedConv(null);setMessages([]);return}
+      if(s.viewingGroupChat){setViewingGroupChat(null);setHideNav(false);return}
+      if(s.viewingReels){
+        if(reelsRef.current?.closeReels) reelsRef.current.closeReels()
+        reelsRef.current = null
+        stateRef.current.viewingReels = null
+        setHideNav(false)
+        return
+      }
+      if(s.tab!=='home'){
+        // Defensive cleanup: this fallback means none of the tracked
+        // overlays matched, but if one is still actually mounted underneath
+        // (stateRef can theoretically go stale — this exact class of bug is
+        // what caused the reel freeze), force-clear anything that could
+        // leave the app stuck. ReelsView locks body scroll while open and
+        // only unlocks it in its own unmount cleanup — if that never runs,
+        // scrolling stays broken app-wide even after switching tabs.
+        if(reelsRef.current?.closeReels) { reelsRef.current.closeReels(); reelsRef.current = null }
+        document.body.style.overflow = ''
+        document.body.style.overscrollBehavior = ''
+        setTabWithHash('home')
+        return
+      }
+    }
+    window.addEventListener('popstate',handlePop)
+    return()=>window.removeEventListener('popstate',handlePop)
+  },[])
+  const lastScrollY = useRef(0)
+
+  useEffect(()=>{
+    const handleScroll = () => {
+      const y = window.scrollY
+      if(y < 50) setNavVisible(true)
+      else if(y > lastScrollY.current + 8) setNavVisible(false)
+      else if(y < lastScrollY.current - 8) setNavVisible(true)
+      lastScrollY.current = y
+    }
+    window.addEventListener('scroll', handleScroll, {passive:true})
+    return()=>window.removeEventListener('scroll', handleScroll)
+  },[])
+  const [chatOverlay, setChatOverlay] = useState(null)
+  const [pendingDM, setPendingDM] = useState(null)
+  const bottomRef = useRef(null)
+
+  const loadPosts = useCallback(async (feedType='foryou') => {
+    setLoading(true)
+    try {
+      // fetch who current user follows and has interacted with
+      const [{data:followsData},{data:likedData},{data:commentedData},{data:blockedByMe},{data:blockedMe}] = await Promise.all([
+        supabase.from('follows').select('following_id').eq('follower_id',currentUser.id),
+        supabase.from('likes').select('post_id,posts(user_id)').eq('user_id',currentUser.id).limit(50),
+        supabase.from('comments').select('post_id,posts(user_id)').eq('user_id',currentUser.id).limit(50),
+        supabase.from('blocks').select('blocked_id').eq('blocker_id',currentUser.id),
+        supabase.from('blocks').select('blocker_id').eq('blocked_id',currentUser.id),
+      ])
+      const hiddenUserIds = new Set([...(blockedByMe||[]).map(b=>b.blocked_id), ...(blockedMe||[]).map(b=>b.blocker_id)])
+      const followingIds = new Set((followsData||[]).map(f=>f.following_id))
+      // build author affinity score: how much this user has interacted with each author
+      const affinityMap = {}
+      ;(likedData||[]).forEach(l=>{ const uid=l.posts?.user_id; if(uid){ affinityMap[uid]=(affinityMap[uid]||0)+1 } })
+      ;(commentedData||[]).forEach(c=>{ const uid=c.posts?.user_id; if(uid){ affinityMap[uid]=(affinityMap[uid]||0)+2 } })
+      followingIds.forEach(id=>{ affinityMap[id]=(affinityMap[id]||0)+3 })
+
+      let postsQuery = supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').order('created_at',{ascending:false}).limit(feedType==='following'?60:150)
+      let repostsQuery = supabase.from('reposts').select('id,created_at,content,user:profiles!user_id(*),post:posts(*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id))').order('created_at',{ascending:false}).limit(60)
+
+      if(feedType==='following'){
+        if(!followingIds.size){ setPosts([]); setVisibleCount(10); setLoading(false); return }
+        postsQuery = postsQuery.in('user_id',[...followingIds])
+        repostsQuery = repostsQuery.in('user_id',[...followingIds])
+      }
+
+      const [{data:rawData},{data:rawRepostsData}] = await Promise.all([postsQuery,repostsQuery])
+      const data = (rawData||[]).filter(p=>!hiddenUserIds.has(p.user_id))
+      const repostsData = (rawRepostsData||[]).filter(r=>!hiddenUserIds.has(r.user?.id) && !hiddenUserIds.has(r.post?.user_id))
+      const now = Date.now()
+
+      // Exponential half-life decay: recency stays a meaningful, always-present
+      // signal (never hard-clamps to 0 like a linear falloff would), so a fresh
+      // post from someone you don't follow can still surface, while a 3-day-old
+      // post and a 3-month-old post are no longer scored as equally "stale".
+      const halfLifeHours = 30
+      const recencyOf = (hrs) => 100 * Math.pow(0.5, hrs/halfLifeHours)
+      // Affinity/engagement are capped so a handful of heavily-liked accounts
+      // can't permanently outrank everything else regardless of how old their
+      // posts get — recency always keeps some pull on the final ranking.
+      const followBoost = (uid) => followingIds.has(uid) ? 35 : 0
+      const affinityOf = (uid) => Math.min((affinityMap[uid]||0) * 6, 55)
+
+      const normalized = (data||[]).map(p=>{
+        const ageHours = (now - new Date(p.created_at).getTime()) / 3600000
+        const likes = p.likes?.length||0
+        const comments = p.comments?.length||0
+        const reposts = p.reposts?.length||0
+        const engagement = Math.min(likes*1 + comments*2 + reposts*1.5, 40)
+        const recencyScore = recencyOf(ageHours)
+        const isOwn = p.user_id===currentUser.id ? -20 : 0 // slightly deprioritize own posts
+        const score = feedType==='foryou' ? (recencyScore + engagement*0.8 + followBoost(p.user_id) + affinityOf(p.user_id) + isOwn) : recencyScore
+        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:likes,reposts_count:reposts,comments_count:comments,sortTime:p.created_at,_score:score}
+      })
+
+      const repostItems = (repostsData||[]).filter(r=>r.post).map(r=>{
+        const p=r.post
+        const ageHours=(now-new Date(r.created_at).getTime())/3600000
+        const recencyScore=recencyOf(ageHours)
+        return {...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(rp=>rp.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0,isRepost:true,reposter:r.user,quoteContent:r.content,sortTime:r.created_at,_score:recencyScore+followBoost(r.user?.id)+affinityOf(r.user?.id)}
+      })
+
+      // The score above decides WHICH posts are relevant enough to include
+      // (still shaped by who you follow and engage with) — but the actual
+      // display order is always strict recency, most-recent-to-oldest. This
+      // is what was producing the "old post pinned above new ones" complaint:
+      // sorting the feed itself by score let a high-affinity old post outrank
+      // a brand new one. Now score only trims the pool; time always wins the
+      // final ordering.
+      const pool = [...normalized,...repostItems]
+      const relevant = feedType==='foryou'
+        ? pool.sort((a,b)=>b._score-a._score).slice(0,80)
+        : pool
+      const final = relevant.sort((a,b)=> new Date(b.sortTime) - new Date(a.sortTime))
+
+      setPosts(final)
+      setVisibleCount(10)
+    } catch(e){ console.error('loadPosts error',e) }
+    setLoading(false)
+  },[currentUser.id])
+
+  useEffect(()=>{ loadPosts(feedTab) },[feedTab])
+
+  useEffect(()=>{
+    const ch = supabase.channel('new-posts').on('postgres_changes',{event:'INSERT',schema:'public',table:'posts'},async(payload)=>{
+      if(payload.new.user_id===currentUser.id) return
+      const {data} = await supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').eq('id',payload.new.id).single()
+      if(data) setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
+    }).subscribe()
+    return()=>supabase.removeChannel(ch)
+  },[])
+
+  useEffect(()=>{
+    if(tab==='friends') {
+      // Only show the skeleton on the very first visit — a revisit already
+      // has data on screen, so refresh it silently instead of flashing the
+      // skeleton and making the tab feel like it's loading from scratch
+      // every single time.
+      if(people.length===0) setPeopleLoading(true)
+      supabase.from('profiles').select('*').neq('id',currentUser.id).limit(40).then(({data})=>{setPeople(data||[]);setPeopleLoading(false)})
+      // Load who current user already follows
+      supabase.from('follows').select('following_id').eq('follower_id',currentUser.id).then(({data})=>{
+        const map = {}
+        ;(data||[]).forEach(f=>{ map[f.following_id]=true })
+        setFollowed(map)
+      })
+    }
+  },[tab])
+  const loadGroupsForList = async () => {
+    const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+    if(!mems?.length){ setGroupsForList([]); return }
+    const results = await Promise.all(mems.map(async m=>{
+      const {data:group} = await supabase.from('groups').select('*,group_members(user_id)').eq('id',m.group_id).maybeSingle()
+      if(!group) return null
+      const {data:lastMsg} = await supabase.from('group_messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('group_id',group.id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const {count:unreadCount} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',group.id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
+      return {id:group.id, type:'group', group, last:lastMsg, unread:(unreadCount||0)>0}
+    }))
+    setGroupsForList(results.filter(Boolean))
+  }
+
+  useEffect(()=>{ if(tab==='messages'&&dmView==='list') { loadConvos(conversations.length===0); loadGroupsForList() } },[tab])
+
+  const loadConvos = async(showSkeleton=false) => {
+    if(showSkeleton) setConvosLoading(true)
+    const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
+    if(!parts?.length){setConversations([]);setConvosLoading(false);return}
+    const results = await Promise.all(parts.map(async p=>{
+      const id = p.conversation_id
+      const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
+      if(!op) return null
+      const {data:prof} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').eq('id',op.user_id).single()
+      let {data:lastMsg, error:lastMsgErr} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if(lastMsgErr && isMissingColumnError(lastMsgErr)) {
+        // is_voice column doesn't exist yet (supabase_migration_voice_notes.sql
+        // not run) — fall back so the conversation list still loads instead of
+        // every conversation losing its last-message preview.
+        console.warn('is_voice column missing, retrying without it — run supabase_migration_voice_notes.sql', lastMsgErr)
+        ;({data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle())
+      }
+      const {count:unreadCount} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
+      return {id, other:prof, last:lastMsg, unread:(unreadCount||0)>0}
+    }))
+    setConversations(results.filter(Boolean).sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)))
+    setConvosLoading(false)
+  }
+
+  useEffect(()=>{
+    if(!selectedConv) { setDmBlocked(false); return }
+    if(selectedConv.id==='omnicore-ai' || !selectedConv.other?.id) { setDmBlocked(false) }
+    else {
+      Promise.all([
+        supabase.from('blocks').select('id').eq('blocker_id',currentUser.id).eq('blocked_id',selectedConv.other.id).maybeSingle(),
+        supabase.from('blocks').select('id').eq('blocker_id',selectedConv.other.id).eq('blocked_id',currentUser.id).maybeSingle(),
+      ]).then(([mine,theirs])=>setDmBlocked(!!mine.data || !!theirs.data))
+    }
+    if(selectedConv.id!=='omnicore-ai') {
+      supabase.from('conversation_participants').update({last_read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).eq('user_id',currentUser.id).then(()=>{
+        unreadConvoIdsRef.current.delete(selectedConv.id)
+        recomputeDMBadge()
+      })
+      supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
+    }
+    const fetchMessages = async() => {
+      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      // Preserve any not-yet-confirmed optimistic bubble for *this* conversation
+      // instead of wiping it — a slow insert shouldn't make a just-sent message
+      // vanish before its confirmation (or failure) comes back.
+      if(data) setMessages(prev=>{
+        const pending = prev.filter(m=>m.id.toString().startsWith('tmp')&&m.conversation_id===selectedConv.id)
+        return [...data,...pending]
+      })
+    }
+    fetchMessages()
+    // Realtime subscription below handles live updates — this poll is just a
+    // safety net in case a realtime connection silently drops, not the
+    // primary sync mechanism, so it doesn't need to run every few seconds.
+    const pollInterval = setInterval(fetchMessages, 30000)
+    const ch = supabase.channel(`m:${selectedConv.id}`).on('postgres_changes',{event:'INSERT',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},async(payload)=>{
+      let alreadyHave = false
+      setMessages(prev=>{ alreadyHave = prev.some(m=>m.id===payload.new.id); return prev })
+      if(alreadyHave) { // broadcast already delivered this one — just mark it read, skip the extra round trip
+        if(payload.new.sender_id !== currentUser.id) supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',payload.new.id).then(()=>{})
+        return
+      }
+      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+      if(data) {
+        setMessages(prev=>{
+          // remove any optimistic temp message that matches, avoid duplicates
+          const filtered = prev.filter(m=>!(m.id.toString().startsWith('tmp')&&m.content===data.content&&m.sender_id===data.sender_id))
+          const exists = filtered.some(m=>m.id===data.id)
+          return exists ? filtered : [...filtered,data]
+        })
+        if(data.sender_id !== currentUser.id) {
+          supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',data.id).then(()=>{})
+        }
+      }
+    }).on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},(payload)=>{
+      setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,read_at:payload.new.read_at}:m))
+    }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
+      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      if(data) setMessages(prev=>{
+        const pending = prev.filter(m=>m.id.toString().startsWith('tmp')&&m.conversation_id===selectedConv.id)
+        return [...data,...pending]
+      })
+    }).on('broadcast',{event:'new_message'},async(payload)=>{
+      // Delivered instantly by the sender — no DB round trip needed on this end.
+      const msg = payload.payload
+      if(!msg?.id) return
+      setMessages(prev=>{
+        const filtered = prev.filter(m=>!(m.id.toString().startsWith('tmp')&&m.content===msg.content&&m.sender_id===msg.sender_id))
+        return filtered.some(m=>m.id===msg.id) ? filtered : [...filtered,{...msg,message_reactions:msg.message_reactions||[]}]
+      })
+      if(msg.sender_id !== currentUser.id) {
+        supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',msg.id).then(()=>{})
+      }
+    }).on('broadcast',{event:'typing'},(payload)=>{
+      if(payload.payload?.user_id===currentUser.id) return
+      setOtherTyping(true)
+      clearTimeout(dmTypingTimeoutRef.current)
+      dmTypingTimeoutRef.current = setTimeout(()=>setOtherTyping(false),3000)
+    }).subscribe()
+    dmChannelRef.current = ch
+    return()=>{ clearInterval(pollInterval); supabase.removeChannel(ch); setOtherTyping(false) }
+  },[selectedConv])
+
+  const dmScrollRef = useRef(null)
+  const dmUserScrolledUp = useRef(false)
+  const dmIsNearBottom = () => { const el=dmScrollRef.current; if(!el) return true; return el.scrollHeight-el.scrollTop-el.clientHeight < 120 }
+  useEffect(()=>{ if(!dmUserScrolledUp.current) bottomRef.current?.scrollIntoView({behavior:'smooth'}) },[messages])
+  // reset scroll-up flag when conversation changes
+  useEffect(()=>{ dmUserScrolledUp.current=false },[selectedConv])
+
+  const [allPeople, setAllPeople] = useState([])
+
+  useEffect(()=>{
+    if(dmView==='new'){
+      supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').neq('id',currentUser.id).limit(50).then(({data})=>setAllPeople(data||[]))
+    }
+  },[dmView])
+
+  useEffect(()=>{
+    if(!searchQ.trim()){setSearchResults([]);return}
+    const q = searchQ.toLowerCase()
+    setSearchResults(allPeople.filter(u=>u.display_name?.toLowerCase().includes(q)||u.username?.toLowerCase().includes(q)))
+  },[searchQ,allPeople])
+
+  // Global search (top search icon): searches people AND posts, not just the
+  // small cached allPeople list used by the "new DM" screen above.
+  const [showSearch, setShowSearch] = useState(false)
+  const [gsQuery, setGsQuery] = useState('')
+  const [gsTab, setGsTab] = useState('people')
+  const [gsPeople, setGsPeople] = useState([])
+  const [gsPosts, setGsPosts] = useState([])
+  const [gsLoading, setGsLoading] = useState(false)
+  useEffect(()=>{
+    if(!showSearch) return
+    const q = gsQuery.trim()
+    if(!q){ setGsPeople([]); setGsPosts([]); return }
+    setGsLoading(true)
+    const t = setTimeout(async()=>{
+      const [{data:people},{data:postsRes}] = await Promise.all([
+        supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').neq('id',currentUser.id)
+          .or(`display_name.ilike.%${q}%,username.ilike.%${q}%`).limit(20),
+        supabase.from('posts').select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)')
+          .ilike('content',`%${q}%`).order('created_at',{ascending:false}).limit(20),
+      ])
+      setGsPeople(people||[])
+      setGsPosts((postsRes||[]).map(p=>({...p,user_liked:p.likes?.some(l=>l.user_id===currentUser.id),user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id),likes_count:p.likes?.length||0,reposts_count:p.reposts?.length||0,comments_count:p.comments?.length||0})))
+      setGsLoading(false)
+    },300) // debounce so we're not firing a query on every keystroke
+    return ()=>clearTimeout(t)
+  },[gsQuery,showSearch,currentUser.id])
+
+  const sendPost = async() => {
+    if(!composeText.trim()&&!composeImage) return
+    let imageUrl = null
+    if(composeImage) {
+      const ext = composeImage.name.split('.').pop().toLowerCase()
+      const path = 'posts/'+currentUser.id+'_'+Date.now()+'.'+ext
+      let urlData
+      try { urlData = await uploadToR2(composeImage, path) }
+      catch(err) { alert('Image upload failed: '+err.message); return }
+      imageUrl = urlData.publicUrl
+    }
+    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').single()
+    if(data) {
+      setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
+      // detect @mentions and notify tagged users
+      const handles = [...new Set((composeText.match(/@([a-zA-Z0-9_]+)/g)||[]).map(h=>h.slice(1).toLowerCase()))]
+      if(handles.length){
+        const {data:taggedUsers} = await supabase.from('profiles').select('id,username').in('username',handles)
+        if(taggedUsers?.length){
+          await Promise.all(taggedUsers.filter(u=>u.id!==currentUser.id).map(u=>
+            supabase.from('notifications').insert({user_id:u.id,actor_id:currentUser.id,type:'mention',post_id:data.id})
+          ))
+        }
+      }
+      if(handles.includes('flittersai')){
+        triggerAiMentionReply({ postId: data.id, postContent: composeText.trim() })
+      }
+    }
+    setComposeText(''); setComposeImage(null); setComposeImageUrl(null); setShowCompose(false)
+  }
+
+  const deletePost = async(postId) => {
+    await supabase.from('posts').delete().eq('id',postId).eq('user_id',currentUser.id)
+    setPosts(prev=>prev.filter(p=>p.id!==postId))
+  }
+
+  const openDMWithUser = async(user) => {
+    setViewingUser(null)
+    setShowMyProfile(false)
+    const {data:myP} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',currentUser.id)
+    let convId = null
+    if(myP?.length){
+      const {data:shared} = await supabase.from('conversation_participants').select('conversation_id').eq('user_id',user.id).in('conversation_id',myP.map(p=>p.conversation_id))
+      if(shared?.length) convId = shared[0].conversation_id
+    }
+    if(!convId){
+      const {data:conv} = await supabase.from('conversations').insert({}).select().single()
+      await supabase.from('conversation_participants').insert([{conversation_id:conv.id,user_id:currentUser.id},{conversation_id:conv.id,user_id:user.id}])
+      convId = conv.id
+    }
+    if(!myConversationIdsRef.current.includes(convId)) myConversationIdsRef.current.push(convId)
+    setTabWithHash('messages')
+    setSelectedConv({id:convId,other:user})
+    setDmView('chat')
+  }
+
+  const dmInputRef = useRef(null)
+  const dmSendInFlight = useRef(false)
+  const sendMsg = async() => {
+    if(dmSendInFlight.current) return
+    if(!msgText.trim()||!selectedConv?.id) return
+    dmSendInFlight.current = true
+    const content=msgText.trim(); const reply=dmReplyTo; const replyId=dmReplyToId
+    setMsgText(''); setDmReplyTo(null); setDmReplyToId(null)
+    if(dmInputRef.current) dmInputRef.current.style.height='auto'
+    const tempId = 'tmp'+Date.now()
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    try {
+      let {data:inserted, error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply,reply_to_id:replyId}).select('id,created_at').single()
+      if(error && isMissingColumnError(error)) {
+        // reply_to_id column doesn't exist yet (migration not run) — fall back
+        // so the core chat still works instead of failing every send.
+        console.warn('reply_to_id column missing, retrying without it — run supabase_migration_reply_and_stickers.sql', error)
+        ;({data:inserted, error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content,reply_to:reply}).select('id,created_at').single())
+      }
+      if(inserted){
+        setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+        // broadcast the full message straight to the other side — no waiting
+        // on postgres replication lag for it to feel instant on their end.
+        dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+          id:inserted.id, sender_id:currentUser.id, content, reply_to:reply, reply_to_id:replyId, created_at:inserted.created_at,
+          sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+          message_reactions:[]
+        }})
+      } else {
+        console.error('Message send failed:', error)
+        setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      }
+      if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+        sendPush(selectedConv.other.id, (currentUser.display_name||'New message'), content.slice(0,100))
+      }
+      loadConvos()
+    } finally { dmSendInFlight.current = false }
+  }
+
+
+  const toggleFollow = async(user) => {
+    const isF = !!followed[user.id]
+    // Update UI immediately
+    setFollowed(p=>({...p,[user.id]:!isF}))
+    if(isF) {
+      const {error} = await supabase.from('follows').delete().eq('follower_id',currentUser.id).eq('following_id',user.id)
+      if(error) setFollowed(p=>({...p,[user.id]:true})) // revert on error
+    } else {
+      const {error} = await supabase.from('follows').insert({follower_id:currentUser.id,following_id:user.id})
+      if(error) setFollowed(p=>({...p,[user.id]:false})) // revert on error
+    }
+  }
+
+  const handleUserClick = (user) => {
+    if(!user?.id) return
+    feedScrollPosRef.current = window.scrollY
+    if(user.id===currentUser.id){setShowMyProfile(true);return}
+    setViewingUser(user)
+  }
+
+  const handleDMLongPress = (msg) => { dmLongPressTimer.current = setTimeout(()=>setSelectedDMMsg(msg),500) }
+  const handleDMPressEnd = () => clearTimeout(dmLongPressTimer.current)
+  const toggleDMReaction = async(msg,emoji) => {
+    const mine = msg.message_reactions?.find(r=>r.user_id===currentUser.id)
+    setSelectedDMMsg(null)
+    if(mine && mine.emoji===emoji){
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,message_reactions:(m.message_reactions||[]).filter(r=>r.user_id!==currentUser.id)}:m))
+      await supabase.from('message_reactions').delete().eq('message_id',msg.id).eq('user_id',currentUser.id)
+    } else {
+      setMessages(prev=>prev.map(m=>m.id===msg.id?{...m,message_reactions:[...(m.message_reactions||[]).filter(r=>r.user_id!==currentUser.id),{user_id:currentUser.id,emoji}]}:m))
+      await supabase.from('message_reactions').upsert({message_id:msg.id,user_id:currentUser.id,emoji},{onConflict:'message_id,user_id'})
+    }
+  }
+
+  const deleteDMMsg = async(msg) => {
+    setSelectedDMMsg(null)
+    await supabase.from('messages').delete().eq('id',msg.id).eq('sender_id',currentUser.id)
+    setMessages(prev=>prev.filter(m=>m.id!==msg.id))
+  }
+
+  const saveDMEdit = async() => {
+    if(!editDMText.trim()) return
+    await supabase.from('messages').update({content:editDMText.trim()}).eq('id',editingDMMsg).eq('sender_id',currentUser.id)
+    setMessages(prev=>prev.map(m=>m.id===editingDMMsg?{...m,content:editDMText.trim()}:m))
+    setEditingDMMsg(null); setEditDMText('')
+  }
+
+  const sendDMImage = async(file)=>{
+    if(!file||!selectedConv?.id) return
+    setSendingDMImg(true)
+    const ext=file.name.split('.').pop()
+    const path='chats/dm_'+selectedConv.id+'_'+Date.now()+'.'+ext
+    let urlData
+    try { urlData = await uploadToR2(file, path) }
+    catch(err){alert('Upload failed: '+err.message);setSendingDMImg(false);return}
+    const url=urlData.publicUrl
+    const tempId = 'tmp_img'+Date.now()
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',image_url:url,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    const {data:inserted} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',image_url:url}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+      dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, sender_id:currentUser.id, content:'', image_url:url, created_at:inserted.created_at,
+        sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+        message_reactions:[]
+      }})
+    }
+    setSendingDMImg(false)
+  }
+
+  const sendDMSticker = async(stickerUrl)=>{
+    if(!selectedConv?.id) return
+    setShowDMStickerTray(false)
+    const tempId = 'tmp_stk'+Date.now()
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    const {data:inserted,error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_sticker:true,sticker_url:stickerUrl}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+      dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, sender_id:currentUser.id, content:'', is_sticker:true, sticker_url:stickerUrl, created_at:inserted.created_at,
+        sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+        message_reactions:[]
+      }})
+      if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+        sendPush(selectedConv.other.id, (currentUser.display_name||'New message'), (currentUser.display_name||'Someone')+' sent you a sticker')
+      }
+      loadConvos()
+    } else {
+      console.error('Sticker send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Stickers need one-time setup — run supabase_migration_reply_and_stickers.sql in Supabase first.')
+      else alert('Sticker failed to send: '+(error?.message||'unknown error'))
+    }
+  }
+
+  const sendDMVoiceNote = async () => {
+    if(!selectedConv?.id) return
+    const result = await dmVoice.stop()
+    if(!result || result.duration<1) return
+    setSendingDMVoice(true)
+    const path = 'voice/dm_'+selectedConv.id+'_'+Date.now()+'.webm'
+    let urlData
+    try { urlData = await uploadToR2(new File([result.blob],'voice.webm',{type:result.blob.type||'audio/webm'}), path) }
+    catch(err) { alert('Voice note upload failed: '+err.message); setSendingDMVoice(false); return }
+    const voiceUrl = urlData.publicUrl
+    const tempId = 'tmp_voice'+Date.now()
+    const tmp={id:tempId,conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration,created_at:new Date().toISOString(),sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url}}
+    setMessages(prev=>[...prev,tmp])
+    const {data:inserted,error} = await supabase.from('messages').insert({conversation_id:selectedConv.id,sender_id:currentUser.id,content:'',is_voice:true,voice_url:voiceUrl,voice_duration:result.duration}).select('id,created_at').single()
+    if(inserted){
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...tmp,id:inserted.id,created_at:inserted.created_at}:m))
+      dmChannelRef.current?.send({type:'broadcast',event:'new_message',payload:{
+        id:inserted.id, sender_id:currentUser.id, content:'', is_voice:true, voice_url:voiceUrl, voice_duration:result.duration, created_at:inserted.created_at,
+        sender:{display_name:currentUser.display_name,avatar_color:currentUser.avatar_color,avatar_url:currentUser.avatar_url},
+        message_reactions:[]
+      }})
+      if(selectedConv.other?.id && selectedConv.id!=='omnicore-ai') {
+        sendPush(selectedConv.other.id, (currentUser.display_name||'New message'), (currentUser.display_name||'Someone')+' sent a voice message')
+      }
+      loadConvos()
+    } else {
+      console.error('Voice note send failed:', error)
+      setMessages(prev=>prev.map(m=>m.id===tempId?{...m,_failed:true}:m))
+      if(isMissingColumnError(error)) alert('Voice notes need one-time setup — run supabase_migration_voice_notes.sql in Supabase first.')
+      else alert('Voice note failed to send: '+(error?.message||'unknown error'))
+    }
+    setSendingDMVoice(false)
+  }
+
+  const showLocalNotif = (title, body) => {
+    try {
+      if(typeof Notification === 'undefined') return
+      if(Notification.permission !== 'granted') return
+      setTimeout(async ()=>{
+        try {
+          if('serviceWorker' in navigator){
+            const reg = await navigator.serviceWorker.ready
+            reg.showNotification(title, {body, icon:'/icon-192.png', tag:Date.now().toString()})
+          } else {
+            new Notification(title, {body, icon:'/icon-192.png', tag:Date.now().toString()})
+          }
+        }
+        catch(e){ console.log('Notif error:',e.message) }
+      }, 100)
+    } catch(e){ console.log('showLocalNotif error:',e) }
+  }
+
+  const sendPush = async(userId, title, body) => {
+    try {
+      const {data} = await supabase.from('push_subscriptions').select('id,subscription').eq('user_id',userId).order('created_at',{ascending:false})
+      const rows = data||[]
+      if(!rows.length) { console.log('No push subscription for user',userId); return {ok:false, error:'No subscription found for this account'} }
+      // Only ever target the single freshest subscription. If someone has
+      // used the app on more than one domain (each origin gets its own,
+      // independently-valid subscription), sending to every row on file
+      // means sending the same notification once per domain they've ever
+      // visited — which is exactly the "double notification" bug. Picking
+      // just the newest one also naturally retires older domains' rows
+      // below once they fail as stale.
+      const [freshest, ...stale] = rows
+      if(stale.length) supabase.from('push_subscriptions').delete().in('id', stale.map(r=>r.id)).then(()=>{})
+      const res = await fetch('/api/push',{method:'POST',headers:await authJsonHeaders(),body:JSON.stringify({subscription:freshest.subscription,title,body,url:'/'})})
+      if(!res.ok){
+        const err = await res.json().catch(()=>({}))
+        if(err.statusCode===404 || err.statusCode===410) {
+          supabase.from('push_subscriptions').delete().eq('id',freshest.id).then(()=>{})
+        }
+        console.error('Push send failed:', err.error||('HTTP '+res.status))
+        return {ok:false, error:err.error||('HTTP '+res.status)}
+      }
+      return {ok:true}
+    } catch(e) { console.log('Push send error',e); return {ok:false, error:e.message} }
+  }
+
+  const TABS=[{id:'home',label:'Home',icon:<Home size={22}/>},{id:'messages',label:'Messages',icon:<MessageCircle size={22}/>},{id:'pulse',label:'Store',icon:<ShoppingBag size={22}/>},{id:'friends',label:'People',icon:<Users size={22}/>},{id:'notifications',label:'Alerts',icon:<Bell size={22}/>}]
+  const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#FlittersSpotlight',posts:'445K',cat:'Flitters'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
+
+  
+  if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
+  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>
+  if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
+  if(viewingPost) return (
+    <div className="screen-in-safe" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
+      <div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+        <button onClick={closePost} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+        <span style={{fontWeight:700,fontSize:17}}>Post</span>
+      </div>
+      {/* Header moved from sticky-in-flow to fixed (matching DM/Group Chat) —
+          it no longer takes up space in normal flow, so this spacer keeps
+          content from starting underneath it. ~58px covers the header's
+          rendered height across devices without a real safe-area inset. */}
+      <div style={{height:'calc(58px + env(safe-area-inset-top))'}}/>
+      <PostCard post={viewingPost} currentUser={currentUser} supabase={supabase} onUserClick={u=>{closePost();handleUserClick(u)}} onDelete={null} autoExpandComments sendPush={sendPush}/>
+    </div>
+  )
+
+  return (
+    <div style={{minHeight:'100dvh',background:'var(--bg-app)',maxWidth:600,margin:'0 auto',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
+      {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(10px + env(safe-area-inset-top)) 16px 10px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+        <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0,zIndex:1}}>
+          <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
+        </button>
+        {/* Absolutely centered regardless of the avatar/icons on either side
+            having different widths — space-between alone doesn't actually
+            center a middle element unless both sides match exactly. */}
+        <div onClick={()=>window.location.reload()} style={{position:'absolute',left:'50%',top:0,bottom:0,transform:'translateX(-50%)',display:'flex',alignItems:'center',cursor:'pointer',userSelect:'none'}}>
+          <img src={FLITTERS_MARK} alt="Flitters" width="36" height="36" style={{objectFit:'contain',filter:theme==='light'?'drop-shadow(0 0 1px rgba(0,0,0,0.5)) drop-shadow(0 0 1px rgba(0,0,0,0.5))':'none'}}/>
+        </div>
+        <div style={{display:'flex',alignItems:'center',gap:8,zIndex:1}}>
+          
+          {currentUser?.id===ADMIN_ID&&<button onClick={()=>setShowAdmin(true)} style={{background:'linear-gradient(135deg,#F7B731,#FF6B35)',border:'none',borderRadius:16,padding:'5px 10px',cursor:'pointer',color:'var(--text-primary)',fontSize:12,fontWeight:700,display:'flex',alignItems:'center',gap:4}}><Megaphone size={13}/> Ads</button>}
+<button onClick={()=>setShowSearch(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Search size={22}/></button>
+<button onClick={()=>setShowSettings(true)} style={{background:'none',border:'none',cursor:'pointer',color:'var(--text-muted)',display:'flex'}}><Settings size={22}/></button>
+        </div>
+      </div>}
+
+      {showSearch && (
+        <div style={{position:'fixed',inset:0,zIndex:60,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(10px + env(safe-area-inset-top)) 16px 10px',display:'flex',alignItems:'center',gap:10}}>
+            <button onClick={()=>{setShowSearch(false);setGsQuery('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
+            <input autoFocus value={gsQuery} onChange={e=>setGsQuery(e.target.value)} placeholder="Search people or posts..." style={{...inp,flex:1}}/>
+          </div>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)'}}>
+            {[{id:'people',label:'People'},{id:'posts',label:'Posts'}].map(t=>(
+              <button key={t.id} onClick={()=>setGsTab(t.id)} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:gsTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:gsTab===t.id?'var(--text-primary)':'var(--text-muted)',fontWeight:gsTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
+            ))}
+          </div>
+          <div style={{flex:1,overflowY:'auto'}}>
+            {!gsQuery.trim() && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>Search for people by name or username, or find posts by keyword.</p>}
+            {gsQuery.trim() && gsLoading && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>Searching...</p>}
+            {gsQuery.trim() && !gsLoading && gsTab==='people' && gsPeople.length===0 && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>No people found</p>}
+            {gsTab==='people' && gsPeople.map(u=>(
+              <div key={u.id} onClick={()=>{setShowSearch(false);setGsQuery('');handleUserClick(u)}} style={{display:'flex',alignItems:'center',gap:12,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-5)',cursor:'pointer'}}>
+                <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color} size={44}/>
+                <div><div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div><div style={{color:'var(--text-muted)',fontSize:13}}>@{u.username}</div></div>
+              </div>
+            ))}
+            {gsQuery.trim() && !gsLoading && gsTab==='posts' && gsPosts.length===0 && <p style={{padding:'40px 20px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>No posts found</p>}
+            {gsTab==='posts' && gsPosts.map(post=>(
+              <PostCard key={post.id} post={post} currentUser={currentUser} supabase={supabase} onUserClick={u=>{setShowSearch(false);setGsQuery('');handleUserClick(u)}} onDelete={null} onOpenPost={id=>{setShowSearch(false);setGsQuery('');openPost(id)}} sendPush={sendPush}/>
+            ))}
+          </div>
+        </div>
+      )}
+
+      <div style={{paddingBottom:110}}>
+        {tab==='home'&&<>
+          <AnnouncementBanner supabase={supabase}/>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(7px)'}}>
+            {[{id:'foryou',label:'For You'},{id:'following',label:'Following'},{id:'global',label:'Global'}].map(t=>(
+              <button key={t.id} onClick={()=>setFeedTab(t.id)} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:feedTab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:feedTab===t.id?'#fff':'#555',fontWeight:feedTab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
+            ))}
+          </div>
+          {loading&&<FeedSkeleton count={5}/>}
+          {!loading&&posts.length===0&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Globe size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>{feedTab==='following'?'Follow people to see their posts':'No posts yet. Be the first on Flitters!'}</p></div>}
+          {posts.slice(0,visibleCount).map((post,i)=>(
+            <div key={(post.isRepost?'repost_'+post.id+'_'+post.reposter?.id:'post_'+post.id)}>
+              <PostCard post={post} currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onDelete={deletePost} onOpenPost={openPost} sendPush={sendPush}/>
+              {ads.length>0&&(i+1)%4===0&&<AdCard ad={ads[Math.floor(i/4)%ads.length]}/>}
+              
+              {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTabWithHash('pulse');setPendingReelId(reelId)}}/>}
+            </div>
+          ))}
+          {!loading && visibleCount<posts.length && <FeedLoadMoreSentinel onReached={()=>setVisibleCount(v=>Math.min(v+10,posts.length))}/>}
+        </>}
+
+        {tab==='messages'&&<>
+          {dmView==='list'&&<>
+            <div style={{padding:'16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',justifyContent:'space-between',position:'relative'}}>
+              <span style={{fontWeight:800,fontSize:20}}>Messages</span>
+              <button onClick={()=>setShowComposeMenu(v=>!v)} style={{background:'rgba(91,156,246,0.1)',border:'1px solid rgba(91,156,246,0.2)',borderRadius:12,padding:'8px 16px',color:'#5B9CF6',cursor:'pointer',fontWeight:700,fontSize:13}}>+ New</button>
+              {showComposeMenu&&<>
+                <div onClick={()=>setShowComposeMenu(false)} style={{position:'fixed',inset:0,zIndex:19}}/>
+                <div style={{position:'absolute',top:'100%',right:16,marginTop:6,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:14,overflow:'hidden',zIndex:20,minWidth:180,boxShadow:'0 8px 24px rgba(0,0,0,0.3)'}}>
+                  <button onClick={()=>{setSearchQ('');setDmView('new');setShowComposeMenu(false)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'12px 16px',background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}><MessageCircle size={16}/> New Message</button>
+                  <button onClick={()=>{setGcName('');setGcDesc('');setGcTag('');setGcJoinMode('open');setGcColor('#5B9CF6');setDmView('newgroup');setShowComposeMenu(false)}} style={{display:'flex',alignItems:'center',gap:10,width:'100%',padding:'12px 16px',background:'none',border:'none',borderTop:'1px solid var(--border-color)',color:'var(--text-primary)',cursor:'pointer',fontSize:14,fontWeight:600,textAlign:'left'}}><Users size={16}/> Create Group</button>
+                </div>
+              </>}
+            </div>
+            {/* Flitters AI — always pinned first */}
+            <div onClick={()=>{setSelectedConv({id:'omnicore-ai',other:OMNICORE_PROFILE});setDmView('chat')}}
+              style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',background:'rgba(168,85,247,0.04)'}}>
+              <img src="/flitters-ai-icon.png" alt="Flitters AI" style={{width:50,height:50,objectFit:'contain',flexShrink:0}} loading="lazy"/>
+              <div style={{flex:1,minWidth:0}}>
+                <div style={{display:'flex',alignItems:'center',gap:6,marginBottom:3}}>
+                  <span style={{fontWeight:700,fontSize:15}}>Flitters AI</span>
+                  <span style={{fontSize:10,background:'linear-gradient(135deg,#22D3EE,#A855F7,#EC4899)',color:'var(--text-primary)',borderRadius:6,padding:'1px 6px',fontWeight:700}}>AI</span>
+                </div>
+                <p style={{color:'var(--text-secondary)',fontSize:13,margin:0}}>Your AI assistant · Always online</p>
+              </div>
+              <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
+            </div>
+            {convosLoading && <RowSkeletonList count={6}/>}
+            {!convosLoading && [...conversations.map(c=>({...c,type:'dm'})), ...groupsForList].sort((a,b)=>new Date(b.last?.created_at||0)-new Date(a.last?.created_at||0)).map(item=>item.type==='group'?(
+              <div key={'g_'+item.id}
+                onClick={()=>{ setViewingGroupChat(item.group); setHideNav(true) }}
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
+                <div style={{position:'relative',flexShrink:0}}>
+                  <div style={{width:50,height:50,borderRadius:16,background:item.group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:800,color:'#fff',overflow:'hidden'}}>
+                    {item.group.avatar_url?<img src={item.group.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:item.group.name[0]}
+                  </div>
+                  {item.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                    <span style={{fontWeight:item.unread?800:700,fontSize:15,display:'flex',alignItems:'center',gap:5}}><Users size={13} color="var(--text-quaternary)"/>{item.group.name}</span>
+                    {item.last&&<span style={{color:item.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:item.unread?700:400}}>{timeAgo(item.last.created_at)}</span>}
+                  </div>
+                  <p style={{color:item.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:item.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
+                    {item.last
+                      ? (item.last.is_sticker
+                          ? (item.last.sender_id===currentUser.id?'You sent a sticker':'Sent a sticker')
+                          : item.last.is_voice
+                          ? (item.last.sender_id===currentUser.id?'You sent a voice message':'Sent a voice message')
+                          : (item.last.sender_id===currentUser.id?'You: ':'')+item.last.content)
+                      : 'Tap to chat'}
+                  </p>
+                </div>
+                <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
+              </div>
+            ):(
+              <div key={'c_'+item.id}
+                onClick={()=>{ setSelectedConv(item); setDmView('chat') }}
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'rgba(91,156,246,0.1)',userSelect:'none'}}>
+                <div style={{position:'relative',flexShrink:0}}>
+                  <Avatar url={item.other?.avatar_url} name={item.other?.display_name} color={item.other?.avatar_color||'#5B9CF6'} size={50} online={!!onlineUsers[item.other?.id]}/>
+                  {item.unread&&<span style={{position:'absolute',top:-2,right:-2,width:13,height:13,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10'}}/>}
+                </div>
+                <div style={{flex:1,minWidth:0}}>
+                  <div style={{display:'flex',justifyContent:'space-between',marginBottom:3}}>
+                    <span style={{fontWeight:item.unread?800:700,fontSize:15}}>{item.other?.display_name}</span>
+                    {item.last&&<span style={{color:item.unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,fontWeight:item.unread?700:400}}>{timeAgo(item.last.created_at)}</span>}
+                  </div>
+                  <p style={{color:item.unread?'var(--text-primary)':'var(--text-secondary)',fontWeight:item.unread?600:400,fontSize:13,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap',margin:0}}>
+                    {item.last
+                      ? (item.last.is_sticker
+                          ? (item.last.sender_id===currentUser.id?'You sent a sticker':(item.other?.display_name||'They')+' sent a sticker')
+                          : item.last.is_voice
+                          ? (item.last.sender_id===currentUser.id?'You sent a voice message':(item.other?.display_name||'They')+' sent a voice message')
+                          : (item.last.sender_id===currentUser.id?'You: ':'')+item.last.content)
+                      : 'Tap to chat'}
+                  </p>
+                </div>
+                <span style={{color:'var(--text-quaternary)',fontSize:20}}>›</span>
+              </div>
+            ))}
+            {!convosLoading && conversations.length===0 && groupsForList.length===0 && <p style={{textAlign:'center',color:'var(--text-quaternary)',fontSize:14,padding:'40px 20px'}}>No conversations yet — tap + New to message someone or start a group.</p>}
+          </>}
+
+          {dmView==='new'&&<>
+            <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+              <button onClick={()=>setDmView('list')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+              <span style={{fontWeight:700,fontSize:17}}>New Message</span>
+            </div>
+            <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)'}}>
+              <input autoFocus value={searchQ} onChange={e=>setSearchQ(e.target.value)} placeholder="Search name or username..." style={{...inp}}/>
+            </div>
+            {!searchQ&&allPeople.map(u=>(
+              <div key={u.id} onClick={()=>openDMWithUser(u)} style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer'}}>
+                <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||getColor(u.id)} size={46}/>
+                <div style={{flex:1}}><div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div><div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div></div>
+                <span style={{color:'#5B9CF6',fontSize:22}}>›</span>
+              </div>
+            ))}
+            {searchQ&&!searchResults.length&&<p style={{padding:'30px',textAlign:'center',color:'var(--text-quaternary)',fontSize:14}}>No users found</p>}
+            {searchQ&&searchResults.map(u=>(
+              <div key={u.id}
+                onClick={()=>openDMWithUser(u)}
+                onTouchEnd={(e)=>{ e.preventDefault(); openDMWithUser(u) }}
+                style={{display:'flex',alignItems:'center',gap:12,padding:'16px',borderBottom:'1px solid var(--bg-card-5)',color:'var(--text-primary)',cursor:'pointer',WebkitTapHighlightColor:'transparent',userSelect:'none'}}>
+                <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||getColor(u.id)} size={46}/>
+                <div style={{flex:1}}>
+                  <div style={{fontWeight:700,fontSize:16}}>{u.display_name}</div>
+                  <div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div>
+                </div>
+                <span style={{color:'#5B9CF6',fontSize:22}}>›</span>
+              </div>
+            ))}
+          </>}
+
+          {dmView==='newgroup'&&<div style={{minHeight:'100dvh'}}>
+            <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12}}>
+              <button onClick={()=>setDmView('list')} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+              <span style={{fontWeight:700,fontSize:17,flex:1}}>Create Group</span>
+              <button onClick={async()=>{
+                if(!gcName.trim()) return
+                setGcSaving(true)
+                const tag = gcTag.trim().toLowerCase().replace(/[^a-z0-9_]/g,'')
+                if(!tag){setGcSaving(false);alert('Please enter a valid group tag');return}
+                const {data,error} = await supabase.from('groups').insert({name:gcName.trim(),description:gcDesc.trim(),creator_id:currentUser.id,cover_color:gcColor,tag,join_mode:gcJoinMode}).select().single()
+                if(data){
+                  await supabase.from('group_members').insert({group_id:data.id,user_id:currentUser.id})
+                  if(!myGroupIdsRef.current.includes(data.id)) myGroupIdsRef.current.push(data.id)
+                  setGroupsForList(prev=>[{id:data.id,type:'group',group:{...data,group_members:[{user_id:currentUser.id}]},last:null,unread:false},...prev])
+                  setDmView('list')
+                  setViewingGroupChat({...data,group_members:[{user_id:currentUser.id}]})
+                  setHideNav(true)
+                } else alert('Error: '+(error?.message||'could not create group'))
+                setGcSaving(false)
+              }} disabled={gcSaving||!gcName.trim()} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 20px',color:'#fff',fontWeight:700,cursor:'pointer'}}>{gcSaving?'Creating...':'Create'}</button>
+            </div>
+            <div style={{padding:16}}>
+              <div style={{width:72,height:72,borderRadius:20,background:gcColor,display:'flex',alignItems:'center',justifyContent:'center',fontSize:32,fontWeight:800,color:'#fff',margin:'16px auto 24px'}}>{gcName[0]||'G'}</div>
+              <div style={{display:'flex',gap:8,flexWrap:'wrap',justifyContent:'center',marginBottom:24}}>
+                {['#5B9CF6','#845EF7','#FF6B35','#00C9A7','#FF4757','#F7B731','#FD79A8','#A29BFE'].map(c=><div key={c} onClick={()=>setGcColor(c)} style={{width:28,height:28,borderRadius:'50%',background:c,border:gcColor===c?'3px solid #fff':'3px solid transparent',cursor:'pointer'}}/>)}
+              </div>
+              <input value={gcName} onChange={e=>setGcName(e.target.value)} placeholder="Group name" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:12}}/>
+              <div style={{position:'relative',marginBottom:12}}>
+                <span style={{position:'absolute',left:14,top:'50%',transform:'translateY(-50%)',color:'var(--text-secondary)',fontSize:15}}>@</span>
+                <input value={gcTag} onChange={e=>setGcTag(e.target.value.toLowerCase().replace(/[^a-z0-9_]/g,''))} placeholder="group_tag (unique)" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px 12px 28px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box'}}/>
+              </div>
+              <textarea value={gcDesc} onChange={e=>setGcDesc(e.target.value)} placeholder="Description (optional)" rows={2} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:12}}/>
+              <div style={{marginBottom:8}}>
+                <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:8}}>Who can join?</p>
+                <div style={{display:'flex',gap:8}}>
+                  <button onClick={()=>setGcJoinMode('open')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(gcJoinMode==='open'?'#5B9CF6':'var(--bg-card-2)'),background:gcJoinMode==='open'?'rgba(91,156,246,0.15)':'transparent',color:gcJoinMode==='open'?'#5B9CF6':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Globe size={15}/> Anyone</button>
+                  <button onClick={()=>setGcJoinMode('request')} style={{flex:1,padding:'10px',borderRadius:12,border:'1px solid '+(gcJoinMode==='request'?'#845EF7':'var(--bg-card-2)'),background:gcJoinMode==='request'?'rgba(132,94,247,0.15)':'transparent',color:gcJoinMode==='request'?'#845EF7':'#888',fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Lock size={15}/> Request</button>
+                </div>
+              </div>
+            </div>
+          </div>}
+
+          {viewingGroupChat&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            <GroupChat group={viewingGroupChat} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroupChat(null);setHideNav(false);loadGroupsForList()}} onUserClick={handleUserClick} onRead={(groupId)=>{unreadGroupIdsRef.current.delete(groupId);recomputeGCBadge()}}/>
+          </div>}
+
+          {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
+          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+            {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
+            <div style={{padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(7px)',flexShrink:0}}>
+              <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
+              <div onClick={()=>setViewingUser(selectedConv.other)} style={{cursor:'pointer',flexShrink:0}}>
+                <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={38} online/>
+              </div>
+              <div style={{flex:1}}>
+                <div style={{fontWeight:700,fontSize:15}}>{selectedConv.other?.display_name}</div>
+                <div style={{color:otherTyping?'#5B9CF6':(onlineUsers[selectedConv?.other?.id]?'#00C9A7':'#555'),fontSize:11}}>{otherTyping?'typing...':(onlineUsers[selectedConv?.other?.id]?'● Active now':'● Offline')}</div>
+              </div>
+            </div>
+            <div ref={dmScrollRef} onScroll={()=>{ dmUserScrolledUp.current = !dmIsNearBottom() }} style={{flex:1,padding:'16px 14px',display:'flex',flexDirection:'column',gap:8,overflowY:'auto',height:0}}>
+              {messages.length===0&&<div style={{textAlign:'center',marginTop:60,display:'flex',flexDirection:'column',alignItems:'center',gap:12}}>
+                <Avatar url={selectedConv.other?.avatar_url} name={selectedConv.other?.display_name} color={selectedConv.other?.avatar_color||'#5B9CF6'} size={72}/>
+                <p style={{color:'var(--text-quaternary)',fontSize:14}}>Say hello! 👋</p>
+              </div>}
+              {selectedDMMsg&&<div onClick={()=>setSelectedDMMsg(null)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.6)',display:'flex',alignItems:'flex-end'}}>
+                <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'#1a1d26',borderRadius:'20px 20px 0 0',padding:'16px 0 32px'}}>
+                  <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 16px'}}/>
+                  <div style={{display:'flex',flexWrap:'wrap',justifyContent:'center',gap:8,marginBottom:16,padding:'0 12px',maxHeight:170,overflowY:'auto'}}>
+                    {QUICK_REACTIONS.map(e=>{
+                      const mine = selectedDMMsg.message_reactions?.find(r=>r.user_id===currentUser.id)
+                      const isMineActive = mine?.emoji===e
+                      return (
+                      <button key={e} onClick={()=>toggleDMReaction(selectedDMMsg,e)} style={{background:isMineActive?'rgba(91,156,246,0.25)':'var(--bg-card-6)',border:isMineActive?'1px solid #5B9CF6':'none',borderRadius:12,padding:'8px',fontSize:22,cursor:'pointer'}}>{e}</button>
+                      )
+                    })}
+                  </div>
+                  <button onClick={()=>{setDmReplyTo(selectedDMMsg.sender?.display_name+': '+selectedDMMsg.content?.slice(0,50));setDmReplyToId(selectedDMMsg.id);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><CornerUpLeft size={17}/> Reply</button>
+                  {selectedDMMsg.content&&<button onClick={()=>{navigator.clipboard?.writeText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'rgba(255,255,255,0.92)',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Copy size={17}/> Copy</button>}
+                  {selectedDMMsg.sender_id===currentUser.id&&<>
+                    <button onClick={()=>{setEditingDMMsg(selectedDMMsg.id);setEditDMText(selectedDMMsg.content);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#5B9CF6',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Pencil size={17}/> Edit</button>
+                    <button onClick={()=>deleteDMMsg(selectedDMMsg)} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><Trash2 size={17}/> Delete</button>
+                  </>}
+                  {selectedDMMsg.sender_id!==currentUser.id&&<button onClick={()=>{setReportingDMMsg(selectedDMMsg);setSelectedDMMsg(null)}} style={{width:'100%',background:'none',border:'none',borderTop:'1px solid rgba(255,255,255,0.06)',padding:'16px 20px',color:'#FF4757',fontSize:15,cursor:'pointer',textAlign:'left',display:'flex',alignItems:'center',gap:10}}><AlertTriangle size={17}/> Report</button>}
+                </div>
+              </div>}
+              {reportingDMMsg&&<ReportModal onClose={()=>setReportingDMMsg(null)} onSubmit={async(reason,details)=>{
+                const {error} = await supabase.from('reports').insert({reporter_id:currentUser.id, reported_message_id:reportingDMMsg.id, reason, details:details||null})
+                if(error) throw error
+              }}/>}
+              {messages.map(msg=>{
+                const own = msg.sender_id===currentUser.id
+                return(
+                  <MessageBubble key={msg.id}
+                    rowId={'dmmsg-'+msg.id}
+                    msg={msg} own={own} currentUserId={currentUser.id}
+                    onAvatarClick={()=>setViewingUser(msg.sender)}
+                    onImageClick={setFullscreenImg}
+                    onLongPress={()=>handleDMLongPress(msg)} onPressEnd={handleDMPressEnd}
+                    reactions={msg.message_reactions}
+                    onToggleReaction={(emoji)=>toggleDMReaction(msg,emoji)}
+                    isEditing={editingDMMsg===msg.id}
+                    editValue={editDMText} onEditChange={e=>setEditDMText(e.target.value)}
+                    onSaveEdit={saveDMEdit} onCancelEdit={()=>setEditingDMMsg(null)}
+                    showReadTicks
+                    onJumpToReply={scrollToDMMessage} highlighted={dmHighlightMsgId===msg.id}
+                  />
+                )
+              })}
+              <div ref={bottomRef}/>
+            </div>
+            <div style={{flexShrink:0,maxWidth:600,width:'100%',margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+              <ReplyComposerBar text={dmReplyTo} onCancel={()=>{setDmReplyTo(null);setDmReplyToId(null)}}/>
+              {showDMStickerTray&&<StickerTray currentUser={currentUser} supabase={supabase} onSelect={sendDMSticker} onEmojiSelect={e=>setMsgText(t=>t+e)} onClose={()=>setShowDMStickerTray(false)}/>}
+              {dmBlocked ? (
+                <div style={{padding:'16px 14px',display:'flex',alignItems:'center',justifyContent:'center',gap:8,color:'var(--text-quaternary)',fontSize:13}}>
+                  <Ban size={15}/> You can't message this conversation
+                </div>
+              ) : dmVoice.recording ? (
+                <VoiceRecordingBar seconds={dmVoice.seconds} onCancel={dmVoice.cancel} onSend={sendDMVoiceNote}/>
+              ) : (
+              <div style={{padding:'10px 14px',display:'flex',gap:10,alignItems:'center'}}>
+              <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
+              <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
+              <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(91,156,246,0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'#5B9CF6':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
+              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,minWidth:0,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
+              {msgText.trim() ? (
+                <button onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
+              ) : (
+                <button onClick={dmVoice.start} disabled={sendingDMVoice} style={{width:46,height:46,borderRadius:'50%',background:'var(--bg-card-3)',border:'none',cursor:'pointer',color:'var(--text-primary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMVoice?<Loader2 size={19} className="xspin"/>:<Mic size={19}/>}</button>
+              )}
+              </div>
+              )}
+            </div>
+          </div>}
+        </>}
+
+        {tab==='friends'&&<>
+          <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)',backdropFilter:'blur(7px)'}}>
+            <button onClick={()=>setFriendsSubTab('friends')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='friends'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='friends'?'#fff':'#555',fontWeight:friendsSubTab==='friends'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Users size={15}/> Friends</button>
+            <button onClick={()=>setFriendsSubTab('explore')} style={{flex:1,padding:'14px 0',background:'none',border:'none',borderBottom:friendsSubTab==='explore'?'2px solid #5B9CF6':'2px solid transparent',color:friendsSubTab==='explore'?'#fff':'#555',fontWeight:friendsSubTab==='explore'?700:500,fontSize:14,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:6}}><Compass size={15}/> Explore</button>
+          </div>
+          {friendsSubTab==='friends'&&<>
+            {peopleLoading && <RowSkeletonList count={6}/>}
+            {!peopleLoading && people.filter(u=>followed[u.id]).length===0&&<div style={{padding:'50px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Users size={36}/></div><p style={{color:'var(--text-secondary)',marginTop:8}}>You are not following anyone yet</p><p style={{color:'var(--text-quaternary)',fontSize:13,marginTop:4}}>Go to Explore to find people</p></div>}
+            {!peopleLoading && people.filter(u=>followed[u.id]).map((u,i)=>(
+              <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
+                <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
+                  <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||COLORS[i%COLORS.length]} size={48}/>
+                </button>
+                <button onClick={()=>handleUserClick(u)} style={{flex:1,minWidth:0,background:'none',border:'none',cursor:'pointer',textAlign:'left',padding:0,color:'var(--text-primary)'}}>
+                  <div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div>
+                  <div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div>
+                  {u.bio&&<div style={{color:'var(--text-muted)',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.bio}</div>}
+                </button>
+                <button onClick={()=>toggleFollow(u)} style={{background:'var(--bg-card)',border:'1px solid rgba(255,255,255,0.12)',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Following</button>
+              </div>
+            ))}
+          </>}
+          {friendsSubTab==='explore'&&<>
+            <p style={{color:'var(--text-secondary)',fontSize:13,padding:'12px 16px 4px'}}>People you might know</p>
+            {peopleLoading && <RowSkeletonList count={6}/>}
+            {!peopleLoading && people.filter(u=>!followed[u.id]).map((u,i)=>(
+              <div key={u.id} style={{display:'flex',alignItems:'center',gap:12,padding:'12px 16px',borderBottom:'1px solid var(--bg-card-4)'}}>
+                <button onClick={()=>handleUserClick(u)} style={{background:'none',border:'none',padding:0,cursor:'pointer'}}>
+                  <Avatar url={u.avatar_url} name={u.display_name} color={u.avatar_color||COLORS[i%COLORS.length]} size={48}/>
+                </button>
+                <button onClick={()=>handleUserClick(u)} style={{flex:1,minWidth:0,background:'none',border:'none',cursor:'pointer',textAlign:'left',padding:0,color:'var(--text-primary)'}}>
+                  <div style={{fontWeight:700,fontSize:15}}>{u.display_name}</div>
+                  <div style={{color:'var(--text-secondary)',fontSize:13}}>@{u.username}</div>
+                  {u.bio&&<div style={{color:'var(--text-muted)',fontSize:12,marginTop:2,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.bio}</div>}
+                </button>
+                <button onClick={()=>toggleFollow(u)} style={{background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:20,padding:'8px 16px',color:'var(--text-primary)',fontWeight:700,fontSize:13,cursor:'pointer',flexShrink:0}}>Follow</button>
+              </div>
+            ))}
+            {!peopleLoading && !people.filter(u=>!followed[u.id]).length&&<p style={{padding:'40px',textAlign:'center',color:'var(--text-quaternary)'}}>You follow everyone on Flitters!</p>}
+          </>}
+        </>}
+
+        {/* Kept mounted always (visibility toggled via CSS) instead of
+            conditionally rendered — conditional rendering was unmounting
+            these on every tab switch, destroying their state, so coming
+            back always meant a full refetch and the loading skeleton again,
+            even on the 5th visit to the same tab. */}
+        <div style={{display: tab==='pulse' ? 'block' : 'none'}}>
+          <PulseTab currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} pendingReelId={pendingReelId} onReelsOpened={()=>setPendingReelId(null)} reelsRef={reelsRef} onMessageUser={openDMWithUser}/>
+        </div>
+        {tab==='search'&&<div style={{padding:'60px 20px',textAlign:'center'}}><div style={{display:'flex',justifyContent:'center',color:'var(--text-quaternary)'}}><Search size={44}/></div><p style={{color:'var(--text-muted)',fontSize:16,marginTop:8}}>Search coming soon</p></div>}
+
+        <div style={{display: tab==='notifications' ? 'block' : 'none'}}>
+          <NotificationsPanel currentUser={currentUser} supabase={supabase} onUserClick={handleUserClick} onPostClick={openPost}/>
+        </div>
+      </div>
+
+      {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-primary)',fontSize:28,boxShadow:'0 4px 24px rgba(91,156,246,0.55)',zIndex:50}}>+</button>}
+
+      <InAppToast toast={toast} onClose={()=>setToast(null)} onClick={()=>{
+        const a = toast?.action
+        setToast(null)
+        if(!a) return
+        if(a.type==='dm'){ setTab('messages'); setSelectedConv(a.conv); setDmView('chat') }
+        else if(a.type==='group'){ if(a.group){ setTab('messages'); setViewingGroupChat(a.group); setHideNav(true) } }
+        else if(a.type==='notif'){ setTab('notifications') }
+      }}/>
+      <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
+        <div style={{background:'var(--bg-header)',backdropFilter:'blur(14px)',borderRadius:30,padding:'8px 4px',border:'1px solid var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px var(--shadow-color)'}}>
+          {TABS.map(({id,label,icon})=>{
+            const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
+            // Groups now live in the Messages tab's unified list, so an
+            // unread group shows here too — as a plain dot when there's no
+            // numbered DM badge already drawing attention to this tab.
+            const showDot = id==='messages'&&unreadGC&&!unreadDM
+            return (
+            <button key={id} onClick={()=>setTabWithHash(id)} style={{position:'relative',display:'flex',flexDirection:'column',alignItems:'center',gap:3,background:tab===id?'rgba(91,156,246,0.14)':'none',border:'none',cursor:'pointer',color:tab===id?'#5B9CF6':'var(--text-muted)',padding:'8px 10px',borderRadius:20,minWidth:48}}>
+              <span style={{fontSize:20,position:'relative'}}>
+                {icon}
+                {badgeCount>0&&<span style={{position:'absolute',top:-6,right:-10,background:'#FF4757',color:'var(--text-primary)',fontSize:10,fontWeight:800,borderRadius:9,minWidth:16,height:16,display:'flex',alignItems:'center',justifyContent:'center',padding:'0 4px',border:'2px solid #090B10'}}>{badgeCount>9?'9+':badgeCount}</span>}
+                {showDot&&<span style={{position:'absolute',top:-2,right:-6,width:9,height:9,borderRadius:'50%',background:'#FF4757',border:'2px solid #090B10',animation:'pulseDot 1.5s infinite'}}/>}
+              </span>
+              <span style={{fontSize:9.5,fontWeight:tab===id?700:500}}>{label}</span>
+            </button>
+            )
+          })}
+          <style>{`@keyframes pulseDot{0%,100%{transform:scale(1);opacity:1}50%{transform:scale(1.3);opacity:0.6}}`}</style>
+        </div>
+      </div>
+
+      {showCompose&&<div style={{position:'fixed',inset:0,zIndex:200,background:'rgba(0,0,0,0.75)',backdropFilter:'blur(6px)',display:'flex',alignItems:'flex-end'}} onClick={()=>setShowCompose(false)}>
+        <div onClick={e=>e.stopPropagation()} style={{width:'100%',background:'var(--bg-app)',borderRadius:'24px 24px 0 0',padding:'16px 20px 40px',border:'1px solid rgba(255,255,255,0.09)'}}>
+          <div style={{width:36,height:4,borderRadius:2,background:'var(--bg-card-8)',margin:'0 auto 20px'}}/>
+          <div style={{display:'flex',gap:12}}>
+            <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={42}/>
+            <div style={{flex:1}}>
+              <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'var(--text-primary)',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
+              {composeImageUrl&&<div style={{position:'relative',marginBottom:8}}>
+                <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview" loading="lazy"/>
+                <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={14}/></button>
+              </div>}
+              <input ref={composeImgRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){setComposeImage(f);if(typeof window!=='undefined')setComposeImageUrl(URL.createObjectURL(f))}}} style={{display:'none'}}/>
+              <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:12,borderTop:'1px solid var(--border-color)'}}>
+                <div style={{display:'flex',gap:12,alignItems:'center'}}>
+                  <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'#5B9CF6',cursor:'pointer',display:'flex'}}><ImageIcon size={22}/></button>
+                  <span style={{color:composeText.length>250?'#FF4757':'#444',fontSize:13}}>{280-composeText.length}</span>
+                </div>
+                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'linear-gradient(135deg,#5B9CF6,#845EF7)':'var(--bg-card)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'#fff':'#444',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Flit it</button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>}
+
+      {/* Rendered as an overlay (not an early return) specifically so that
+          opening a profile from within a reel — or Notifications, or
+          anywhere else — doesn't unmount whatever's underneath. It used to
+          be a top-level early return, which tore down the entire tree below
+          it, including PulseTab's internal reel-viewing state; going back
+          would then remount PulseTab fresh, landing on its default view
+          instead of the reel you were actually on. */}
+      {viewingUser && (
+        <div style={{position:'fixed',inset:0,zIndex:900,background:'var(--bg-app)'}}>
+          <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
+        </div>
+      )}
+    </div>
+  )
+}
+
+export default function FlittersApp({ currentUser }) {
+  if (!currentUser || !currentUser.id) {
+    return (
+      <div style={{ minHeight: '100dvh', background: '#090B10', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16, padding: 24, textAlign: 'center' }}>
+        <img src={FLITTERS_MARK} alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }}/>
+        <p style={{ color: '#fff', fontSize: 16, fontWeight: 700 }}>Something went wrong loading your account</p>
+        <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Reload</button>
+      </div>
+    )
+  }
+  return <ErrorBoundary><FlittersAppInner currentUser={currentUser}/></ErrorBoundary>
+}
