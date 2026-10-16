@@ -52,6 +52,10 @@ export async function POST(req) {
 
   const admin = createAdminClient()
 
+  // An account that has had two subscriptions refunded can't buy again.
+  const { data: blocked } = await admin.from('profiles').select('billing_blocked').eq('id', user.id).maybeSingle()
+  if (blocked?.billing_blocked) return Response.json({ error: 'Subscriptions are not available for this account' }, { status: 403 })
+
   // One purchase can only ever belong to one account.
   const { data: existing } = await admin.from('subscriptions').select('user_id').eq('purchase_token', purchaseToken).maybeSingle()
   if (existing && existing.user_id !== user.id) return Response.json({ error: 'This purchase belongs to another account' }, { status: 409 })
@@ -98,8 +102,8 @@ export async function POST(req) {
     if (!entitled) return Response.json({ error: 'This subscription is not active', state }, { status: 402 })
 
     // Blue badge = is_authentic. Premium turns it gold in the apps (verified_plan).
-    // A 2-day cushion after the expiry date covers renewals that haven't been re-checked yet.
-    const until = new Date(expiry.getTime() + 2 * 86400000).toISOString()
+    // A short cushion after the expiry date; the refresh jobs keep this accurate.
+    const until = new Date(expiry.getTime() + 6 * 3600000).toISOString()
     const { error } = await admin.from('profiles').update({ is_authentic: true, verified_plan: plan, verified_until: until }).eq('id', user.id)
     if (error) return Response.json({ error: 'Could not update your profile' }, { status: 500 })
     return Response.json({ ok: true, plan, expiresAt: expiry.toISOString() })
