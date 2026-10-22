@@ -1,22 +1,13 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import ClientRedirect from '@/components/ClientRedirect'
+import { getPostPreview, previewMetadata } from '@/lib/preview'
 
 export async function generateMetadata({ params }) {
   const { id } = await params
-  const supabase = await createClient()
-  const { data: post } = await supabase.from('posts').select('content,image_url,author:profiles(display_name,username)').eq('id', id).maybeSingle()
-  if (!post) return { title: 'Post not found — Flitters' }
-  const name = post.author?.display_name || 'Someone'
-  const desc = (post.content || 'shared a post').slice(0, 150)
-  return {
-    title: `${name} on Flitters`,
-    description: desc,
-    openGraph: {
-      title: `${name} on Flitters`,
-      description: desc,
-      images: post.image_url ? [post.image_url] : undefined,
-    },
-  }
+  const p = await getPostPreview(id)
+  if (!p) return { title: 'Post not found — Flitters' }
+  return previewMetadata(p)
 }
 
 export default async function PostPermalink({ params }) {
@@ -24,7 +15,9 @@ export default async function PostPermalink({ params }) {
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) redirect('/auth?next=' + encodeURIComponent('/?openpost=' + id))
+  // Not signed in (this includes the WhatsApp/Telegram preview robot): answer
+  // with this page's preview tags, then send real people to sign in.
+  if (!user) return <ClientRedirect to={'/auth?next=' + encodeURIComponent('/?openpost=' + id)} />
 
   const { data: post } = await supabase.from('posts').select('id').eq('id', id).maybeSingle()
 

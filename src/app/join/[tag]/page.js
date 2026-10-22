@@ -1,12 +1,22 @@
 import { createClient } from '@/lib/supabase/server'
 import { redirect } from 'next/navigation'
+import ClientRedirect from '@/components/ClientRedirect'
+import { getGroupPreview, previewMetadata } from '@/lib/preview'
+
+export async function generateMetadata({ params }) {
+  const { tag } = await params
+  const p = await getGroupPreview(tag)
+  return previewMetadata(p, 'Group not found — Flitters')
+}
 
 export default async function JoinPage({ params }) {
   const { tag } = await params
   const supabase = await createClient()
   const { data: { user } } = await supabase.auth.getUser()
 
-  if (!user) redirect('/auth?next=/join/' + tag)
+  // Not signed in (this includes the link-preview robot): answer with the
+  // preview tags, then send real people to sign in.
+  if (!user) return <ClientRedirect to={'/auth?next=/join/' + tag} />
 
   const { data: group } = await supabase.from('groups').select('*').eq('tag', tag).single()
 
