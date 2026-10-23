@@ -1,4 +1,5 @@
 'use client'
+import { uploadToR2 } from '@/lib/media/upload'
 import { useState, useRef, useEffect } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
@@ -152,13 +153,10 @@ export default function AuthPage() {
     // Optional profile picture upload — skip silently on any failure, don't block account creation
     if (avatarFile && userId) {
       try {
-        const ext = avatarFile.name.split('.').pop()
-        const path = `avatars/${userId}.${ext}`
-        const { error: upErr } = await supabase.storage.from('avatars').upload(path, avatarFile, { upsert: true })
-        if (!upErr) {
-          const { data: urlData } = supabase.storage.from('avatars').getPublicUrl(path)
-          await supabase.from('profiles').update({ avatar_url: urlData.publicUrl + '?v=' + Date.now() }).eq('id', userId)
-        }
+        const ext = (avatarFile.name.split('.').pop() || 'jpg').toLowerCase()
+        // Cloudflare R2, same as every other upload. Supabase Storage is no longer used for media.
+        const { publicUrl } = await uploadToR2(avatarFile, `avatars/${userId}.${ext}`)
+        await supabase.from('profiles').update({ avatar_url: publicUrl + '?v=' + Date.now() }).eq('id', userId)
       } catch { /* non-fatal — account already created */ }
     }
     window.location.href = new URLSearchParams(window.location.search).get('next') || '/'
