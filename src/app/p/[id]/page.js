@@ -22,7 +22,7 @@ export default async function PostPermalink({ params }) {
   const { data: post } = await supabase.from('posts').select('id').eq('id', id).maybeSingle()
 
   if (!post) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'sans-serif'}}>
+    <div style={{minHeight:'100vh',background:'#05060A',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'sans-serif'}}>
       <p style={{fontSize:20,fontWeight:700}}>Post not found</p>
       <p style={{color:'#555'}}>It may have been deleted.</p>
       <a href="/" style={{color:'#5B9CF6',fontSize:15}}>← Back to Flitters</a>

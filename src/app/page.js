@@ -2,7 +2,7 @@
 import { useEffect, useState } from 'react'
 import { createClient } from '@/lib/supabase/client'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
-import FlittersApp from '@/components/SphereApp'
+import FlittersApp from '@/components/app/FlittersApp'
 import LandingPage from '@/components/LandingPage'
 import { Search, Settings } from 'lucide-react'
 
@@ -47,7 +47,7 @@ export default function Home() {
       <img src={FLITTERS_MARK} alt="Flitters" width="70" height="70" style={{ objectFit: 'contain' }} />
       <p style={{ fontSize: 16, fontWeight: 700 }}>Setting up your account</p>
       <p style={{ color: 'var(--text-tertiary)', fontSize: 14, maxWidth: 320 }}>This is taking longer than expected. Please try again in a moment.</p>
-      <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Try Again</button>
+      <button onClick={() => window.location.reload()} style={{ marginTop: 8, background: 'var(--primary)', border: 'none', borderRadius: 14, padding: '12px 28px', color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>Try Again</button>
     </div>
   )
 

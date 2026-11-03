@@ -79,46 +79,46 @@ export default function ResetPage() {
     setLoading(false)
   }
 
-  const inp = { width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', color: '#fff', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
+  const inp = { width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '13px 16px', color: 'var(--text-primary)', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
 
   return (
-    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
+    <div style={{ minHeight: '100vh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-app)', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--bg-card-5)', border: '1px solid var(--border-color)', borderRadius: 24, padding: '40px 36px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
           <img src={FLITTERS_MARK} alt="Flitters" width="40" height="40" style={{ objectFit: 'contain' }} />
-          <span style={{ fontWeight: 900, fontSize: 24, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</span>
+          <span style={{ fontWeight: 900, fontSize: 24, background: 'var(--primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</span>
         </div>
 
         {success ? <>
           <div style={{ textAlign: 'center', padding: '20px 0' }}>
             <div style={{ fontSize: 48, marginBottom: 16 }}>✅</div>
-            <h2 style={{ fontWeight: 700, fontSize: 20, color: '#fff', marginBottom: 8 }}>Password Updated!</h2>
-            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Your password has been successfully changed.</p>
-            <button onClick={() => window.location.href = '/'} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+            <h2 style={{ fontWeight: 700, fontSize: 20, color: 'var(--text-primary)', marginBottom: 8 }}>Password Updated!</h2>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>Your password has been successfully changed.</p>
+            <button onClick={() => window.location.href = '/'} style={{ width: '100%', padding: '14px', background: 'var(--primary)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
               Go to Flitters
             </button>
           </div>
         </> : !ready ? <>
           {stuckDebug ? <>
-            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 8, color: '#fff' }}>This link isn't working</h1>
-            <p style={{ color: '#888', fontSize: 13, marginBottom: 12 }}>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 8, color: 'var(--text-primary)' }}>This link isn't working</h1>
+            <p style={{ color: 'var(--text-tertiary)', fontSize: 13, marginBottom: 12 }}>
               {stuckDebug.reason === 'link_error' ? 'Supabase says: ' + stuckDebug.detail
                 : stuckDebug.reason === 'exchange_failed' ? 'Could not verify this link: ' + stuckDebug.detail
                 : 'Nothing in the link matched what was expected.'}
             </p>
-            <p style={{ color: '#555', fontSize: 14, marginBottom: 8 }}><span onClick={() => window.location.href = '/auth'} style={{ color: '#A855F7', cursor: 'pointer' }}>Request a new reset link</span> — make sure to open it in the same browser/app you requested it from.</p>
-            {stuckDebug.reason === 'timeout' && <p style={{ color: '#444', fontSize: 11, marginTop: 16, wordBreak: 'break-all' }}>Debug: {stuckDebug.detail}</p>}
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 8 }}><span onClick={() => window.location.href = '/auth'} style={{ color: '#A855F7', cursor: 'pointer' }}>Request a new reset link</span> — make sure to open it in the same browser/app you requested it from.</p>
+            {stuckDebug.reason === 'timeout' && <p style={{ color: 'var(--text-quaternary)', fontSize: 11, marginTop: 16, wordBreak: 'break-all' }}>Debug: {stuckDebug.detail}</p>}
           </> : <>
-            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 8, color: '#fff' }}>Checking link...</h1>
-            <p style={{ color: '#555', fontSize: 14 }}>If this takes too long, your reset link may have expired. <span onClick={() => window.location.href = '/auth'} style={{ color: '#A855F7', cursor: 'pointer' }}>Request a new one</span>.</p>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 8, color: 'var(--text-primary)' }}>Checking link...</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14 }}>If this takes too long, your reset link may have expired. <span onClick={() => window.location.href = '/auth'} style={{ color: '#A855F7', cursor: 'pointer' }}>Request a new one</span>.</p>
           </>}
         </> : <>
-          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Set New Password</h1>
-          <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Choose a strong password for your account</p>
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: 'var(--text-primary)' }}>Set New Password</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>Choose a strong password for your account</p>
           <input style={inp} type="password" placeholder="New password" value={password} onChange={e => setPassword(e.target.value)} />
           <input style={inp} type="password" placeholder="Confirm new password" value={confirm} onChange={e => setConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleReset()} />
-          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
-          <button onClick={handleReset} disabled={loading} style={{ width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
+          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+          <button onClick={handleReset} disabled={loading} style={{ width: '100%', padding: '14px', background: 'var(--primary)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer' }}>
             {loading ? 'Updating...' : 'Update Password'}
           </button>
         </>}

@@ -42,15 +42,15 @@ export default function ChapterReaderPage() {
 
   if (loading) return (
     <div style={{minHeight:'100dvh',background:'#000',display:'flex',alignItems:'center',justifyContent:'center'}}>
-      <div style={{width:32,height:32,borderRadius:'50%',background:'rgba(255,255,255,0.15)',animation:'pulse 1.4s ease-in-out infinite'}}/>
+      <div style={{width:32,height:32,borderRadius:'50%',background:'var(--bg-card-8)',animation:'pulse 1.4s ease-in-out infinite'}}/>
       <style>{`@keyframes pulse{0%,100%{opacity:0.5}50%{opacity:1}}`}</style>
     </div>
   )
 
   if (!story || !chapter) return (
     <div style={{minHeight:'100dvh',background:'#000',color:'#fff',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10}}>
-      <p style={{color:'#888'}}>This chapter doesn't exist.</p>
-      <a href={`/stories/${id}`} style={{color:'#5B9CF6'}}>Back to story</a>
+      <p style={{color:'var(--text-tertiary)'}}>This chapter doesn't exist.</p>
+      <a href={`/stories/${id}`} style={{color:'var(--primary)'}}>Back to story</a>
     </div>
   )
 
@@ -64,7 +64,7 @@ export default function ChapterReaderPage() {
         <a href={`/stories/${id}`} style={{color:'#fff',display:'flex'}}><ChevronLeft size={24}/></a>
         <div style={{flex:1,minWidth:0}}>
           <div style={{fontWeight:700,fontSize:15,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{story.title}</div>
-          <div style={{color:'#888',fontSize:12}}>Chapter {chNum}{chapter.title ? ' — ' + chapter.title : ''}</div>
+          <div style={{color:'var(--text-tertiary)',fontSize:12}}>Chapter {chNum}{chapter.title ? ' — ' + chapter.title : ''}</div>
         </div>
       </div>
 
@@ -77,16 +77,16 @@ export default function ChapterReaderPage() {
       <div style={{display:'flex',gap:10,padding:16}}>
         <a href={hasPrev ? `/stories/${id}/${chNum-1}` : undefined}
           style={{flex:1,textAlign:'center',padding:'13px',borderRadius:14,fontWeight:700,fontSize:14,textDecoration:'none',display:'flex',alignItems:'center',justifyContent:'center',gap:6,
-            background: hasPrev ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', color: hasPrev ? '#fff' : '#444', pointerEvents: hasPrev ? 'auto' : 'none'}}>
+            background: hasPrev ? 'rgba(255,255,255,0.08)' : 'rgba(255,255,255,0.03)', color: hasPrev ? '#fff' : 'var(--text-quaternary)', pointerEvents: hasPrev ? 'auto' : 'none'}}>
           <ChevronLeft size={16}/> Previous
         </a>
         <a href={hasNext ? `/stories/${id}/${chNum+1}` : undefined}
           style={{flex:1,textAlign:'center',padding:'13px',borderRadius:14,fontWeight:700,fontSize:14,textDecoration:'none',display:'flex',alignItems:'center',justifyContent:'center',gap:6,
-            background: hasNext ? 'linear-gradient(135deg,#5B9CF6,#845EF7)' : 'rgba(255,255,255,0.03)', color: hasNext ? '#fff' : '#444', pointerEvents: hasNext ? 'auto' : 'none'}}>
+            background: hasNext ? 'var(--primary)' : 'rgba(255,255,255,0.03)', color: hasNext ? '#fff' : 'var(--text-quaternary)', pointerEvents: hasNext ? 'auto' : 'none'}}>
           Next <ChevronRight size={16}/>
         </a>
       </div>
-      {!hasNext && <p style={{textAlign:'center',color:'#666',fontSize:13,paddingBottom:20}}>{"You're caught up — that's the latest chapter."}</p>}
+      {!hasNext && <p style={{textAlign:'center',color:'var(--text-muted)',fontSize:13,paddingBottom:20}}>{"You're caught up — that's the latest chapter."}</p>}
     </div>
   )
 }

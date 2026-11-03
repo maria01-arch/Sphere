@@ -21,7 +21,7 @@ export default async function JoinPage({ params }) {
   const { data: group } = await supabase.from('groups').select('*').eq('tag', tag).single()
 
   if (!group) return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'sans-serif'}}>
+    <div style={{minHeight:'100vh',background:'#05060A',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'sans-serif'}}>
       <p style={{fontSize:48}}>😕</p>
       <p style={{fontSize:20,fontWeight:700}}>Group not found</p>
       <p style={{color:'#555'}}>@{tag} doesn't exist</p>
@@ -41,7 +41,7 @@ export default async function JoinPage({ params }) {
   await supabase.from('group_join_requests').upsert({ group_id: group.id, user_id: user.id, status: 'pending' })
 
   return (
-    <div style={{minHeight:'100vh',background:'#090B10',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'sans-serif',padding:24,textAlign:'center'}}>
+    <div style={{minHeight:'100vh',background:'#05060A',color:'#fff',display:'flex',alignItems:'center',justifyContent:'center',flexDirection:'column',gap:16,fontFamily:'sans-serif',padding:24,textAlign:'center'}}>
       <div style={{width:88,height:88,borderRadius:24,background:group.cover_color||'#5B9CF6',display:'flex',alignItems:'center',justifyContent:'center',fontSize:40,fontWeight:800,color:'#fff'}}>{group.name[0]}</div>
       <h1 style={{fontSize:24,fontWeight:800,margin:0}}>{group.name}</h1>
       <p style={{color:'#888',margin:0}}>@{group.tag}</p>

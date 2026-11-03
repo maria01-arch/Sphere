@@ -70,7 +70,7 @@ export default function StoryDetailPage() {
   if (!story) return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column',alignItems:'center',justifyContent:'center',gap:10}}>
       <p style={{color:'var(--text-quaternary)'}}>This story doesn't exist or was removed.</p>
-      <a href="/stories" style={{color:'#5B9CF6'}}>Back to Stories</a>
+      <a href="/stories" style={{color:'var(--primary)'}}>Back to Stories</a>
     </div>
   )
 
@@ -99,7 +99,7 @@ export default function StoryDetailPage() {
 
         {!isOwn && (
           <button onClick={toggleFollow} disabled={followBusy} style={{width:'100%',border:'none',borderRadius:14,padding:'13px',fontWeight:700,fontSize:15,cursor:'pointer',marginBottom:20,
-            background: follow ? 'var(--bg-card)' : 'linear-gradient(135deg,#5B9CF6,#845EF7)', color: follow ? 'var(--text-primary)' : '#fff',
+            background: follow ? 'var(--bg-card)' : 'var(--primary)', color: follow ? 'var(--text-primary)' : '#fff',
             border: follow ? '1px solid var(--border-color-2)' : 'none', opacity: followBusy?0.6:1}}>
             {follow ? 'Following ✓' : 'Follow Story'}
           </button>
@@ -118,7 +118,7 @@ export default function StoryDetailPage() {
                 <div style={{flex:1,minWidth:0}}>
                   <div style={{fontWeight:700,fontSize:14,display:'flex',alignItems:'center',gap:6}}>
                     Chapter {ch.chapter_number}{ch.title ? ' — ' + ch.title : ''}
-                    {unread && <span style={{width:7,height:7,borderRadius:'50%',background:'#5B9CF6',flexShrink:0}}/>}
+                    {unread && <span style={{width:7,height:7,borderRadius:'50%',background:'var(--primary)',flexShrink:0}}/>}
                   </div>
                   <div style={{color:'var(--text-quaternary)',fontSize:12,marginTop:2}}>{timeAgo(ch.published_at)}</div>
                 </div>

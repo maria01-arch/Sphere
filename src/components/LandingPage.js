@@ -45,7 +45,7 @@ export default function LandingPage() {
         <div style={{ width: '100%', maxWidth: 340 }}>
           <a href="/auth" style={{
             display: 'block', width: '100%', boxSizing: 'border-box',
-            background: 'linear-gradient(135deg,#5B9CF6,#845EF7)', color: '#fff',
+            background: 'var(--primary)', color: '#fff',
             border: 'none', borderRadius: 16, padding: '16px', fontWeight: 700, fontSize: 16,
             textDecoration: 'none', cursor: 'pointer',
           }}>

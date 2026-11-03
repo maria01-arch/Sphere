@@ -9,7 +9,7 @@ export default function ClientRedirect({ to }) {
     window.location.replace(to)
   }, [to])
   return (
-    <div style={{ minHeight: '100vh', background: '#090B10', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
+    <div style={{ minHeight: '100vh', background: '#05060A', color: '#fff', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'sans-serif' }}>
       <a href={to} style={{ color: '#5B9CF6', fontSize: 16 }}>Continue to Flitters</a>
     </div>
   )

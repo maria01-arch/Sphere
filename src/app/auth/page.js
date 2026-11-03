@@ -318,12 +318,12 @@ export default function AuthPage() {
     setLoading(false)
   }
 
-  const inp = { width: '100%', background: 'rgba(255,255,255,0.07)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 12, padding: '13px 16px', color: '#fff', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
-  const label = { color: '#888', fontSize: 12, display: 'block', marginBottom: 6, marginTop: 2 }
-  const primaryBtn = { width: '100%', padding: '14px', background: 'linear-gradient(135deg,#A855F7,#06B6D4)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 4 }
-  const secondaryBtn = { width: '100%', padding: '14px', background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 14, color: '#fff', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10 }
-  const skipBtn = { width: '100%', padding: '12px', background: 'none', border: 'none', color: '#666', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 6 }
-  const switchLink = { textAlign: 'center', marginTop: 2, marginBottom: 14, color: '#888', fontSize: 13, cursor: 'pointer' }
+  const inp = { width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border-color)', borderRadius: 12, padding: '13px 16px', color: 'var(--text-primary)', fontSize: 15, outline: 'none', marginBottom: 12, boxSizing: 'border-box' }
+  const label = { color: 'var(--text-tertiary)', fontSize: 12, display: 'block', marginBottom: 6, marginTop: 2 }
+  const primaryBtn = { width: '100%', padding: '14px', background: 'var(--primary)', border: 'none', borderRadius: 14, color: '#fff', fontWeight: 700, fontSize: 15, cursor: 'pointer', marginTop: 4 }
+  const secondaryBtn = { width: '100%', padding: '14px', background: 'var(--bg-card-3)', border: '1px solid var(--border-color)', borderRadius: 14, color: 'var(--text-primary)', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 10 }
+  const skipBtn = { width: '100%', padding: '12px', background: 'none', border: 'none', color: 'var(--text-muted)', fontWeight: 600, fontSize: 14, cursor: 'pointer', marginTop: 6 }
+  const switchLink = { textAlign: 'center', marginTop: 2, marginBottom: 14, color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer' }
 
   const stepTitles = {
     1: 'Your name',
@@ -336,35 +336,35 @@ export default function AuthPage() {
   }
 
   return (
-    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: '#090B10', padding: 24 }}>
-      <div style={{ width: '100%', maxWidth: 420, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 24, padding: '40px 36px' }}>
+    <div style={{ minHeight: '100dvh', display: 'flex', alignItems: 'center', justifyContent: 'center', background: 'var(--bg-app)', padding: 24 }}>
+      <div style={{ width: '100%', maxWidth: 420, background: 'var(--bg-card-5)', border: '1px solid var(--border-color)', borderRadius: 24, padding: '40px 36px' }}>
 
         <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 32 }}>
           <XLogo size={52} />
           <div>
-            <div style={{ fontWeight: 900, fontSize: 26, background: 'linear-gradient(135deg,#A855F7,#06B6D4)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</div>
-            <div style={{ fontSize: 10, color: '#444', marginTop: -2 }}>formerly known as Sphere</div>
+            <div style={{ fontWeight: 900, fontSize: 26, background: 'var(--primary)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent', letterSpacing: '-0.5px' }}>Flitters</div>
+            <div style={{ fontSize: 10, color: 'var(--text-quaternary)', marginTop: -2 }}>formerly known as Sphere</div>
           </div>
         </div>
 
         {/* ---------- LOGIN ---------- */}
         {mode === 'login' && <>
-          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Welcome back</h1>
-          <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Sign in to your account</p>
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: 'var(--text-primary)' }}>Welcome back</h1>
+          <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>Sign in to your account</p>
 
           <input style={inp} type="text" placeholder="Email or phone number" value={loginContact} onChange={e => setLoginContact(e.target.value)} />
           <input style={inp} type="password" placeholder="Password" value={loginPassword} onChange={e => setLoginPassword(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleLogin()} />
 
-          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+          {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
           <button onClick={handleLogin} disabled={loading} style={primaryBtn}>
             {loading ? 'Please wait...' : 'Sign In'}
           </button>
 
           <p style={{ textAlign: 'center', marginTop: 14, marginBottom: 0 }}>
-            <span onClick={goToForgot} style={{ color: '#888', fontSize: 13, cursor: 'pointer' }}>Forgot password?</span>
+            <span onClick={goToForgot} style={{ color: 'var(--text-tertiary)', fontSize: 13, cursor: 'pointer' }}>Forgot password?</span>
           </p>
-          <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+          <p style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-secondary)', fontSize: 14 }}>
             {"Don't have an account? "}<span onClick={goToSignup} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign up</span>
           </p>
         </>}
@@ -372,54 +372,54 @@ export default function AuthPage() {
         {/* ---------- FORGOT ---------- */}
         {mode === 'forgot' && <>
           {forgotStep === 'email' && <>
-            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Reset Password</h1>
-            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Enter your account email — we'll send you a code</p>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: 'var(--text-primary)' }}>Reset Password</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>Enter your account email — we'll send you a code</p>
 
             <input style={inp} type="text" placeholder="Email address" value={loginContact} onChange={e => setLoginContact(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleForgot()} />
 
-            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
             <button onClick={handleForgot} disabled={loading} style={primaryBtn}>
               {loading ? 'Please wait...' : 'Send Code'}
             </button>
 
-            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+            <p style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-secondary)', fontSize: 14 }}>
               <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
             </p>
           </>}
 
           {forgotStep === 'otp' && <>
-            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>Enter Code</h1>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: 'var(--text-primary)' }}>Enter Code</h1>
             <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              We sent a code to <strong style={{ color: '#fff' }}>{loginContact}</strong>. Enter it below.
+              We sent a code to <strong style={{ color: 'var(--text-primary)' }}>{loginContact}</strong>. Enter it below.
             </p>
 
             <input style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={10} placeholder="0000000000" value={resetOtpCode} onChange={e => setResetOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyResetOtp()} />
 
-            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
-            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--repost-rgb),0.1)', color: 'var(--repost)', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
 
             <button onClick={handleVerifyResetOtp} disabled={loading} style={primaryBtn}>
               {loading ? 'Verifying...' : 'Verify Code'}
             </button>
 
-            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+            <p style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-secondary)', fontSize: 14 }}>
               {"Didn't get a code? "}<span onClick={handleForgot} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Resend</span>
             </p>
-            <p style={{ textAlign: 'center', marginTop: 8, color: '#555', fontSize: 14 }}>
+            <p style={{ textAlign: 'center', marginTop: 8, color: 'var(--text-secondary)', fontSize: 14 }}>
               <span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Back to Sign In</span>
             </p>
           </>}
 
           {forgotStep === 'newpassword' && <>
-            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>New Password</h1>
-            <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Choose a new password for your account</p>
+            <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: 'var(--text-primary)' }}>New Password</h1>
+            <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>Choose a new password for your account</p>
 
             <input style={inp} type="password" placeholder="New password" value={newPassword} onChange={e => setNewPassword(e.target.value)} />
             <input style={inp} type="password" placeholder="Confirm new password" value={newPasswordConfirm} onChange={e => setNewPasswordConfirm(e.target.value)} onKeyDown={e => e.key === 'Enter' && handleSetNewPassword()} />
 
-            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
-            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--repost-rgb),0.1)', color: 'var(--repost)', fontSize: 13, marginBottom: 14 }}>{success}</div>}
 
             <button onClick={handleSetNewPassword} disabled={loading} style={primaryBtn}>
               {loading ? 'Saving...' : 'Set New Password'}
@@ -431,12 +431,12 @@ export default function AuthPage() {
         {mode === 'signup' && <>
           {step <= totalSteps && <div style={{ display: 'flex', gap: 6, marginBottom: 20 }}>
             {Array.from({ length: totalSteps }, (_, i) => i + 1).map(n => (
-              <div key={n} style={{ flex: 1, height: 4, borderRadius: 2, background: n <= step ? 'linear-gradient(135deg,#A855F7,#06B6D4)' : 'rgba(255,255,255,0.08)' }} />
+              <div key={n} style={{ flex: 1, height: 4, borderRadius: 2, background: n <= step ? 'var(--primary)' : 'rgba(255,255,255,0.08)' }} />
             ))}
           </div>}
 
-          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: '#fff' }}>{stepTitles[step]}</h1>
-          {step <= totalSteps && <p style={{ color: '#555', fontSize: 14, marginBottom: 24 }}>Step {step} of {totalSteps}</p>}
+          <h1 style={{ fontWeight: 700, fontSize: 22, marginBottom: 6, color: 'var(--text-primary)' }}>{stepTitles[step]}</h1>
+          {step <= totalSteps && <p style={{ color: 'var(--text-secondary)', fontSize: 14, marginBottom: 24 }}>Step {step} of {totalSteps}</p>}
 
           {step === 1 && <>
             <label style={label}>Full name</label>
@@ -445,14 +445,14 @@ export default function AuthPage() {
             <div style={{position:'relative'}}>
               <input style={{...inp,paddingRight:36}} placeholder="e.g. adalovelace" value={username} onChange={e => setUsername(e.target.value.replace(/\s/g, ''))} />
               <div style={{position:'absolute',right:12,top:13,display:'flex'}}>
-                {usernameStatus==='checking'&&<Loader2 size={17} color="#888" className="xspin"/>}
+                {usernameStatus==='checking'&&<Loader2 size={17} color="var(--text-tertiary)" className="xspin"/>}
                 {usernameStatus==='available'&&<Check size={17} color="#4ADE80"/>}
-                {(usernameStatus==='taken'||usernameStatus==='invalid')&&<XIcon size={17} color="#F87171"/>}
+                {(usernameStatus==='taken'||usernameStatus==='invalid')&&<XIcon size={17} color="var(--danger)"/>}
               </div>
             </div>
-            {usernameStatus==='taken'&&<p style={{color:'#F87171',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is already taken</p>}
+            {usernameStatus==='taken'&&<p style={{color:'var(--danger)',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is already taken</p>}
             {usernameStatus==='available'&&<p style={{color:'#4ADE80',fontSize:12,margin:'-8px 0 12px'}}>@{username.trim().toLowerCase()} is available</p>}
-            {usernameStatus==='invalid'&&username.trim().length>=3&&<p style={{color:'#F87171',fontSize:12,margin:'-8px 0 12px'}}>Only letters, numbers, and underscores</p>}
+            {usernameStatus==='invalid'&&username.trim().length>=3&&<p style={{color:'var(--danger)',fontSize:12,margin:'-8px 0 12px'}}>Only letters, numbers, and underscores</p>}
           </>}
 
           {step === 2 && <>
@@ -463,7 +463,7 @@ export default function AuthPage() {
               <option value="" style={{ color: '#000' }}>Select your country</option>
               {COUNTRIES.map(c => <option key={c} value={c} style={{ color: '#000' }}>{c}</option>)}
             </select>
-            <p style={{ color: '#444', fontSize: 12, marginTop: -6 }}>This becomes your Location — editable anytime in Settings.</p>
+            <p style={{ color: 'var(--text-quaternary)', fontSize: 12, marginTop: -6 }}>This becomes your Location — editable anytime in Settings.</p>
           </>}
 
           {step === 3 && contactMethod === 'email' && <>
@@ -475,7 +475,7 @@ export default function AuthPage() {
           {step === 3 && contactMethod === 'phone' && <>
             <label style={label}>Mobile number</label>
             <input style={inp} type="tel" placeholder="+234 801 234 5678" value={phone} onChange={e => setPhone(e.target.value)} />
-            <p style={{ color: '#444', fontSize: 12, marginTop: -6, marginBottom: 14 }}>SMS verification isn't available yet — your number is saved to your profile.</p>
+            <p style={{ color: 'var(--text-quaternary)', fontSize: 12, marginTop: -6, marginBottom: 14 }}>SMS verification isn't available yet — your number is saved to your profile.</p>
             <p style={switchLink} onClick={() => { setContactMethod('email'); setError('') }}>Sign up with email instead</p>
           </>}
 
@@ -493,7 +493,7 @@ export default function AuthPage() {
                 background: avatarPreview ? `url(${avatarPreview}) center/cover` : 'rgba(255,255,255,0.06)',
                 border: '2px dashed rgba(255,255,255,0.2)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center',
-                fontSize: 28, color: '#555'
+                fontSize: 28, color: 'var(--text-secondary)'
               }}>
                 {!avatarPreview && <Camera size={26}/>}
               </div>
@@ -505,23 +505,23 @@ export default function AuthPage() {
           </>}
 
           {step === 6 && <>
-            <div style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)', borderRadius: 14, padding: 16, marginBottom: 18, fontSize: 13, color: '#aaa', lineHeight: 1.7, display: 'flex', gap: 12, alignItems: 'center' }}>
+            <div style={{ background: 'var(--bg-card-5)', border: '1px solid var(--border-color)', borderRadius: 14, padding: 16, marginBottom: 18, fontSize: 13, color: 'var(--text-subtle)', lineHeight: 1.7, display: 'flex', gap: 12, alignItems: 'center' }}>
               <div style={{
                 width: 44, height: 44, borderRadius: '50%', flexShrink: 0,
-                background: avatarPreview ? `url(${avatarPreview}) center/cover` : 'linear-gradient(135deg,#A855F7,#06B6D4)',
+                background: avatarPreview ? `url(${avatarPreview}) center/cover` : 'var(--primary)',
                 display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#fff', fontWeight: 700
               }}>
                 {!avatarPreview && displayName.trim().charAt(0).toUpperCase()}
               </div>
               <div>
-                <div><strong style={{ color: '#fff' }}>{displayName}</strong> · @{username}</div>
+                <div><strong style={{ color: 'var(--text-primary)' }}>{displayName}</strong> · @{username}</div>
                 <div>{country} · {dob}</div>
                 <div>{contactMethod === 'email' ? email : phone}</div>
               </div>
             </div>
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={acceptedPolicy} onChange={e => setAcceptedPolicy(e.target.checked)} style={{ marginTop: 3 }} />
-              <span style={{ color: '#aaa', fontSize: 13, lineHeight: 1.5 }}>
+              <span style={{ color: 'var(--text-subtle)', fontSize: 13, lineHeight: 1.5 }}>
                 I agree to Flitters's <a href="/privacy" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Privacy Policy</a> and Terms of Service.
               </span>
             </label>
@@ -529,20 +529,20 @@ export default function AuthPage() {
 
           {step === 7 && <>
             <p style={{ color: '#999', fontSize: 14, lineHeight: 1.6, marginBottom: 20 }}>
-              We sent a verification code to <strong style={{ color: '#fff' }}>{pendingEmail}</strong>. Enter it below to finish creating your account.
+              We sent a verification code to <strong style={{ color: 'var(--text-primary)' }}>{pendingEmail}</strong>. Enter it below to finish creating your account.
             </p>
             <input style={{ ...inp, fontSize: 22, letterSpacing: 6, textAlign: 'center', fontWeight: 700 }} inputMode="numeric" maxLength={10} placeholder="0000000000" value={otpCode} onChange={e => setOtpCode(e.target.value.replace(/[^0-9]/g, ''))} onKeyDown={e => e.key === 'Enter' && handleVerifyOtp()} />
-            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(0,201,167,0.1)', color: '#00C9A7', fontSize: 13, marginBottom: 14 }}>{success}</div>}
-            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginBottom: 14 }}>{error}</div>}
+            {success && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--repost-rgb),0.1)', color: 'var(--repost)', fontSize: 13, marginBottom: 14 }}>{success}</div>}
+            {error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginBottom: 14 }}>{error}</div>}
             <button onClick={handleVerifyOtp} disabled={loading} style={primaryBtn}>
               {loading ? 'Verifying...' : 'Verify & Create Account'}
             </button>
-            <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+            <p style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-secondary)', fontSize: 14 }}>
               {"Didn't get a code? "}<span onClick={handleResendOtp} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Resend</span>
             </p>
           </>}
 
-          {step !== 7 && error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(255,71,87,0.1)', color: '#FF4757', fontSize: 13, marginTop: 10, marginBottom: 4 }}>{error}</div>}
+          {step !== 7 && error && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'rgba(var(--danger-rgb),0.1)', color: 'var(--danger)', fontSize: 13, marginTop: 10, marginBottom: 4 }}>{error}</div>}
 
           {step < totalSteps
             ? <button onClick={handleNext} style={primaryBtn}>Next</button>
@@ -556,7 +556,7 @@ export default function AuthPage() {
 
           {step <= totalSteps && <button onClick={handleBack} style={secondaryBtn}>Back</button>}
 
-          {step === 1 && <p style={{ textAlign: 'center', marginTop: 16, color: '#555', fontSize: 14 }}>
+          {step === 1 && <p style={{ textAlign: 'center', marginTop: 16, color: 'var(--text-secondary)', fontSize: 14 }}>
             {"Already on Flitters? "}<span onClick={goToLogin} style={{ color: '#A855F7', cursor: 'pointer', fontWeight: 600 }}>Sign in</span>
           </p>}
         </>}

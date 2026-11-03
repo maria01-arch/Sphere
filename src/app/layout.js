@@ -51,7 +51,10 @@ export const viewport = {
   userScalable: false,
   viewportFit: 'cover',
   interactiveWidget: 'resizes-visual',
-  themeColor: '#090B10',
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#FFFFFF' },
+    { media: '(prefers-color-scheme: dark)', color: '#05060A' },
+  ],
 }
 
 export default function RootLayout({ children }) {

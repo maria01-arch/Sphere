@@ -1,7 +1,7 @@
 *,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;min-height:100dvh;font-family:sans-serif;overscroll-behavior-y:none}
+html,body{height:100%;min-height:100dvh;font-family:system-ui,-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;overscroll-behavior-y:none}
 ::-webkit-scrollbar{width:4px}
-::-webkit-scrollbar-thumb{background:rgba(255,255,255,0.1);border-radius:2px}
+::-webkit-scrollbar-thumb{background:var(--border-color-2);border-radius:2px}
 
 /* Remove default flat gray tap highlight everywhere */
 *{-webkit-tap-highlight-color:transparent}
@@ -66,56 +66,80 @@ button:active,[role="button"]:active,.tappable:active{
 }
 
 /* ==========================================================================
-   THEME SYSTEM
-   Dark is the default (matches original design). Light overrides via
-   [data-theme="light"] on <html>. Applied through CSS variables so React
-   inline styles can reference them as var(--token-name) without a rewrite
-   of the whole styling approach.
+   THEME SYSTEM  (colors copied from the native app: lib/theme.ts)
+   Dark = "Midnight" (near-true black, electric blue accent). Light = clean white.
+   Every component reads these as var(--token), so changing a value here
+   restyles the whole web app. Both themes are switched by [data-theme] on <html>.
    ========================================================================== */
 :root{
-  --bg-app:#090B10;
-  --bg-header:rgba(9,11,16,0.95);
-  --bg-card:rgba(255,255,255,0.07);
-  --bg-card-2:rgba(255,255,255,0.1);
-  --bg-card-3:rgba(255,255,255,0.06);
+  /* brand + status (same names as native: primary, like, repost, danger) */
+  --primary:#3DA9FF;
+  --primary-dark:#1D8FEA;
+  --primary-rgb:61,169,255;
+  --like:#F91880;
+  --repost:#00BA7C;
+  --repost-rgb:0,186,124;
+  --danger:#F87171;
+  --danger-rgb:248,113,113;
+
+  /* surfaces */
+  --bg-app:#05060A;
+  --bg-header:rgba(5,6,10,0.92);
+  --bg-card:#0D1018;
+  --bg-card-2:#121722;
+  --bg-card-3:#0D1018;
   --bg-card-4:rgba(255,255,255,0.05);
   --bg-card-5:rgba(255,255,255,0.04);
-  --bg-card-6:rgba(255,255,255,0.08);
-  --bg-card-7:rgba(255,255,255,0.09);
-  --bg-card-8:rgba(255,255,255,0.15);
-  --text-primary:#fff;
-  --text-secondary:#555;
-  --text-tertiary:#888;
-  --text-quaternary:#444;
-  --text-subtle:#aaa;
-  --text-muted:#666;
-  --text-faint:#333;
-  --border-color:rgba(255,255,255,0.07);
-  --border-color-2:rgba(255,255,255,0.1);
+  --bg-card-6:#101521;
+  --bg-card-7:#121722;
+  --bg-card-8:#1A2231;
+
+  /* text */
+  --text-primary:#F1F3F8;
+  --text-secondary:#5B6478;
+  --text-tertiary:#9AA4B7;
+  --text-quaternary:#4A5266;
+  --text-subtle:#B4BDCE;
+  --text-muted:#6B7690;
+  --text-faint:#2A3142;
+
+  --border-color:#1C2230;
+  --border-color-2:#242C3E;
   --shadow-color:rgba(0,0,0,0.5);
   color-scheme:dark;
 }
 
 [data-theme="light"]{
-  --bg-app:linear-gradient(180deg,#FCFCFB 0%,#F9F9F8 55%,#F6F6F5 100%);
-  --bg-header:rgba(252,252,251,0.94);
-  --bg-card:rgba(91,140,246,0.06);
-  --bg-card-2:rgba(91,140,246,0.09);
-  --bg-card-3:rgba(91,140,246,0.045);
-  --bg-card-4:rgba(91,140,246,0.04);
-  --bg-card-5:rgba(91,140,246,0.03);
-  --bg-card-6:rgba(91,140,246,0.07);
-  --bg-card-7:rgba(91,140,246,0.075);
-  --bg-card-8:rgba(91,140,246,0.13);
-  --text-primary:#0F172A;
-  --text-secondary:#64748B;
-  --text-tertiary:#94A3B8;
-  --text-quaternary:#94A3B8;
-  --text-subtle:#475569;
-  --text-muted:#7C8AA5;
-  --text-faint:#CBD5E1;
-  --border-color:rgba(30,41,90,0.1);
-  --border-color-2:rgba(30,41,90,0.14);
+  --primary:#1D8FEA;
+  --primary-dark:#0F74C8;
+  --primary-rgb:29,143,234;
+  --like:#F91880;
+  --repost:#00BA7C;
+  --repost-rgb:0,186,124;
+  --danger:#EF4444;
+  --danger-rgb:239,68,68;
+
+  --bg-app:#FFFFFF;
+  --bg-header:rgba(255,255,255,0.92);
+  --bg-card:#F3F4F6;
+  --bg-card-2:#E9ECF0;
+  --bg-card-3:#F3F4F6;
+  --bg-card-4:#F6F7F9;
+  --bg-card-5:#F9FAFB;
+  --bg-card-6:#EEF0F3;
+  --bg-card-7:#E9ECF0;
+  --bg-card-8:#DDE1E7;
+
+  --text-primary:#14171A;
+  --text-secondary:#9CA3AF;
+  --text-tertiary:#6B7280;
+  --text-quaternary:#9CA3AF;
+  --text-subtle:#4B5563;
+  --text-muted:#6B7280;
+  --text-faint:#D1D5DB;
+
+  --border-color:#E5E7EB;
+  --border-color-2:#D9DDE3;
   --shadow-color:rgba(15,23,42,0.12);
   color-scheme:light;
 }

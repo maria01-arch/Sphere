@@ -91,7 +91,7 @@ export default function StoriesPage() {
 
       <div style={{display:'flex',borderBottom:'1px solid var(--border-color)',position:'sticky',top:58,zIndex:5,background:'var(--bg-header)'}}>
         {[{id:'library',label:'Library'},{id:'discover',label:'Discover'},{id:'mine',label:'My Stories'}].map(t=>(
-          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:tab===t.id?'2px solid #5B9CF6':'2px solid transparent',color:tab===t.id?'var(--text-primary)':'var(--text-muted)',fontWeight:tab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
+          <button key={t.id} onClick={()=>setTab(t.id)} style={{flex:1,padding:'12px 0',background:'none',border:'none',borderBottom:tab===t.id?'2px solid var(--primary)':'2px solid transparent',color:tab===t.id?'var(--text-primary)':'var(--text-muted)',fontWeight:tab===t.id?700:500,fontSize:14,cursor:'pointer'}}>{t.label}</button>
         ))}
       </div>
 
@@ -106,12 +106,12 @@ export default function StoriesPage() {
                 <a key={story.id} href={`/stories/${story.id}`} style={{display:'flex',gap:12,padding:12,background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:16,textDecoration:'none',color:'var(--text-primary)'}}>
                   <div style={{position:'relative',width:56,height:56,borderRadius:10,flexShrink:0,background:'var(--bg-card-3, rgba(255,255,255,0.08))',overflow:'hidden'}}>
                     {story.cover_image_url && <img src={story.cover_image_url} alt="" style={{width:'100%',height:'100%',objectFit:'cover'}}/>}
-                    {unread && <span style={{position:'absolute',top:4,right:4,width:9,height:9,borderRadius:'50%',background:'#5B9CF6',border:'2px solid var(--bg-card)'}}/>}
+                    {unread && <span style={{position:'absolute',top:4,right:4,width:9,height:9,borderRadius:'50%',background:'var(--primary)',border:'2px solid var(--bg-card)'}}/>}
                   </div>
                   <div style={{flex:1,minWidth:0}}>
                     <div style={{fontWeight:700,fontSize:15}}>{story.title}</div>
                     <div style={{color:'var(--text-tertiary)',fontSize:13,marginTop:2}}>by {story.creator?.display_name}</div>
-                    <div style={{color:unread?'#5B9CF6':'var(--text-quaternary)',fontSize:12,marginTop:2,fontWeight:unread?600:400}}>
+                    <div style={{color:unread?'var(--primary)':'var(--text-quaternary)',fontSize:12,marginTop:2,fontWeight:unread?600:400}}>
                       {unread ? `New chapter ${latestChapter}` : `Up to date · ${timeAgo(story.updated_at)}`}
                     </div>
                   </div>
@@ -137,7 +137,7 @@ export default function StoriesPage() {
                   </div>
                 </a>
                 <button onClick={()=>toggleFollow(story.id)} style={{alignSelf:'center',flexShrink:0,border:'none',borderRadius:12,padding:'8px 14px',fontWeight:700,fontSize:13,cursor:'pointer',
-                  background: followedIds[story.id] ? 'var(--bg-card-3, rgba(255,255,255,0.08))' : 'linear-gradient(135deg,#5B9CF6,#845EF7)', color: followedIds[story.id] ? 'var(--text-primary)' : '#fff'}}>
+                  background: followedIds[story.id] ? 'var(--bg-card-3, rgba(255,255,255,0.08))' : 'var(--primary)', color: followedIds[story.id] ? 'var(--text-primary)' : '#fff'}}>
                   {followedIds[story.id] ? 'Following' : 'Follow'}
                 </button>
               </div>
@@ -146,7 +146,7 @@ export default function StoriesPage() {
         </>}
 
         {tab==='mine' && <>
-          <button onClick={()=>setShowCreate(true)} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:20}}>
+          <button onClick={()=>setShowCreate(true)} style={{width:'100%',background:'var(--primary)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:20}}>
             <Plus size={18}/> New Story
           </button>
           {myStories.length===0 && <p style={{color:'var(--text-quaternary)',fontSize:14,padding:'20px 0',textAlign:'center'}}>You haven't started a story yet.</p>}
@@ -237,9 +237,9 @@ function CreateStoryModal({ supabase, currentUser, onClose, onCreated }) {
         <input value={title} onChange={e=>setTitle(e.target.value)} placeholder="Story title" style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',boxSizing:'border-box',marginBottom:10}}/>
         <textarea value={description} onChange={e=>setDescription(e.target.value)} placeholder="Description (optional)" rows={3} style={{width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',resize:'none',fontFamily:'sans-serif',boxSizing:'border-box',marginBottom:14}}/>
 
-        {error && <p style={{color:'#FF4757',fontSize:13,marginBottom:10}}>{error}</p>}
+        {error && <p style={{color:'var(--danger)',fontSize:13,marginBottom:10}}>{error}</p>}
 
-        <button onClick={create} disabled={saving} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',opacity:saving?0.6:1}}>
+        <button onClick={create} disabled={saving} style={{width:'100%',background:'var(--primary)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',opacity:saving?0.6:1}}>
           {saving ? 'Creating...' : 'Create Story'}
         </button>
       </div>
@@ -272,7 +272,7 @@ function ChapterManager({ story, supabase, onBack }) {
       </div>
 
       <div style={{padding:16}}>
-        <button onClick={()=>setShowAddChapter(true)} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:20}}>
+        <button onClick={()=>setShowAddChapter(true)} style={{width:'100%',background:'var(--primary)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',gap:8,marginBottom:20}}>
           <Plus size={18}/> Add Chapter {nextChapterNumber}
         </button>
 
@@ -287,7 +287,7 @@ function ChapterManager({ story, supabase, onBack }) {
                 <div style={{fontWeight:700,fontSize:14}}>Chapter {ch.chapter_number}{ch.title ? ' — ' + ch.title : ''}</div>
                 <div style={{color:'var(--text-quaternary)',fontSize:12,marginTop:2}}>{ch.images?.length || 0} images · published {timeAgo(ch.published_at)}</div>
               </div>
-              <button onClick={()=>deleteChapter(ch.id)} style={{background:'none',border:'none',color:'#FF4757',cursor:'pointer',display:'flex',flexShrink:0}}><Trash2 size={17}/></button>
+              <button onClick={()=>deleteChapter(ch.id)} style={{background:'none',border:'none',color:'var(--danger)',cursor:'pointer',display:'flex',flexShrink:0}}><Trash2 size={17}/></button>
             </div>
           ))}
         </div>
@@ -370,10 +370,10 @@ function AddChapterModal({ story, chapterNumber, supabase, onClose, onAdded }) {
         </div>
         <p style={{color:'var(--text-quaternary)',fontSize:12,marginBottom:14}}>Images publish in the order shown above — drag-to-reorder isn't in yet, so add them in reading order.</p>
 
-        {error && <p style={{color:'#FF4757',fontSize:13,marginBottom:10}}>{error}</p>}
+        {error && <p style={{color:'var(--danger)',fontSize:13,marginBottom:10}}>{error}</p>}
         {progress && <p style={{color:'var(--text-tertiary)',fontSize:13,marginBottom:10}}>{progress}</p>}
 
-        <button onClick={publish} disabled={saving} style={{width:'100%',background:'linear-gradient(135deg,#5B9CF6,#845EF7)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',opacity:saving?0.6:1}}>
+        <button onClick={publish} disabled={saving} style={{width:'100%',background:'var(--primary)',border:'none',borderRadius:14,padding:'14px',color:'#fff',fontWeight:700,fontSize:15,cursor:'pointer',opacity:saving?0.6:1}}>
           {saving ? 'Publishing...' : 'Publish Chapter'}
         </button>
       </div>
