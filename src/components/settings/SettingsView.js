@@ -3,9 +3,9 @@ import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Award, Ban, Bookmark, Bell, BookOpen, Check, Globe, Image as ImageIcon, Lock, LogOut, MapPin, Trash2, User } from 'lucide-react'
 import { Avatar } from '@/components/common/Avatar'
 import { RowSkeletonList } from '@/components/common/Skeletons'
+import { AutoplayToggleRow } from '@/components/settings/AutoplayToggleRow'
 import { ThemeToggleRow } from '@/components/settings/ThemeToggleRow'
 import { GetVerifiedView } from '@/components/verify/GetVerifiedView'
-import { VerifyForm } from '@/components/settings/VerifyForm'
 import { authJsonHeaders } from '@/lib/api'
 import { uploadToR2 } from '@/lib/media/upload'
 
@@ -81,6 +81,28 @@ export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSig
     setUploading(false)
   }
 
+  const coverRef = useRef(null)
+  const [coverUrl, setCoverUrl] = useState(currentUser?.cover_url||'')
+  const [coverBusy, setCoverBusy] = useState(false)
+  const uploadCover = async (file) => {
+    if (!file) return
+    if (!file.type.startsWith('image/')) { showMsg('Please choose an image', false); return }
+    setCoverBusy(true)
+    let urlData
+    try { urlData = await uploadToR2(file, `posts/${currentUser.id}/cover_${Date.now()}.${(file.name.split('.').pop()||'jpg').toLowerCase()}`) }
+    catch(err) { showMsg('Cover upload failed: '+err.message, false); setCoverBusy(false); return }
+    const { error } = await supabase.from('profiles').update({cover_url:urlData.publicUrl}).eq('id',currentUser.id)
+    if (error) showMsg("Couldn't save the cover: "+error.message, false)
+    else { currentUser.cover_url = urlData.publicUrl; setCoverUrl(urlData.publicUrl); showMsg('Cover photo updated!') }
+    setCoverBusy(false)
+  }
+  const removeCover = async () => {
+    setCoverBusy(true)
+    const { error } = await supabase.from('profiles').update({cover_url:null}).eq('id',currentUser.id)
+    if (!error) { currentUser.cover_url = null; setCoverUrl(''); showMsg('Cover photo removed') } else showMsg(error.message,false)
+    setCoverBusy(false)
+  }
+
   const saveProfile = async () => {
     setSaving(true)
     const hasEmoji = /\p{Emoji}/u.test(displayName);if(hasEmoji){showMsg('Emojis are not allowed in display names',false);setSaving(false);return}
@@ -129,6 +151,12 @@ export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSig
       <Header title="Edit Profile"/>
       <div style={{padding:'20px 16px'}}>
         <MsgBox/>
+        <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Cover Photo</label>
+        <input ref={coverRef} type="file" accept="image/*" style={{display:'none'}} onChange={e=>{uploadCover(e.target.files?.[0]);e.target.value=''}}/>
+        <div onClick={()=>coverRef.current?.click()} style={{height:120,borderRadius:14,marginBottom:8,cursor:'pointer',overflow:'hidden',display:'flex',alignItems:'center',justifyContent:'center',color:'var(--text-tertiary)',fontSize:13,background:coverUrl?`center/cover no-repeat url("${coverUrl}")`:'var(--bg-card-4)',border:'1px dashed var(--border-color-2)'}}>
+          {coverBusy?'Uploading…':(coverUrl?'':'Tap to add a cover photo')}
+        </div>
+        {coverUrl&&<button onClick={removeCover} style={{background:'none',border:'none',color:'var(--danger)',fontSize:13,cursor:'pointer',marginBottom:12,padding:0}}>Remove cover photo</button>}
         <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Display Name</label>
         <input value={displayName} onChange={e=>setDisplayName(e.target.value)} style={{...inp}} placeholder="Your name"/>
         <label style={{color:'var(--text-tertiary)',fontSize:13,display:'block',marginBottom:6}}>Bio</label>
@@ -193,32 +221,7 @@ export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSig
   // verified badge, which is exactly what that policy prohibits. Don't
   // re-add the menu entry below without first wiring this through Play
   // Billing (or gating it to a genuinely non-Play-reviewed context).
-  if(section==='verify') return <GetVerifiedView currentUser={currentUser} supabase={supabase} onBack={()=>setSection('main')} onManual={()=>setSection('verifyform')}/>
-  if(section==='verifyform') return (
-    <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <Header title="Get Verified"/>
-      <div style={{padding:'20px 16px'}}>
-        <MsgBox/>
-        <div style={{background:'linear-gradient(135deg,rgba(255,215,0,0.08),rgba(255,165,0,0.08))',border:'1px solid rgba(255,215,0,0.25)',borderRadius:16,padding:'20px',marginBottom:24,textAlign:'center'}}>
-          <div style={{marginBottom:8,display:'flex',justifyContent:'center',color:'var(--primary)'}}><Award size={48}/></div>
-          <h2 style={{fontWeight:800,fontSize:20,color:'#FFD700',marginBottom:8}}>Flitters Verified Badge</h2>
-          <p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6}}>Get a gold badge on your profile and all your posts.</p>
-          <p style={{color:'#FFD700',fontWeight:700,fontSize:18,marginTop:12}}>One-time fee: $5 USD</p>
-        </div>
-        <h3 style={{fontWeight:700,fontSize:15,marginBottom:12}}>Pay to one of these:</h3>
-        <div style={{background:'var(--bg-card-4)',borderRadius:12,padding:'14px',marginBottom:10}}>
-          <p style={{fontWeight:700,marginBottom:6}}>USDT TRC-20</p>
-          <p style={{color:'var(--text-tertiary)',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>TABFK9Z3yC4kKtVzqEwqoyAfwSySkzJcHL</p>
-        </div>
-        <div style={{background:'var(--bg-card-4)',borderRadius:12,padding:'14px',marginBottom:20}}>
-          <p style={{fontWeight:700,marginBottom:6}}>Bitcoin BTC</p>
-          <p style={{color:'var(--text-tertiary)',fontSize:11,wordBreak:'break-all',fontFamily:'monospace'}}>bc1ql7qzefrh2czl29krzzsnwkr6dvnp2few2h80s7</p>
-        </div>
-        <h3 style={{fontWeight:700,fontSize:15,marginBottom:12}}>Application Form</h3>
-        <VerifyForm currentUser={currentUser} supabase={supabase} showMsg={showMsg} saving={saving} setSaving={setSaving} inp={inp}/>
-      </div>
-    </div>
-  )
+  if(section==='verify') return <GetVerifiedView currentUser={currentUser} supabase={supabase} onBack={()=>setSection('main')}/>
   if(section==='notiftest') {
     const runTest = async () => {
       setTestMsg('')
@@ -332,6 +335,7 @@ export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSig
       </div>
       <div style={{padding:'12px 0'}}>
         <ThemeToggleRow/>
+        <AutoplayToggleRow/>
         <a href="/stories" style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15,textDecoration:'none',boxSizing:'border-box'}}>
           <span style={{fontSize:22,display:'flex'}}><BookOpen size={18}/></span><span style={{flex:1,fontWeight:500}}>My Stories</span><span style={{color:'var(--text-quaternary)'}}>›</span>
         </a>

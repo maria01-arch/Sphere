@@ -1,108 +1,100 @@
 'use client'
-import { useCallback, useEffect, useState } from 'react'
-import { Check, ChevronLeft, RefreshCw } from 'lucide-react'
+import { useEffect, useState } from 'react'
+import { Check, ChevronLeft, Copy } from 'lucide-react'
 import { AnimatedBadge } from '@/components/verify/AnimatedBadge'
-import { authJsonHeaders } from '@/lib/api'
+import { VerifyForm } from '@/components/settings/VerifyForm'
 
-const PLANS = {
-  basic: {
-    name: 'Flitters Basic', color: '#1877F2',
-    blurb: 'The blue seal next to your name, so people know your account is real.',
-    perks: ['Blue authentic seal on your profile, posts and comments', 'Seal shows in reels, search and chats', 'Stands out from look-alike accounts'],
-  },
-  premium: {
-    name: 'Flitters Premium', color: '#F5B301',
-    blurb: 'Everything in Basic, with the gold seal that only Premium members get.',
-    perks: ['Gold animated-style seal on every appearance', 'Everything in Flitters Basic', 'The top badge on the platform'],
-  },
-}
+// Ways to pay. To add Paystack later, add one more entry here (kind: 'link' with an href,
+// or kind: 'address' with an address people copy) and it shows up in the list automatically.
+const PAY_METHODS = [
+  { id: 'usdt', kind: 'address', name: 'USDT (TRC-20)', address: 'TABFK9Z3yC4kKtVzqEwqoyAfwSySkzJcHL' },
+  { id: 'btc', kind: 'address', name: 'Bitcoin (BTC)', address: 'bc1ql7qzefrh2czl29krzzsnwkr6dvnp2few2h80s7' },
+]
+const PRICE = '$5 USD'
+const GOLD = '#F5B301'
+const PERKS = ['Animated verified badge next to your name on your profile, posts, comments and reels', 'Longer videos (up to 60 seconds)', 'Stand out from look-alike accounts']
 
 const fmt = (iso) => { try { return new Date(iso).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) } catch { return '' } }
 
-// Subscriptions are bought with Google Play in the Android app, so on the web this page
-// shows the plans, the current status, and a refresh button that re-checks with Google.
-export function GetVerifiedView({ currentUser, supabase, onBack, onManual }) {
-  const [tab, setTab] = useState('basic')
-  const [status, setStatus] = useState({ plan: null, until: null, loading: true })
-  const [refreshing, setRefreshing] = useState(false)
-  const [note, setNote] = useState('')
+export function GetVerifiedView({ currentUser, supabase, onBack }) {
+  const [copied, setCopied] = useState('')
+  const [applied, setApplied] = useState(null)
+  const [saving, setSaving] = useState(false)
+  const [msg, setMsg] = useState({ text: '', ok: true })
+  const [isVerified, setIsVerified] = useState(!!(currentUser?.verified || currentUser?.is_authentic))
 
-  const load = useCallback(async () => {
-    const { data } = await supabase.from('profiles').select('verified_plan,verified_until,is_authentic').eq('id', currentUser.id).maybeSingle()
-    setStatus({ plan: data?.verified_plan || null, until: data?.verified_until || null, authentic: !!data?.is_authentic, loading: false })
+  useEffect(() => {
+    let dead = false
+    ;(async () => {
+      const { data: p } = await supabase.from('profiles').select('verified,is_authentic').eq('id', currentUser.id).maybeSingle()
+      if (!dead && p) setIsVerified(!!(p.verified || p.is_authentic))
+      const { data: a } = await supabase.from('verification_applications').select('created_at').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(1)
+      if (!dead && a?.length) setApplied(a[0].created_at)
+    })()
+    return () => { dead = true }
   }, [supabase, currentUser.id])
-  useEffect(() => { load() }, [load])
 
-  const refresh = async () => {
-    setRefreshing(true); setNote('')
-    try {
-      const res = await fetch('/api/billing/refresh', { method: 'POST', headers: await authJsonHeaders() })
-      if (!res.ok) setNote(res.status === 503 ? 'Subscriptions are not switched on yet.' : 'Could not check right now. Try again in a minute.')
-      else setNote('Up to date.')
-      await load()
-    } catch { setNote('No connection. Try again.') }
-    setRefreshing(false)
+  const showMsg = (text, ok = true) => {
+    setMsg({ text, ok }); setTimeout(() => setMsg({ text: '', ok: true }), 4000)
+    if (ok && /submitted/i.test(text)) setApplied(new Date().toISOString())
   }
-
-  const active = status.plan && (!status.until || new Date(status.until) > new Date())
-  const ended = status.plan && !active
-  const plan = PLANS[tab]
-  const hasThis = active && status.plan === tab
-  const includedInPremium = active && status.plan === 'premium' && tab === 'basic'
+  const inp = { width: '100%', background: 'var(--bg-card)', border: '1px solid var(--border-color-2)', borderRadius: 12, padding: '12px 16px', color: 'var(--text-primary)', fontSize: 15, outline: 'none', fontFamily: 'sans-serif', boxSizing: 'border-box', marginBottom: 12 }
+  const copy = async (id, text) => {
+    try { await navigator.clipboard.writeText(text) } catch {}
+    setCopied(id); setTimeout(() => setCopied(c => (c === id ? '' : c)), 1800)
+  }
+  const step = (n, title) => (
+    <div style={{ display: 'flex', alignItems: 'center', gap: 10, margin: '26px 0 12px' }}>
+      <span style={{ width: 26, height: 26, borderRadius: 13, background: GOLD, color: '#000', fontWeight: 800, fontSize: 13, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>{n}</span>
+      <span style={{ fontWeight: 700, fontSize: 16 }}>{title}</span>
+    </div>
+  )
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg-app)', color: 'var(--text-primary)' }}>
       <div style={{ position: 'sticky', top: 0, zIndex: 10, background: 'var(--bg-header)', backdropFilter: 'blur(8px)', borderBottom: '1px solid var(--border-color)', padding: 'calc(12px + env(safe-area-inset-top)) 16px 12px', display: 'flex', alignItems: 'center', gap: 12 }}>
         <button onClick={onBack} aria-label="Back" style={{ background: 'none', border: 'none', color: 'var(--text-primary)', cursor: 'pointer', display: 'flex' }}><ChevronLeft size={26} /></button>
-        <span style={{ fontWeight: 700, fontSize: 17, flex: 1 }}>Get Verified</span>
-        <button onClick={refresh} disabled={refreshing} aria-label="Refresh status" style={{ background: 'none', border: 'none', color: 'var(--text-secondary)', cursor: 'pointer', display: 'flex', opacity: refreshing ? 0.5 : 1 }}><RefreshCw size={19} /></button>
+        <span style={{ fontWeight: 700, fontSize: 17 }}>Get Verified</span>
       </div>
 
-      <div style={{ maxWidth: 520, margin: '0 auto', padding: '16px 16px 40px' }}>
-        <div style={{ display: 'flex', background: 'var(--bg-card-4)', borderRadius: 14, padding: 4, marginBottom: 8 }}>
-          {Object.entries(PLANS).map(([id, p]) => (
-            <button key={id} onClick={() => setTab(id)} style={{ flex: 1, border: 'none', cursor: 'pointer', borderRadius: 11, padding: '10px 0', fontWeight: 700, fontSize: 14, background: tab === id ? 'var(--bg-app)' : 'transparent', color: tab === id ? p.color : 'var(--text-tertiary)' }}>{id === 'basic' ? 'Basic' : 'Premium'}</button>
-          ))}
-        </div>
+      <div style={{ maxWidth: 520, margin: '0 auto', padding: '12px 16px 48px' }}>
+        <div style={{ display: 'flex', justifyContent: 'center' }}><AnimatedBadge plan="premium" size={150} /></div>
+        <h2 style={{ textAlign: 'center', fontSize: 23, fontWeight: 800, margin: '4px 0 4px', color: GOLD }}>Flitters Verified</h2>
+        <p style={{ textAlign: 'center', fontWeight: 700, fontSize: 17, margin: '0 0 14px' }}>One-time fee: {PRICE}</p>
 
-        <div style={{ display: 'flex', justifyContent: 'center', padding: '8px 0 0' }}>
-          <AnimatedBadge plan={tab} size={150} />
-        </div>
+        {isVerified && <div style={{ textAlign: 'center', padding: 14, borderRadius: 14, border: '1px solid ' + GOLD, color: GOLD, fontWeight: 700, fontSize: 14, marginBottom: 14 }}>You are verified. Thank you!</div>}
 
-        <h2 style={{ textAlign: 'center', fontSize: 22, fontWeight: 800, margin: '4px 0 6px', color: plan.color }}>{plan.name}</h2>
-        <p style={{ textAlign: 'center', color: 'var(--text-secondary)', fontSize: 14, lineHeight: 1.5, margin: '0 8px 18px' }}>{plan.blurb}</p>
-
-        <div style={{ background: 'var(--bg-card-4)', borderRadius: 16, padding: '6px 16px', marginBottom: 18 }}>
-          {plan.perks.map(t => (
+        <div style={{ background: 'var(--bg-card-4)', borderRadius: 16, padding: '4px 16px' }}>
+          {PERKS.map(t => (
             <div key={t} style={{ display: 'flex', gap: 12, alignItems: 'center', padding: '12px 0', borderBottom: '1px solid var(--border-color)', fontSize: 14 }}>
-              <span style={{ width: 22, height: 22, borderRadius: 11, background: plan.color, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Check size={14} color="#fff" strokeWidth={3} /></span>
+              <span style={{ width: 22, height: 22, borderRadius: 11, background: GOLD, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}><Check size={14} color="#fff" strokeWidth={3} /></span>
               <span>{t}</span>
             </div>
           ))}
         </div>
 
-        {status.loading ? null : hasThis ? (
-          <div style={{ textAlign: 'center', padding: 14, borderRadius: 14, border: '1px solid ' + plan.color, color: plan.color, fontWeight: 700, fontSize: 14 }}>
-            You have {plan.name}{status.until ? ' · renews or ends ' + fmt(status.until) : ''}
-          </div>
-        ) : includedInPremium ? (
-          <div style={{ textAlign: 'center', padding: 14, borderRadius: 14, background: 'var(--bg-card-4)', color: 'var(--text-secondary)', fontSize: 14 }}>Included in your Premium plan.</div>
-        ) : (
-          <div style={{ padding: 16, borderRadius: 14, background: 'var(--bg-card-4)', textAlign: 'center' }}>
-            {ended && <div style={{ color: 'var(--danger)', fontWeight: 600, fontSize: 13, marginBottom: 8 }}>Your {PLANS[status.plan]?.name || 'plan'} ended{status.until ? ' on ' + fmt(status.until) : ''}.</div>}
-            <div style={{ fontWeight: 700, fontSize: 15, marginBottom: 6 }}>Subscribe in the Flitters Android app</div>
-            <div style={{ color: 'var(--text-secondary)', fontSize: 13, lineHeight: 1.5 }}>Payment is handled by Google Play. Open the Flitters app on your Android phone, go to Get Verified and pick {plan.name}. Come back here and tap refresh and your seal will show on the web too.</div>
-          </div>
-        )}
+        {!isVerified && (<>
+          {step(1, 'Pay ' + PRICE)}
+          {PAY_METHODS.map(m => (
+            <div key={m.id} style={{ background: 'var(--bg-card-4)', borderRadius: 12, padding: 14, marginBottom: 10 }}>
+              <p style={{ fontWeight: 700, marginBottom: 6 }}>{m.name}</p>
+              {m.kind === 'address' ? (<>
+                <p style={{ color: 'var(--text-tertiary)', fontSize: 12, wordBreak: 'break-all', fontFamily: 'monospace', marginBottom: 10 }}>{m.address}</p>
+                <button onClick={() => copy(m.id, m.address)} style={{ display: 'inline-flex', alignItems: 'center', gap: 6, background: 'var(--bg-app)', border: '1px solid var(--border-color-2)', borderRadius: 10, padding: '8px 14px', color: copied === m.id ? 'var(--repost)' : 'var(--text-primary)', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
+                  {copied === m.id ? <><Check size={14} /> Copied</> : <><Copy size={14} /> Copy address</>}
+                </button>
+              </>) : (
+                <a href={m.href} target="_blank" rel="noopener noreferrer" style={{ color: 'var(--primary)', fontWeight: 600, fontSize: 14 }}>Pay now</a>
+              )}
+            </div>
+          ))}
+          <p style={{ color: 'var(--text-quaternary)', fontSize: 12, lineHeight: 1.5 }}>Send the exact network shown (TRC-20 for USDT). Keep the transaction hash, you need it in step 2.</p>
 
-        {active && (
-          <a href="https://play.google.com/store/account/subscriptions" target="_blank" rel="noopener noreferrer" style={{ display: 'block', textAlign: 'center', marginTop: 12, color: 'var(--primary)', fontSize: 13, fontWeight: 600, textDecoration: 'none' }}>Manage subscription in Google Play</a>
-        )}
-        {note && <div style={{ textAlign: 'center', color: 'var(--text-tertiary)', fontSize: 12, marginTop: 10 }}>{note}</div>}
-
-        {onManual && (
-          <button onClick={onManual} style={{ display: 'block', width: '100%', marginTop: 26, background: 'none', border: 'none', color: 'var(--text-tertiary)', fontSize: 13, textDecoration: 'underline', cursor: 'pointer' }}>Prefer to pay by crypto? Apply manually</button>
-        )}
+          {step(2, 'Submit your application')}
+          {applied && <div style={{ padding: '10px 14px', borderRadius: 10, background: 'var(--bg-card-4)', color: 'var(--text-secondary)', fontSize: 13, marginBottom: 12 }}>You applied on {fmt(applied)}. We review within 48 hours. You only need to apply again if something was wrong.</div>}
+          {msg.text && <div style={{ padding: '10px 14px', borderRadius: 10, marginBottom: 12, fontSize: 13, background: msg.ok ? 'rgba(var(--repost-rgb),0.1)' : 'rgba(var(--danger-rgb),0.1)', color: msg.ok ? 'var(--repost)' : 'var(--danger)' }}>{msg.text}</div>}
+          <VerifyForm currentUser={currentUser} supabase={supabase} showMsg={showMsg} saving={saving} setSaving={setSaving} inp={inp} />
+        </>)}
       </div>
     </div>
   )

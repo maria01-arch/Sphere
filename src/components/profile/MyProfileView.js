@@ -36,7 +36,7 @@ export function MyProfileView({ currentUser, supabase, onSettings, onBack, avata
         <span style={{fontWeight:700,fontSize:17}}>My Profile</span>
         <button onClick={onSettings} style={{background:'none',border:'none',color:'var(--text-subtle)',cursor:'pointer',display:'flex'}}><Settings size={22}/></button>
       </div>
-      <div style={{height:110,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
+      <div style={{height:110,background:currentUser?.cover_url?`center/cover no-repeat url("${currentUser?.cover_url}")`:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16}}>
         <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
       </div>

@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react'
 import { Clapperboard } from 'lucide-react'
 import { Avatar } from '@/components/common/Avatar'
 import HlsVideo from '@/components/HlsVideo'
+import { useExclusiveVideo } from '@/lib/videoPrefs'
 
 // ── POST CARD ──────────────────────────────────────────────────────────────
 export function ReelPreviewCard({ supabase, onOpen }) {
@@ -17,21 +18,8 @@ export function ReelPreviewCard({ supabase, onOpen }) {
     })
     return ()=>{cancelled=true}
   },[])
-  // Autoplay (always muted here — this is just a feed teaser, not the real
-  // Reels experience) once the card is mostly on screen, pause once it
-  // scrolls away, same as Instagram/TikTok feed previews.
-  useEffect(()=>{
-    const el = wrapRef.current
-    if(!el) return
-    const obs = new IntersectionObserver(([entry])=>{
-      const video = videoRef.current
-      if(!video) return
-      if(entry.isIntersecting) video.play?.().catch(()=>{}) // autoplay can reject if the browser hasn't decided this counts as a user-initiated context yet — harmless, the poster frame just stays put
-      else video.pause?.()
-    }, { threshold: 0.6 })
-    obs.observe(el)
-    return ()=>obs.disconnect()
-  },[reel])
+  // Shares the one-video-at-a-time rule and the Autoplay setting with post videos.
+  useExclusiveVideo(videoRef, wrapRef, reel?.id)
   if(!reel) return null
   return (
     <div ref={wrapRef} onClick={()=>onOpen(reel.id)} style={{margin:'10px 16px',borderRadius:18,overflow:'hidden',position:'relative',cursor:'pointer',height:200,background:'#000'}}>
