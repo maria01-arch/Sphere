@@ -61,7 +61,7 @@ export function PulseTab({ currentUser, supabase, onUserClick, pendingReelId, on
     const goNext=()=>{ if(currentIdx<allPulses.length-1)setViewingPulse(allPulses[currentIdx+1]); else{setViewingPulse(null)} }
     const goPrev=()=>{ if(currentIdx>0)setViewingPulse(allPulses[currentIdx-1]) }
   return (
-    <div style={{position:'fixed',inset:0,zIndex:300,background:viewingPulse.bg_color||'var(--bg-app)',display:'flex',flexDirection:'column'}}>
+    <div className="dk-page" style={{position:'fixed',inset:0,zIndex:300,background:viewingPulse.bg_color||'var(--bg-app)',display:'flex',flexDirection:'column'}}>
     <style>{'@keyframes shrink{from{width:100%}to{width:0%}}'}</style>
       <div style={{position:'absolute',top:0,left:0,right:0,display:'flex',gap:2,padding:'4px 8px',zIndex:10}}>
         {allPulses.map((p,i)=>(
@@ -124,7 +124,7 @@ export function PulseTab({ currentUser, supabase, onUserClick, pendingReelId, on
         {pulses.map(p=>(
           <div key={p.id} onClick={()=>setViewingPulse(p)} style={{display:'flex',flexDirection:'column',alignItems:'center',gap:6,cursor:'pointer',flexShrink:0}}>
             <div style={{width:64,height:64,borderRadius:'50%',background:p.bg_color||'#5B9CF6',border:'3px solid #845EF7',display:'flex',alignItems:'center',justifyContent:'center',overflow:'hidden'}}>
-              {p.author?.avatar_url?<img src={p.author.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span style={{color:'var(--text-primary)',fontWeight:800,fontSize:20}}>{p.author?.display_name?.[0]}</span>}
+              <Avatar url={p.author?.avatar_url} name={p.author?.display_name} color={p.author?.avatar_color} size={58}/>
             </div>
             <span style={{color:'var(--text-subtle)',fontSize:11,maxWidth:64,textAlign:'center',overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{p.author?.display_name}</span>
           </div>

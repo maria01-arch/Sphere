@@ -95,7 +95,7 @@ export function UserProfileView({ user, currentUser, supabase, onBack, onMessage
         </div>}
       </div>
       <div style={{height:120,background:`linear-gradient(135deg,${color}44,#845EF733)`}}/>
-      {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt="" loading="lazy"/></div>}
+      {showBigAvatar&&profile?.avatar_url&&<div onClick={()=>setShowBigAvatar(false)} style={{position:'fixed',inset:0,zIndex:600,background:'rgba(0,0,0,0.9)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={profile.avatar_url} onError={()=>setShowBigAvatar(false)} style={{width:'90vw',height:'90vw',maxWidth:400,maxHeight:400,borderRadius:'50%',objectFit:'cover'}} alt="" loading="lazy"/></div>}
       <div style={{padding:'0 16px',marginTop:-36,marginBottom:16,display:'flex',justifyContent:'space-between',alignItems:'flex-end'}}>
         <div onClick={()=>setShowBigAvatar(true)} style={{cursor:'pointer'}}>
           <Avatar url={profile?.avatar_url} name={profile?.display_name} color={color} size={72}/>

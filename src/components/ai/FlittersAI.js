@@ -75,7 +75,7 @@ export function FlittersAI({ currentUser, onClose }) {
   }
 
   return (
-    <div className="screen-in-safe" style={{position:'fixed',inset:0,zIndex:500,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+    <div className="screen-in-safe dk-page" style={{position:'fixed',inset:0,zIndex:500,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'12px 16px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'rgba(9,11,16,0.98)'}}>
         <button onClick={onClose} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
         <img src="/flitters-ai-icon.png" alt="Flitters AI" style={{width:38,height:38,objectFit:'contain'}} loading="lazy"/>

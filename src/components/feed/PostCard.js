@@ -7,6 +7,8 @@ import { LinkPreviewCard } from '@/components/common/LinkPreviewCard'
 import { ReportModal } from '@/components/common/ReportModal'
 import { RowSkeletonList } from '@/components/common/Skeletons'
 import { CommentThread } from '@/components/feed/CommentThread'
+import { PostVideo } from '@/components/feed/PostVideo'
+import { observeSeen } from '@/lib/seen'
 import { QuotedPostPreview } from '@/components/feed/QuotedPostPreview'
 import { AI_MENTION_RE, triggerAiMentionReply } from '@/lib/api'
 import { getColor } from '@/lib/colors'
@@ -252,8 +254,10 @@ export const PostCard = memo(function PostCard({ post, currentUser, supabase, on
     return roots
   }
 
+  const rootRef = useRef(null)
+  useEffect(()=>observeSeen(rootRef.current, currentUser?.id, post.id),[post.id,currentUser?.id])
   return (
-    <div style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
+    <div ref={rootRef} style={{padding:'14px 16px',borderBottom:'1px solid var(--border-color)'}}>
       <div style={{display:'flex',gap:12}}>
         <button onClick={()=>onUserClick(headerUser)} style={{background:'none',border:'none',padding:0,cursor:'pointer',flexShrink:0}}>
           <Avatar url={headerUser.avatar_url} name={headerUser.display_name} color={headerColor} size={44}/>
@@ -282,7 +286,8 @@ export const PostCard = memo(function PostCard({ post, currentUser, supabase, on
           {isQuote ? (
             <QuotedPostPreview post={post} onOpen={onOpenPost} onUserClick={onUserClick}/>
           ) : (<>
-            {!post.image_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
+            {post.video_url&&<PostVideo src={post.video_url} poster={post.thumbnail_url}/>}
+            {!post.image_url&&!post.video_url&&post.content&&getFirstUrl(post.content)&&<div style={{marginBottom:12}}><LinkPreviewCard url={getFirstUrl(post.content)}/></div>}
             {post.image_url&&<img {...imageLongPress} onClick={(e)=>{ if(imageLongPress.didFire()){e.preventDefault();return} !autoExpandComments && onOpenPost && onOpenPost(post.id) }} src={post.image_url} style={{width:'100%',borderRadius:12,marginBottom:12,maxHeight:400,objectFit:'cover',cursor:(!autoExpandComments&&onOpenPost)?'pointer':'default',WebkitTouchCallout:'none',userSelect:'none'}} alt="post" loading="lazy"/>}
           </>)}
           <div style={{display:'flex'}}>

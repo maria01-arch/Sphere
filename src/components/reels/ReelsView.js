@@ -180,6 +180,26 @@ export function ReelsView({ currentUser, supabase, onUserClick, onClose, initial
     if(currentIdx>=newReels.length) setCurrentIdx(Math.max(0,newReels.length-1))
   }
 
+  // Desktop: mouse wheel and Up/Down arrow keys move between reels (phones use swipe, below).
+  const wheelLockRef = useRef(0)
+  const handleWheel = (e) => {
+    if(showComments) return
+    const now = Date.now()
+    if(now - wheelLockRef.current < 650 || Math.abs(e.deltaY) < 20) return
+    wheelLockRef.current = now
+    if(e.deltaY>0 && currentIdx<reels.length-1) goToReel(currentIdx+1,'up')
+    else if(e.deltaY<0 && currentIdx>0) goToReel(currentIdx-1,'down')
+  }
+  useEffect(()=>{
+    const onKey = (e) => {
+      if(showComments || e.target?.tagName==='INPUT' || e.target?.tagName==='TEXTAREA') return
+      if(e.key==='ArrowDown' && currentIdx<reels.length-1) { e.preventDefault(); goToReel(currentIdx+1,'up') }
+      else if(e.key==='ArrowUp' && currentIdx>0) { e.preventDefault(); goToReel(currentIdx-1,'down') }
+      else if(e.key==='Escape') onClose?.()
+    }
+    window.addEventListener('keydown', onKey)
+    return ()=>window.removeEventListener('keydown', onKey)
+  })
   const handleTouchStart = (e) => { if(showComments) return; touchStart.current = e.touches[0].clientY }
   const handleTouchEnd = (e) => {
     if(showComments||!touchStart.current) return
@@ -200,7 +220,7 @@ export function ReelsView({ currentUser, supabase, onUserClick, onClose, initial
   const reel = reels[currentIdx]
 
   if(showUpload) return (
-    <div style={{position:'fixed',inset:0,zIndex:400,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
+    <div className="dk-page" style={{position:'fixed',inset:0,zIndex:400,background:'var(--bg-app)',color:'var(--text-primary)',display:'flex',flexDirection:'column'}}>
       <div style={{padding:'16px',display:'flex',alignItems:'center',gap:12,borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
         <button onClick={()=>{setShowUpload(false);clearVideoFile();setCaption('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',display:'flex'}}><X size={24}/></button>
         <span style={{fontWeight:700,fontSize:17,flex:1}}>New Reel</span>
@@ -249,8 +269,8 @@ export function ReelsView({ currentUser, supabase, onUserClick, onClose, initial
   )
 
   return (
-    <div ref={containerRef} style={{position:'fixed',inset:0,zIndex:400,background:'#000',color:'#fff',overflow:'hidden',overscrollBehavior:'none',touchAction:'pan-y'}}
-      onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd}>
+    <div ref={containerRef} className="dk-page" style={{position:'fixed',inset:0,zIndex:400,background:'#000',color:'#fff',overflow:'hidden',overscrollBehavior:'none',touchAction:'pan-y'}}
+      onTouchStart={handleTouchStart} onTouchEnd={handleTouchEnd} onWheel={handleWheel}>
 
       {/* top controls */}
       <button onClick={onClose} style={{position:'absolute',top:16,left:16,zIndex:20,background:'rgba(0,0,0,0.5)',border:'none',borderRadius:'50%',width:36,height:36,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={20}/></button>

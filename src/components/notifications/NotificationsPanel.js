@@ -4,6 +4,7 @@ import { Bell } from 'lucide-react'
 import { RowSkeletonList } from '@/components/common/Skeletons'
 import { NOTIF_TYPE_INFO } from '@/lib/constants'
 import { timeAgo } from '@/lib/timeAgo'
+import { Avatar } from '@/components/common/Avatar'
 
 export function NotificationsPanel({ currentUser, supabase, onUserClick, onPostClick }) {
   const [notifs, setNotifs] = useState([])
@@ -29,7 +30,7 @@ export function NotificationsPanel({ currentUser, supabase, onUserClick, onPostC
         const goesToPost = ['mention','like','comment','repost'].includes(n.type) && n.post_id
         return(<div key={n.id||i} onClick={()=>{ if(goesToPost) onPostClick?.(n.post_id); else if(actor) onUserClick(actor) }} style={{display:'flex',alignItems:'center',gap:14,padding:'14px 16px',borderBottom:'1px solid var(--bg-card-4)',cursor:(goesToPost||actor)?'pointer':'default',background:n.read?'transparent':'rgba(var(--primary-rgb),0.05)'}}>
           <div style={{width:44,height:44,borderRadius:'50%',background:'var(--bg-card-3)',display:'flex',alignItems:'center',justifyContent:'center',fontSize:22,flexShrink:0,overflow:'hidden'}}>
-            {actor?.avatar_url?<img src={actor.avatar_url} style={{width:'100%',height:'100%',objectFit:'cover'}} alt="" loading="lazy"/>:<span style={{color:'var(--text-secondary)',display:'flex'}}>{info.icon}</span>}
+            {actor?<Avatar url={actor.avatar_url} name={actor.display_name} color={actor.avatar_color} size={44}/>:<span style={{color:'var(--text-secondary)',display:'flex'}}>{info.icon}</span>}
           </div>
           <div style={{flex:1,minWidth:0}}>
             <span style={{fontWeight:700,fontSize:14,color:'var(--text-primary)'}}>{actor?.display_name||'Flitters'} </span>

@@ -9,7 +9,8 @@ Native = reference. Tick things as they are ported to web.
 - [ ] Offline page/banner + cached feed
 
 ## Feed & posts
-- [ ] "For You" ranked feed (feed_ranked SQL) + seen-posts tracking (post_views) + Following-only interest setting
+- [x] "For You" ranked feed (feed_ranked SQL) + seen-posts tracking (post_views)  — needs the SQL from sql/ranked_feed.sql run once in Supabase
+- [ ] Following-only interest setting
 - [ ] Hashtag pages, saved/bookmarked posts, co-owners on posts
 - [ ] Quote-repost modal, post share sheet, link-preview card parity, comment screen
 - [ ] Ad impression/click tracking (adTracking)
@@ -29,3 +30,8 @@ Native = reference. Tick things as they are ported to web.
 ## Misc
 - [ ] Sounds (send/like/incoming), haptics n/a on web
 - [ ] Remove fake TRENDING list in FlittersApp.js (hard-coded numbers) and use real hashtag data
+
+## Done in round 2
+- [x] Default 2D person avatar + broken-image fallback (components/common/Avatar.js)
+- [x] Video posts in feed + composer (components/feed/PostVideo.js; limits 20s / 60s verified / 5min hard cap / 200MB)
+- [x] Desktop layout: sidebar + centered column at >=900px (components/app/DesktopShell.js + DESKTOP LAYOUT block in globals.css), Enter-to-send in chats, wheel/arrow keys in Reels

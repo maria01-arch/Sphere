@@ -204,7 +204,7 @@ export function StickerTray({ currentUser, supabase, onSelect, onEmojiSelect, on
   }
 
   return (
-    <div style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:160,height:280,display:'flex',flexDirection:'column',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
+    <div className="dk-bar" style={{position:'fixed',left:0,right:0,bottom:0,maxWidth:600,margin:'0 auto',background:'var(--bg-app)',borderTop:'1px solid var(--border-color)',zIndex:160,height:280,display:'flex',flexDirection:'column',paddingBottom:'env(safe-area-inset-bottom,0px)'}}>
       <div style={{display:'flex',alignItems:'center',gap:8,padding:'10px 12px',overflowX:'auto',borderBottom:'1px solid var(--border-color)',flexShrink:0}}>
         <button onClick={()=>setMode('emoji')} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:mode==='emoji'?'rgba(var(--primary-rgb),0.2)':'var(--bg-card)',color:mode==='emoji'?'var(--primary)':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><Smile size={14}/> Emoji</button>
         <button onClick={()=>setMode('sticker')} style={{flexShrink:0,padding:'6px 12px',borderRadius:14,border:'none',background:mode==='sticker'?'rgba(var(--primary-rgb),0.2)':'var(--bg-card)',color:mode==='sticker'?'var(--primary)':'var(--text-secondary)',fontSize:12,fontWeight:700,cursor:'pointer',display:'flex',alignItems:'center',gap:5}}><span style={{fontSize:14,lineHeight:1}}>🖼️</span> Stickers</button>

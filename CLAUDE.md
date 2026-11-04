@@ -28,3 +28,11 @@ All colors live in src/app/globals.css as CSS variables, for dark (default) and 
 ## No full build available in the AI sandbox
 npm registry is blocked there, so changes are checked with esbuild + a TypeScript undefined-variable scan,
 not `next build`. If Vercel build fails, send the error text.
+
+## Desktop layout rules
+- >=900px: DesktopShell (sidebar) + .dk-main column. Phones are untouched (sidebar hidden by CSS).
+- Any new full-screen `position:fixed` page must get className="dk-page" (or "dk-bar" for a fixed header/footer) so it stays inside the column. Phone-only floating things get "dk-hide".
+
+## Feed
+- For You uses the Supabase RPC feed_ranked (SQL in sql/ranked_feed.sql). If it is not installed the feed silently falls back to the old on-device ranking in loadPosts.
+- Seen posts are saved to table post_views (lib/seen.js).

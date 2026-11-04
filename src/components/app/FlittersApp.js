@@ -1,6 +1,6 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Ban, Bell, Compass, Copy, CornerUpLeft, Globe, Home, Image as ImageIcon, Loader2, Lock, Megaphone, MessageCircle, Mic, Pencil, Search, Send, Settings, ShoppingBag, Smile, Trash2, Users, X } from 'lucide-react'
+import { AlertTriangle, Ban, Bell, Compass, Copy, CornerUpLeft, Globe, Home, Image as ImageIcon, Loader2, Lock, Megaphone, MessageCircle, Mic, Pencil, Search, Send, Settings, ShoppingBag, Smile, Trash2, Users, Video, X } from 'lucide-react'
 import { AdminPanel } from '@/components/admin/AdminPanel'
 import { FlittersAI } from '@/components/ai/FlittersAI'
 import { GroupChat } from '@/components/chat/GroupChat'
@@ -10,6 +10,7 @@ import { StickerTray } from '@/components/chat/StickerTray'
 import { VoiceRecordingBar } from '@/components/chat/VoiceMessage'
 import { Avatar } from '@/components/common/Avatar'
 import { ErrorBoundary } from '@/components/common/ErrorBoundary'
+import { DesktopShell } from '@/components/app/DesktopShell'
 import { FeedLoadMoreSentinel } from '@/components/common/FeedLoadMoreSentinel'
 import { InAppToast } from '@/components/common/InAppToast'
 import { ReportModal } from '@/components/common/ReportModal'
@@ -29,7 +30,7 @@ import { NOTIF_TYPE_INFO, QUICK_REACTIONS } from '@/lib/constants'
 import { isMissingColumnError } from '@/lib/dbUtils'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
 import { useVoiceRecorder } from '@/lib/hooks/useVoiceRecorder'
-import { uploadToR2 } from '@/lib/media/upload'
+import { getVideoDuration, uploadToR2, uploadVideoChunked } from '@/lib/media/upload'
 import { supabase } from '@/lib/supabase/instance'
 import { useTheme } from '@/lib/theme'
 import { timeAgo } from '@/lib/timeAgo'
@@ -90,6 +91,28 @@ export function FlittersAppInner({ currentUser }) {
   const [composeImage, setComposeImage] = useState(null)
   const [composeImageUrl, setComposeImageUrl] = useState(null)
   const composeImgRef = useRef(null)
+  const composeVidRef = useRef(null)
+  const [composeVideo, setComposeVideo] = useState(null)
+  const [composeVideoUrl, setComposeVideoUrl] = useState(null)
+  const [composeVideoIssue, setComposeVideoIssue] = useState('')
+  const [composeBusy, setComposeBusy] = useState(false)
+  const [composePct, setComposePct] = useState(0)
+  const clearComposeVideo = () => { if(composeVideoUrl) URL.revokeObjectURL(composeVideoUrl); setComposeVideo(null); setComposeVideoUrl(null); setComposeVideoIssue('') }
+  // Same rules as the native app: regular members 20s, verified/authentic 60s, nothing over 5 minutes, 200MB max.
+  const pickComposeVideo = async (file) => {
+    if(!file) return
+    clearComposeVideo()
+    const limit = (currentUser?.verified||currentUser?.is_authentic) ? 60 : 20
+    let issue = ''
+    try {
+      const secs = Math.round(await getVideoDuration(file))
+      if(secs>300) issue = `This video is ${Math.floor(secs/60)}m ${secs%60}s long. Videos over 5 minutes can't be uploaded.`
+      else if(secs>limit) issue = `This video is ${secs}s long. You can upload videos up to ${limit} seconds.${limit<60?' Verified members can upload up to 1 minute.':''}`
+      else if(file.size>200*1024*1024) issue = `This file is ${(file.size/1024/1024).toFixed(1)}MB — the limit is 200MB.`
+    } catch(e) { issue = e.message||"Couldn't read that video." }
+    setComposeImage(null); setComposeImageUrl(null)
+    setComposeVideo(file); setComposeVideoUrl(URL.createObjectURL(file)); setComposeVideoIssue(issue)
+  }
   const [conversations, setConversations] = useState([])
   const [convosLoading, setConvosLoading] = useState(true)
   const [selectedConv, setSelectedConv] = useState(null)
@@ -607,9 +630,77 @@ export function FlittersAppInner({ currentUser }) {
   const [pendingDM, setPendingDM] = useState(null)
   const bottomRef = useRef(null)
 
+  // ── Ranked "For You" (server function feed_ranked, same one the native app uses).
+  // If the SQL is not installed yet, everything below quietly falls back to the older on-device ranking.
+  const rankedOkRef = useRef(null)          // null = unknown, true = works, false = not installed
+  const rankedSeedRef = useRef(Math.random().toString(36).slice(2,8))
+  const rankedLoadingRef = useRef(false)
+  const rankedIdsRef = useRef([])
+  const [rankedMore, setRankedMore] = useState(false)
+  const RANK_PAGE = 30
+  const fetchRankedPage = async (exclude) => {
+    const { data: rows, error } = await supabase.rpc('feed_ranked', { p_limit: RANK_PAGE, p_exclude: exclude, p_reposts: true, p_seed: rankedSeedRef.current })
+    if (error) {
+      if (/could not find the function|does not exist|PGRST202|42883/i.test((error.code||'')+' '+(error.message||''))) rankedOkRef.current = false
+      return null
+    }
+    const list = rows || []
+    if (!list.length) return { items: [], ids: [], hasMore: false }
+    const postIds = list.filter(r=>r.kind==='post').map(r=>String(r.post_id))
+    const repostIds = list.filter(r=>r.kind==='repost').map(r=>String(r.repost_id))
+    const POST_SEL = '*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)'
+    const [pRes, rRes, bRes1, bRes2] = await Promise.all([
+      postIds.length ? supabase.from('posts').select(POST_SEL).in('id', postIds) : Promise.resolve({data:[]}),
+      repostIds.length ? supabase.from('reposts').select('id,created_at,content,user:profiles!user_id(*),post:posts('+POST_SEL+')').in('id', repostIds) : Promise.resolve({data:[]}),
+      supabase.from('blocks').select('blocked_id').eq('blocker_id', currentUser.id),
+      supabase.from('blocks').select('blocker_id').eq('blocked_id', currentUser.id),
+    ])
+    if (pRes.error || rRes.error) return null
+    const hidden = new Set([...(bRes1.data||[]).map(b=>b.blocked_id), ...(bRes2.data||[]).map(b=>b.blocker_id)])
+    const shape = (p) => ({ ...p, user_liked:p.likes?.some(l=>l.user_id===currentUser.id), user_reposted:p.reposts?.some(r=>r.user_id===currentUser.id), likes_count:p.likes?.length||0, reposts_count:p.reposts?.length||0, comments_count:p.comments?.length||0 })
+    const byPost = {}; (pRes.data||[]).forEach(p=>{ byPost[String(p.id)] = { ...shape(p), sortTime:p.created_at } })
+    const byRepost = {}; (rRes.data||[]).filter(r=>r.post).forEach(r=>{ byRepost[String(r.id)] = { ...shape(r.post), isRepost:true, reposter:r.user, quoteContent:r.content, sortTime:r.created_at } })
+    const items = []
+    list.forEach(r => {
+      const it = r.kind==='repost' ? byRepost[String(r.repost_id)] : byPost[String(r.post_id)]
+      if (!it || hidden.has(it.user_id) || (it.isRepost && hidden.has(it.reposter?.id))) return
+      items.push(it)
+    })
+    return { items, ids: list.map(r=>String(r.post_id)), hasMore: list.length >= RANK_PAGE }
+  }
+  const loadMoreRanked = async () => {
+    if (rankedLoadingRef.current || rankedOkRef.current !== true) return
+    rankedLoadingRef.current = true
+    try {
+      const exclude = Array.from(new Set(rankedIdsRef.current || []))
+      const next = await fetchRankedPage(exclude)
+      if (next) {
+        rankedIdsRef.current = [...exclude, ...next.ids]
+        setPosts(prev => {
+          const have = new Set(prev.map(p => (p.isRepost?'r':'p')+p.id+(p.reposter?.id||'')))
+          return [...prev, ...next.items.filter(p => !have.has((p.isRepost?'r':'p')+p.id+(p.reposter?.id||'')))]
+        })
+        setRankedMore(next.hasMore && next.items.length > 0)
+      } else setRankedMore(false)
+    } finally { rankedLoadingRef.current = false }
+  }
+
   const loadPosts = useCallback(async (feedType='foryou') => {
     setLoading(true)
     try {
+      if (feedType==='foryou' && rankedOkRef.current !== false) {
+        rankedSeedRef.current = Math.random().toString(36).slice(2,8)  // new shuffle on every refresh
+        const first = await fetchRankedPage([])
+        if (first && first.items.length) {
+          rankedOkRef.current = true
+          rankedIdsRef.current = first.ids
+          setPosts(first.items); setVisibleCount(10); setRankedMore(first.hasMore)
+          setLoading(false)
+          return
+        }
+        // empty or unavailable -> use the older ranking below
+        setRankedMore(false)
+      } else setRankedMore(false)
       // fetch who current user follows and has interacted with
       const [{data:followsData},{data:likedData},{data:commentedData},{data:blockedByMe},{data:blockedMe}] = await Promise.all([
         supabase.from('follows').select('following_id').eq('follower_id',currentUser.id),
@@ -884,19 +975,32 @@ export function FlittersAppInner({ currentUser }) {
   },[gsQuery,showSearch,currentUser.id])
 
   const sendPost = async() => {
-    if(!composeText.trim()&&!composeImage) return
+    if((!composeText.trim()&&!composeImage&&!composeVideo)||composeBusy||composeVideoIssue) return
     let imageUrl = null
+    let videoUrl = null
+    setComposeBusy(true); setComposePct(0)
     if(composeImage) {
       const ext = composeImage.name.split('.').pop().toLowerCase()
       const path = 'posts/'+currentUser.id+'_'+Date.now()+'.'+ext
       let urlData
       try { urlData = await uploadToR2(composeImage, path) }
-      catch(err) { alert('Image upload failed: '+err.message); return }
+      catch(err) { alert('Image upload failed: '+err.message); setComposeBusy(false); return }
       imageUrl = urlData.publicUrl
     }
-    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl}).select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').single()
+    if(composeVideo) {
+      const ext = (composeVideo.name.split('.').pop()||'mp4').toLowerCase()
+      const path = 'posts/'+currentUser.id+'_'+Date.now()+'.'+ext
+      try {
+        const limit = (currentUser?.verified||currentUser?.is_authentic) ? 60 : 20
+        const up = await uploadVideoChunked(composeVideo, path, { maxDurationSeconds:limit, maxSizeBytes:200*1024*1024, onProgress:setComposePct })
+        videoUrl = up.publicUrl
+      } catch(err) { alert(err.message||'Video upload failed'); setComposeBusy(false); return }
+    }
+    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl,video_url:videoUrl}).select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').single()
     if(data) {
       setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
+      // Video posts also appear in Reels, same as the native app.
+      if(videoUrl) { try { await supabase.from('reels').insert({user_id:currentUser.id,video_url:videoUrl,caption:composeText.trim()}) } catch(e) {} }
       // detect @mentions and notify tagged users
       const handles = [...new Set((composeText.match(/@([a-zA-Z0-9_]+)/g)||[]).map(h=>h.slice(1).toLowerCase()))]
       if(handles.length){
@@ -911,7 +1015,7 @@ export function FlittersAppInner({ currentUser }) {
         triggerAiMentionReply({ postId: data.id, postContent: composeText.trim() })
       }
     }
-    setComposeText(''); setComposeImage(null); setComposeImageUrl(null); setShowCompose(false)
+    setComposeText(''); setComposeImage(null); setComposeImageUrl(null); clearComposeVideo(); setComposeBusy(false); setComposePct(0); setShowCompose(false)
   }
 
   const deletePost = async(postId) => {
@@ -1160,12 +1264,31 @@ export function FlittersAppInner({ currentUser }) {
   const TRENDING=[{tag:'#GlobalVoices',posts:'142K',cat:'Worldwide'},{tag:'#TechForGood',posts:'89K',cat:'Technology'},{tag:'#WorldCulture',posts:'211K',cat:'Culture'},{tag:'#FlittersSpotlight',posts:'445K',cat:'Flitters'},{tag:'#FutureNow',posts:'78K',cat:'Trending'},{tag:'#ClimateAction',posts:'190K',cat:'Environment'},{tag:'#StartupLife',posts:'55K',cat:'Business'},{tag:'#MusicMonday',posts:'33K',cat:'Entertainment'}]
 
   
-  if(showAdmin) return <AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>
-  if(showSettings) return <SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>
-  if(showMyProfile) return <MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>
-  if(viewingPost) return (
+  // ── Desktop: sidebar + centered column (the sidebar is hidden on phones by CSS) ──
+  const goTab = (id) => {
+    setShowAdmin(false); setShowSettings(false); setShowMyProfile(false); setViewingPost(null); setViewingUser(null)
+    setViewingGroupChat(null); setShowSearch(false); setShowComposeMenu(false); setHideNav(false); setDmView('list')
+    setTabWithHash(id)
+  }
+  const wrap = (node) => (
+    <DesktopShell tab={tab} onNav={goTab}
+      badges={{messages:unreadDM, notifications:unreadNotifs, messagesDot:unreadGC&&!unreadDM}}
+      onSearch={()=>{goTab(tab);setShowSearch(true)}}
+      onProfile={()=>{goTab(tab);setShowMyProfile(true)}}
+      onSettings={()=>{goTab(tab);setShowSettings(true)}}
+      onCompose={()=>{goTab('home');setShowCompose(true)}}
+      onAdmin={()=>{goTab(tab);setShowAdmin(true)}} isAdmin={currentUser?.id===ADMIN_ID}
+      user={currentUser} avatarUrl={avatarUrl} color={color}>
+      {node}
+    </DesktopShell>
+  )
+
+  if(showAdmin) return wrap(<AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>)
+  if(showSettings) return wrap(<SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>)
+  if(showMyProfile) return wrap(<MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>)
+  if(viewingPost) return wrap(
     <div className="screen-in-safe" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
-      <div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
+      <div className="dk-bar" style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',display:'flex',alignItems:'center',gap:12}}>
         <button onClick={closePost} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
         <span style={{fontWeight:700,fontSize:17}}>Post</span>
       </div>
@@ -1178,8 +1301,8 @@ export function FlittersAppInner({ currentUser }) {
     </div>
   )
 
-  return (
-    <div style={{minHeight:'100dvh',background:'var(--bg-app)',maxWidth:600,margin:'0 auto',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
+  return wrap(
+    <div className="app-col" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)',fontFamily:'sans-serif'}}>
       {!hideNav && <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(10px + env(safe-area-inset-top)) 16px 10px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
         <button onClick={()=>setShowMyProfile(true)} style={{background:'none',border:'none',cursor:'pointer',padding:0,zIndex:1}}>
           <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={36}/>
@@ -1199,7 +1322,7 @@ export function FlittersAppInner({ currentUser }) {
       </div>}
 
       {showSearch && (
-        <div style={{position:'fixed',inset:0,zIndex:60,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+        <div className="dk-page" style={{position:'fixed',inset:0,zIndex:60,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
           <div style={{position:'sticky',top:0,zIndex:10,background:'var(--bg-header)',backdropFilter:'blur(8px)',borderBottom:'1px solid var(--border-color)',padding:'calc(10px + env(safe-area-inset-top)) 16px 10px',display:'flex',alignItems:'center',gap:10}}>
             <button onClick={()=>{setShowSearch(false);setGsQuery('')}} style={{background:'none',border:'none',color:'var(--text-primary)',cursor:'pointer',fontSize:24,padding:0}}>‹</button>
             <input autoFocus value={gsQuery} onChange={e=>setGsQuery(e.target.value)} placeholder="Search people or posts..." style={{...inp,flex:1}}/>
@@ -1245,7 +1368,7 @@ export function FlittersAppInner({ currentUser }) {
               {(i+1)%10===0&&<ReelPreviewCard supabase={supabase} onOpen={(reelId)=>{setTabWithHash('pulse');setPendingReelId(reelId)}}/>}
             </div>
           ))}
-          {!loading && visibleCount<posts.length && <FeedLoadMoreSentinel onReached={()=>setVisibleCount(v=>Math.min(v+10,posts.length))}/>}
+          {!loading && (visibleCount<posts.length || (feedTab==='foryou'&&rankedMore)) && <FeedLoadMoreSentinel onReached={()=>{ setVisibleCount(v=>Math.min(v+10,posts.length)); if(feedTab==='foryou'&&rankedMore&&posts.length-visibleCount<=12) loadMoreRanked() }}/>}
         </>}
 
         {tab==='messages'&&<>
@@ -1404,12 +1527,12 @@ export function FlittersAppInner({ currentUser }) {
             </div>
           </div>}
 
-          {viewingGroupChat&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          {viewingGroupChat&&<div className="dk-page" style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             <GroupChat group={viewingGroupChat} currentUser={currentUser} supabase={supabase} onBack={()=>{setViewingGroupChat(null);setHideNav(false);loadGroupsForList()}} onUserClick={handleUserClick} onRead={(groupId)=>{unreadGroupIdsRef.current.delete(groupId);recomputeGCBadge()}}/>
           </div>}
 
           {dmView==='chat'&&selectedConv&&selectedConv.id==='omnicore-ai'&&<FlittersAI currentUser={currentUser} onClose={()=>{setDmView('list');setSelectedConv(null)}}/>}
-          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
+          {dmView==='chat'&&selectedConv&&selectedConv.id!=='omnicore-ai'&&<div className="dk-page" style={{position:'fixed',top:'var(--vv-top,0px)',left:0,right:0,height:'var(--vvh,100dvh)',zIndex:50,background:'var(--bg-app)',display:'flex',flexDirection:'column',overflow:'hidden'}}>
             {fullscreenImg&&<div onClick={()=>setFullscreenImg(null)} style={{position:'fixed',inset:0,zIndex:999,background:'rgba(0,0,0,0.95)',display:'flex',alignItems:'center',justifyContent:'center'}}><img src={fullscreenImg} style={{maxWidth:'100%',maxHeight:'100%',objectFit:'contain'}} alt="" loading="lazy"/></div>}
             <div style={{padding:'calc(12px + env(safe-area-inset-top)) 16px 12px',borderBottom:'1px solid var(--border-color)',display:'flex',alignItems:'center',gap:12,background:'var(--bg-header)',backdropFilter:'blur(7px)',flexShrink:0}}>
               <button onClick={()=>{setDmView('list');setSelectedConv(null);setMessages([]);loadConvos()}} style={{background:'none',border:'none',color:'var(--text-tertiary)',cursor:'pointer',fontSize:24}}>‹</button>
@@ -1486,7 +1609,7 @@ export function FlittersAppInner({ currentUser }) {
               <input ref={dmImgRef} type="file" accept="image/*" onChange={e=>sendDMImage(e.target.files[0])} style={{display:'none'}}/>
               <button onClick={()=>dmImgRef.current?.click()} disabled={sendingDMImg} style={{width:40,height:40,borderRadius:'50%',background:'var(--bg-card)',border:'none',cursor:'pointer',color:'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}>{sendingDMImg?<Loader2 size={18} className="xspin"/>:<ImageIcon size={18}/>}</button>
               <button onClick={()=>setShowDMStickerTray(v=>!v)} style={{width:40,height:40,borderRadius:'50%',background:showDMStickerTray?'rgba(var(--primary-rgb),0.2)':'var(--bg-card)',border:'none',cursor:'pointer',color:showDMStickerTray?'var(--primary)':'var(--text-tertiary)',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Smile size={18}/></button>
-              <textarea ref={dmInputRef} rows={1} value={msgText} onChange={e=>{setMsgText(e.target.value);sendDMTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,minWidth:0,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
+              <textarea ref={dmInputRef} rows={1} value={msgText} onKeyDown={e=>{ if(e.key==='Enter'&&!e.shiftKey&&window.matchMedia('(hover: hover) and (pointer: fine)').matches){ e.preventDefault(); sendMsg() } }} onChange={e=>{setMsgText(e.target.value);sendDMTyping();const el=e.target;requestAnimationFrame(()=>{el.style.height='auto';el.style.height=Math.min(el.scrollHeight,120)+'px'})}} placeholder={dmReplyTo?'Reply...':'Message...'} style={{...inp,flex:1,minWidth:0,borderRadius:20,marginBottom:0,padding:'12px 18px',resize:'none',maxHeight:120,overflowY:'auto',lineHeight:1.4,fontFamily:'sans-serif'}}/>
               {msgText.trim() ? (
                 <button onClick={sendMsg} style={{width:46,height:46,borderRadius:'50%',background:'var(--primary)',border:'none',cursor:'pointer',color:'#fff',flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center'}}><Send size={19}/></button>
               ) : (
@@ -1555,7 +1678,7 @@ export function FlittersAppInner({ currentUser }) {
         </div>
       </div>
 
-      {tab==='home'&&<button onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'var(--primary)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(var(--primary-rgb),0.55)',zIndex:50}}>+</button>}
+      {tab==='home'&&<button className="dk-hide" onClick={()=>setShowCompose(true)} style={{position:'fixed',bottom:96,right:18,width:56,height:56,borderRadius:'50%',background:'var(--primary)',border:'none',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center',color:'#fff',fontSize:28,boxShadow:'0 4px 24px rgba(var(--primary-rgb),0.55)',zIndex:50}}>+</button>}
 
       <InAppToast toast={toast} onClose={()=>setToast(null)} onClick={()=>{
         const a = toast?.action
@@ -1565,7 +1688,7 @@ export function FlittersAppInner({ currentUser }) {
         else if(a.type==='group'){ if(a.group){ setTab('messages'); setViewingGroupChat(a.group); setHideNav(true) } }
         else if(a.type==='notif'){ setTab('notifications') }
       }}/>
-      <div style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
+      <div className="dk-hide" style={{position:'fixed',bottom:14,left:'50%',transform:(navVisible&&!(tab==='messages'&&dmView==='chat')&&!hideNav)?'translateX(-50%)':'translateX(-50%) translateY(100px)',zIndex:100,width:'calc(100% - 28px)',maxWidth:500,transition:'transform 0.3s ease',opacity:navVisible?1:0}}>
         <div style={{background:'var(--bg-header)',backdropFilter:'blur(14px)',borderRadius:30,padding:'8px 4px',border:'1px solid var(--border-color-2)',display:'flex',alignItems:'center',justifyContent:'space-around',boxShadow:'0 8px 40px var(--shadow-color)'}}>
           {TABS.map(({id,label,icon})=>{
             const badgeCount = id==='messages'?unreadDM:id==='notifications'?unreadNotifs:0
@@ -1594,18 +1717,25 @@ export function FlittersAppInner({ currentUser }) {
           <div style={{display:'flex',gap:12}}>
             <Avatar url={avatarUrl} name={currentUser?.display_name} color={color} size={42}/>
             <div style={{flex:1}}>
-              <textarea value={composeText} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'var(--text-primary)',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
+              <textarea value={composeText} onKeyDown={e=>{ if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){ e.preventDefault(); sendPost() } }} onChange={e=>setComposeText(e.target.value)} placeholder="What's happening around the world?" autoFocus rows={3} style={{width:'100%',background:'transparent',border:'none',color:'var(--text-primary)',fontSize:17,resize:'none',outline:'none',lineHeight:1.6,fontFamily:'sans-serif'}}/>
               {composeImageUrl&&<div style={{position:'relative',marginBottom:8}}>
                 <img src={composeImageUrl} style={{width:'100%',maxHeight:200,objectFit:'cover',borderRadius:12}} alt="preview" loading="lazy"/>
                 <button onClick={()=>{setComposeImage(null);setComposeImageUrl(null)}} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'var(--text-primary)',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={14}/></button>
               </div>}
+              {composeVideoUrl&&<div style={{position:'relative',marginBottom:8}}>
+                <video src={composeVideoUrl} controls playsInline preload="metadata" style={{width:'100%',maxHeight:260,borderRadius:12,background:'#000'}}/>
+                <button onClick={clearComposeVideo} style={{position:'absolute',top:6,right:6,background:'rgba(0,0,0,0.7)',border:'none',borderRadius:'50%',width:28,height:28,color:'#fff',cursor:'pointer',display:'flex',alignItems:'center',justifyContent:'center'}}><X size={14}/></button>
+                {composeVideoIssue&&<div style={{color:'var(--danger)',fontSize:13,marginTop:6,lineHeight:1.4}}>{composeVideoIssue}</div>}
+              </div>}
+              <input ref={composeVidRef} type="file" accept="video/*" onChange={e=>{const f=e.target.files[0];if(f)pickComposeVideo(f);e.target.value=''}} style={{display:'none'}}/>
               <input ref={composeImgRef} type="file" accept="image/*" onChange={e=>{const f=e.target.files[0];if(f){setComposeImage(f);if(typeof window!=='undefined')setComposeImageUrl(URL.createObjectURL(f))}}} style={{display:'none'}}/>
               <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',paddingTop:12,borderTop:'1px solid var(--border-color)'}}>
                 <div style={{display:'flex',gap:12,alignItems:'center'}}>
-                  <button onClick={()=>composeImgRef.current?.click()} style={{background:'none',border:'none',color:'var(--primary)',cursor:'pointer',display:'flex'}}><ImageIcon size={22}/></button>
+                  <button onClick={()=>{clearComposeVideo();composeImgRef.current?.click()}} aria-label="Add photo" style={{background:'none',border:'none',color:'var(--primary)',cursor:'pointer',display:'flex'}}><ImageIcon size={22}/></button>
+                  <button onClick={()=>composeVidRef.current?.click()} aria-label="Add video" style={{background:'none',border:'none',color:'var(--primary)',cursor:'pointer',display:'flex'}}><Video size={22}/></button>
                   <span style={{color:composeText.length>250?'var(--danger)':'var(--text-quaternary)',fontSize:13}}>{280-composeText.length}</span>
                 </div>
-                <button onClick={sendPost} disabled={!composeText.trim()&&!composeImage} style={{background:(composeText.trim()||composeImage)?'var(--primary)':'var(--bg-card)',border:'none',borderRadius:24,padding:'10px 26px',color:(composeText.trim()||composeImage)?'var(--text-primary)':'var(--text-quaternary)',fontWeight:700,fontSize:14,cursor:(composeText.trim()||composeImage)?'pointer':'not-allowed'}}>Flit it</button>
+                <button onClick={sendPost} disabled={(!composeText.trim()&&!composeImage&&!composeVideo)||composeBusy||!!composeVideoIssue} style={{background:((composeText.trim()||composeImage||composeVideo)&&!composeVideoIssue)?'var(--primary)':'var(--bg-card)',border:'none',borderRadius:24,padding:'10px 26px',color:((composeText.trim()||composeImage||composeVideo)&&!composeVideoIssue)?'#fff':'var(--text-quaternary)',fontWeight:700,fontSize:14,cursor:((composeText.trim()||composeImage||composeVideo)&&!composeVideoIssue&&!composeBusy)?'pointer':'not-allowed'}}>{composeBusy?(composeVideo?`Uploading ${Math.round(composePct*100)}%`:'Posting…'):'Flit it'}</button>
               </div>
             </div>
           </div>
@@ -1620,7 +1750,7 @@ export function FlittersAppInner({ currentUser }) {
           would then remount PulseTab fresh, landing on its default view
           instead of the reel you were actually on. */}
       {viewingUser && (
-        <div style={{position:'fixed',inset:0,zIndex:900,background:'var(--bg-app)'}}>
+        <div className="dk-page" style={{position:'fixed',inset:0,zIndex:900,background:'var(--bg-app)'}}>
           <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
         </div>
       )}
