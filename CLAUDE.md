@@ -36,3 +36,8 @@ not `next build`. If Vercel build fails, send the error text.
 ## Feed
 - For You uses the Supabase RPC feed_ranked (SQL in sql/ranked_feed.sql). If it is not installed the feed silently falls back to the old on-device ranking in loadPosts.
 - Seen posts are saved to table post_views (lib/seen.js).
+
+## Hashtags, saved posts, verification
+- #tags in post text call openHashtag() (components/common/Linkify.js) which fires a window event `flitters:hashtag`; the shell (FlittersApp.js) listens and shows HashtagView. Saved screen is `showSaved`.
+- Saved posts are stored only in localStorage `saved_posts_v1:<uid>` (max 100), same as native. No SQL needed.
+- All verified/authentic badges go through components/common/VerifiedBadge.js. The big animated one (components/verify/AnimatedBadge.js) is only for the Get Verified page (GetVerifiedView). Billing is Google Play only; the web page just shows status and calls /api/billing/refresh.

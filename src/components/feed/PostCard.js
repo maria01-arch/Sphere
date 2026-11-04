@@ -1,8 +1,9 @@
 'use client'
 import { memo, useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Camera, Heart, Link2, MessageCircle, MoreHorizontal, Pencil, Repeat2, Send, Share, Share2, Trash2, X } from 'lucide-react'
+import { AlertTriangle, Camera, Heart, Link2, MessageCircle, Bookmark, MoreHorizontal, Pencil, Repeat2, Send, Share, Share2, Trash2, X } from 'lucide-react'
 import { Avatar } from '@/components/common/Avatar'
 import { TextWithMentions } from '@/components/common/Linkify'
+import { isSaved, subscribeSaved, toggleSaved } from '@/lib/savedPosts'
 import { LinkPreviewCard } from '@/components/common/LinkPreviewCard'
 import { ReportModal } from '@/components/common/ReportModal'
 import { RowSkeletonList } from '@/components/common/Skeletons'
@@ -16,6 +17,7 @@ import { useLongPress } from '@/lib/hooks/useLongPress'
 import { getFirstUrl } from '@/lib/links'
 import { uploadToR2 } from '@/lib/media/upload'
 import { timeAgo } from '@/lib/timeAgo'
+import { VerifiedBadge } from '@/components/common/VerifiedBadge'
 
 export function postCardPropsEqual(prev, next) {
   return prev.post === next.post &&
@@ -43,6 +45,12 @@ export const PostCard = memo(function PostCard({ post, currentUser, supabase, on
   const [uploadingReply, setUploadingReply] = useState(false)
   const replyImageRef = useRef(null)
   const [showShareMenu, setShowShareMenu] = useState(false)
+  const [saved, setSaved] = useState(false)
+  useEffect(()=>{
+    const sync = () => setSaved(isSaved(currentUser?.id, post.id))
+    sync()
+    return subscribeSaved(sync)
+  },[currentUser?.id, post.id])
 
   const shareUrl = (typeof window!=='undefined'?window.location.origin:'https://xchord.space')+'/p/'+post.id
   const shareText = (post.content||(post.author?.display_name||'Someone')+' shared a post on Flitters').slice(0,100)
@@ -267,7 +275,7 @@ export const PostCard = memo(function PostCard({ post, currentUser, supabase, on
             <div style={{display:'flex',gap:6,alignItems:'center'}}>
               <button onClick={()=>onUserClick(headerUser)} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:15}}>{headerUser.display_name}</button>
               {isQuote&&<span title="Reposted with comment" style={{display:'inline-flex',color:'var(--text-tertiary)'}}><Repeat2 size={13}/></span>}
-              {headerUser.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{headerUser.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:18,height:18,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='18' height='18' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+              <VerifiedBadge verified={headerUser.verified} isAuthentic={headerUser.is_authentic} plan={headerUser.verified_plan} size={20}/>
               <span style={{color:'var(--text-faint)'}}>·</span>
               <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(headerTime)}</span>
             </div>
@@ -302,6 +310,9 @@ export const PostCard = memo(function PostCard({ post, currentUser, supabase, on
             </button>
             <button onClick={handleShare} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',gap:5,background:'none',border:'none',cursor:'pointer',color:'var(--text-secondary)',fontSize:13,padding:'6px 0'}}>
               <Share size={16}/>
+            </button>
+            <button onClick={()=>toggleSaved(currentUser?.id,{...post,likes_count:likes,reposts_count:reposts,comments_count:comments})} aria-label={saved?'Remove from saved':'Save post'} style={{flex:1,display:'flex',alignItems:'center',justifyContent:'center',background:'none',border:'none',cursor:'pointer',color:saved?'var(--primary)':'var(--text-secondary)',padding:'6px 0'}}>
+              <Bookmark size={16} fill={saved?'var(--primary)':'none'}/>
             </button>
           </div>
           {showShareMenu&&(

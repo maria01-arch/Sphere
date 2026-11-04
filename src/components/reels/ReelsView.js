@@ -7,6 +7,7 @@ import { ReportModal } from '@/components/common/ReportModal'
 import HlsVideo from '@/components/HlsVideo'
 import { formatVoiceDuration } from '@/lib/format'
 import { getVideoDuration, uploadVideoChunked } from '@/lib/media/upload'
+import { VerifiedBadge } from '@/components/common/VerifiedBadge'
 
 export function ReelsView({ currentUser, supabase, onUserClick, onClose, initialReelId }) {
   const [reels, setReels] = useState([])
@@ -62,7 +63,7 @@ export function ReelsView({ currentUser, supabase, onUserClick, onClose, initial
   },[playing])
 
   const loadReels = async() => {
-    const {data} = await supabase.from('reels').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color,verified,is_authentic),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
+    const {data} = await supabase.from('reels').select('*,author:profiles!user_id(id,display_name,username,avatar_url,avatar_color,verified,is_authentic,verified_plan),reel_likes(user_id)').order('created_at',{ascending:false}).limit(20)
     if(!data) return
     setReels(data)
     const likedMap={}, likesMap={}
@@ -326,8 +327,7 @@ export function ReelsView({ currentUser, supabase, onUserClick, onClose, initial
               <div>
                 <div style={{display:'flex',alignItems:'center',gap:5}}>
                   <span style={{fontWeight:700,fontSize:15,textShadow:'0 1px 4px rgba(0,0,0,0.8)'}}>{reel.author?.display_name}</span>
-                  {reel.author?.verified&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><img src="/flitters-logo-white.svg" alt="Verified" width={9} height={9} style={{objectFit:'contain',display:'block'}}/></span>}
-                  {reel.author?.is_authentic&&<span style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:16,height:16,borderRadius:'50%',background:'#1877F2',flexShrink:0}}><svg xmlns='http://www.w3.org/2000/svg' width='10' height='10' viewBox='0 0 12 12'><polyline points='2,6 5,9 10,3' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}
+                  <VerifiedBadge verified={reel.author?.verified} isAuthentic={reel.author?.is_authentic} plan={reel.author?.verified_plan} size={16}/>
                 </div>
                 <div style={{fontSize:12,color:'rgba(255,255,255,0.7)'}}>@{reel.author?.username}</div>
               </div>

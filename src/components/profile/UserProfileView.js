@@ -6,6 +6,7 @@ import { ReportModal } from '@/components/common/ReportModal'
 import { FeedSkeleton } from '@/components/common/Skeletons'
 import { PostCard } from '@/components/feed/PostCard'
 import { getColor } from '@/lib/colors'
+import { VerifiedBadge } from '@/components/common/VerifiedBadge'
 
 // ── USER PROFILE ───────────────────────────────────────────────────────────
 export function UserProfileView({ user, currentUser, supabase, onBack, onMessage, onOpenPost, sendPush }) {
@@ -126,7 +127,7 @@ export function UserProfileView({ user, currentUser, supabase, onBack, onMessage
       )}
       <div style={{padding:'0 16px 16px'}}>
         <div style={{display:'flex',alignItems:'center',gap:8,marginBottom:2}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2>{profile?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{profile?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:20,margin:0}}>{profile?.display_name}</h2><VerifiedBadge verified={profile?.verified} isAuthentic={profile?.is_authentic} plan={profile?.verified_plan} size={20}/></div>
         </div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{profile?.username}</p>
         {profile?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{profile.bio}</p>}

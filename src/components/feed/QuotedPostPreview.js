@@ -2,6 +2,7 @@
 import { Avatar } from '@/components/common/Avatar'
 import { getColor } from '@/lib/colors'
 import { timeAgo } from '@/lib/timeAgo'
+import { VerifiedBadge } from '@/components/common/VerifiedBadge'
 
 // Compact, non-interactive preview of a reshared post — used only inside a
 // quote-repost (a repost with the reposter's own caption added). Deliberately
@@ -17,7 +18,7 @@ export function QuotedPostPreview({ post, onOpen, onUserClick }) {
       <div style={{display:'flex',alignItems:'center',gap:7,marginBottom:6}}>
         <Avatar url={a.avatar_url} name={a.display_name} color={color} size={22}/>
         <button onClick={e=>{e.stopPropagation();onUserClick&&onUserClick(a)}} style={{background:'none',border:'none',padding:0,cursor:'pointer',color:'var(--text-primary)',fontWeight:700,fontSize:13}}>{a.display_name}</button>
-        {a.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:14,height:14,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'1.5px solid #C9A84C',flexShrink:0}}><img src="/flitters-logo-white.svg" alt="Verified" width={8} height={8} style={{objectFit:'contain',display:'block'}}/></span>}
+        <VerifiedBadge verified={a.verified} isAuthentic={a.is_authentic} plan={a.verified_plan} size={14}/>
         <span style={{color:'var(--text-faint)'}}>·</span>
         <span style={{color:'var(--text-quaternary)',fontSize:12}}>{timeAgo(post.created_at)}</span>
       </div>

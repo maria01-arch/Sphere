@@ -1,4 +1,6 @@
 'use client'
+import { HashtagView } from '@/components/hashtag/HashtagView'
+import { SavedPostsView } from '@/components/saved/SavedPostsView'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Ban, Bell, Compass, Copy, CornerUpLeft, Globe, Home, Image as ImageIcon, Loader2, Lock, Megaphone, MessageCircle, Mic, Pencil, Search, Send, Settings, ShoppingBag, Smile, Trash2, Users, Video, X } from 'lucide-react'
 import { AdminPanel } from '@/components/admin/AdminPanel'
@@ -311,6 +313,13 @@ export function FlittersAppInner({ currentUser }) {
   const closePost = () => { setViewingPost(null); setHideNav(false) }
   const [showMyProfile, setShowMyProfile] = useState(false)
   const [showSettings, setShowSettings] = useState(false)
+  const [hashtag, setHashtag] = useState(null)
+  const [showSaved, setShowSaved] = useState(false)
+  useEffect(()=>{
+    const h = (e) => { if(e.detail?.tag){ feedScrollPosRef.current = window.scrollY; setHashtag(e.detail.tag); window.scrollTo(0,0) } }
+    window.addEventListener('flitters:hashtag',h)
+    return()=>window.removeEventListener('flitters:hashtag',h)
+  },[])
   const [avatarUrl, setAvatarUrl] = useState(currentUser?.avatar_url||'')
   const color = currentUser?.avatar_color||'#5B9CF6'
   const inp = {width:'100%',background:'var(--bg-card)',border:'1px solid var(--border-color-2)',borderRadius:12,padding:'12px 16px',color:'var(--text-primary)',fontSize:15,outline:'none',fontFamily:'sans-serif',boxSizing:'border-box'}
@@ -336,8 +345,8 @@ export function FlittersAppInner({ currentUser }) {
   const [gcColor, setGcColor] = useState('#5B9CF6')
   const [gcSaving, setGcSaving] = useState(false)
   useEffect(()=>{
-    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroupChat,viewingReels:reelsRef.current,viewingPost,selectedConv}
-  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost,viewingGroupChat,selectedConv])
+    stateRef.current = {viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingGroupChat,viewingReels:reelsRef.current,viewingPost,selectedConv,hashtag,showSaved}
+  },[viewingUser,showMyProfile,showSettings,tab,dmView,hideNav,viewingPost,viewingGroupChat,selectedConv,hashtag,showSaved])
 
   // Restore the feed's scroll position once you're actually back on it. Wait
   // a frame so the feed's DOM has repainted first — scrolling before that
@@ -582,6 +591,8 @@ export function FlittersAppInner({ currentUser }) {
       window.history.pushState({flitters:true},'',window.location.href)
       const s = stateRef.current
       // Priority order: deepest screen first
+      if(s.hashtag){setHashtag(null);return}
+      if(s.showSaved){setShowSaved(false);return}
       if(s.viewingPost){setViewingPost(null);setHideNav(false);return}
       if(s.viewingUser){setViewingUser(null);return}
       if(s.showMyProfile){setShowMyProfile(false);return}
@@ -1283,8 +1294,10 @@ export function FlittersAppInner({ currentUser }) {
     </DesktopShell>
   )
 
+  if(hashtag) return wrap(<HashtagView tag={hashtag} currentUser={currentUser} supabase={supabase} onBack={()=>setHashtag(null)} onUserClick={u=>{setHashtag(null);handleUserClick(u)}} onOpenPost={id=>{setHashtag(null);openPost(id)}} sendPush={sendPush}/>)
+  if(showSaved) return wrap(<SavedPostsView currentUser={currentUser} onBack={()=>setShowSaved(false)} onOpenPost={id=>{setShowSaved(false);openPost(id)}}/>)
   if(showAdmin) return wrap(<AdminPanel currentUser={currentUser} supabase={supabase} onBack={()=>setShowAdmin(false)}/>)
-  if(showSettings) return wrap(<SettingsView currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>)
+  if(showSettings) return wrap(<SettingsView onOpenSaved={()=>setShowSaved(true)} currentUser={currentUser} supabase={supabase} onBack={()=>setShowSettings(false)} onSignOut={handleSignOut} onAvatarUpdate={url=>{setAvatarUrl(url);currentUser.avatar_url=url}} sendPush={sendPush} setupPush={setupPush} requestNotifPermission={requestNotifPermission}/>)
   if(showMyProfile) return wrap(<MyProfileView currentUser={currentUser} supabase={supabase} avatarUrl={avatarUrl} onBack={()=>setShowMyProfile(false)} onSettings={()=>{setShowMyProfile(false);setShowSettings(true)}}/>)
   if(viewingPost) return wrap(
     <div className="screen-in-safe" style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>

@@ -4,6 +4,7 @@ import { FileText, Heart, MapPin, MessageCircle, Repeat2, Settings } from 'lucid
 import { Avatar } from '@/components/common/Avatar'
 import { FeedSkeleton } from '@/components/common/Skeletons'
 import { timeAgo } from '@/lib/timeAgo'
+import { VerifiedBadge } from '@/components/common/VerifiedBadge'
 
 // ── MY PROFILE ─────────────────────────────────────────────────────────────
 export function MyProfileView({ currentUser, supabase, onSettings, onBack, avatarUrl }) {
@@ -40,7 +41,7 @@ export function MyProfileView({ currentUser, supabase, onSettings, onBack, avata
         <Avatar url={avatarUrl||currentUser?.avatar_url} name={currentUser?.display_name} color={color} size={72}/>
       </div>
       <div style={{padding:'0 16px 20px'}}>
-        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2>{currentUser?.verified&&<span title='Flitters Verified Member' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,borderRadius:'50%',background:'linear-gradient(135deg,#1a1a2e,#16213e)',border:'2px solid #C9A84C',boxShadow:'0 0 6px rgba(201,168,76,0.6)',flexShrink:0,cursor:'default'}}><img src="/flitters-logo-white.svg" alt="Verified" width={12} height={12} style={{objectFit:'contain',display:'block'}}/></span>}{currentUser?.is_authentic&&<span title='Authentic — Real & Verified Person' style={{display:'inline-flex',alignItems:'center',justifyContent:'center',width:20,height:20,flexShrink:0,cursor:'default'}}><svg xmlns='http://www.w3.org/2000/svg' width='20' height='20' viewBox='0 0 24 24'><path d='M12 2L14.4 4.8L18 4L18.8 7.6L22 9.2L20.4 12.6L22 16L18.8 17.6L18 21.2L14.4 20.4L12 23.2L9.6 20.4L6 21.2L5.2 17.6L2 16L3.6 12.6L2 9.2L5.2 7.6L6 4L9.6 4.8Z' fill='#1877F2'/><polyline points='8,12.5 10.5,15 16,9' fill='none' stroke='#fff' strokeWidth='2' strokeLinecap='round' strokeLinejoin='round'/></svg></span>}</div>
+        <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2}}><h2 style={{fontWeight:800,fontSize:22,margin:0}}>{currentUser?.display_name}</h2><VerifiedBadge verified={currentUser?.verified} isAuthentic={currentUser?.is_authentic} plan={currentUser?.verified_plan} size={20}/></div>
         <p style={{color:'var(--text-secondary)',fontSize:14,marginBottom:8}}>@{currentUser?.username}</p>
         {currentUser?.bio&&<p style={{color:'var(--text-subtle)',fontSize:14,lineHeight:1.6,marginBottom:10}}>{currentUser.bio}</p>}
         {currentUser?.location&&<p style={{color:'var(--text-secondary)',fontSize:13,marginBottom:10,display:'flex',alignItems:'center',gap:4}}><MapPin size={13}/> {currentUser.location}</p>}

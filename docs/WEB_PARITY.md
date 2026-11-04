@@ -11,7 +11,8 @@ Native = reference. Tick things as they are ported to web.
 ## Feed & posts
 - [x] "For You" ranked feed (feed_ranked SQL) + seen-posts tracking (post_views)  — needs the SQL from sql/ranked_feed.sql run once in Supabase
 - [ ] Following-only interest setting
-- [ ] Hashtag pages, saved/bookmarked posts, co-owners on posts
+- [x] Hashtag pages (tap any #tag; components/hashtag/HashtagView.js) and saved posts (device-local, lib/savedPosts.js, bookmark on every post, Settings > Saved Posts)
+- [ ] Co-owners on posts
 - [ ] Quote-repost modal, post share sheet, link-preview card parity, comment screen
 - [ ] Ad impression/click tracking (adTracking)
 
@@ -21,7 +22,7 @@ Native = reference. Tick things as they are ported to web.
 - [ ] Group create/settings screens, join by tag (exists), group co-admin tools
 
 ## Profile / account
-- [ ] Profile QR + scan, edit-profile screen, following/followers lists, get-verified + animated verified badges, billing
+- [ ] Profile QR + scan, edit-profile screen, following/followers lists, (get-verified page + animated badge done, see components/verify/)
 - [ ] Delete account, legal docs in-app, interests onboarding
 
 ## Reels

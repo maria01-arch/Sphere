@@ -1,14 +1,15 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Award, Ban, Bell, BookOpen, Check, Globe, Image as ImageIcon, Lock, LogOut, MapPin, Trash2, User } from 'lucide-react'
+import { AlertTriangle, Award, Ban, Bookmark, Bell, BookOpen, Check, Globe, Image as ImageIcon, Lock, LogOut, MapPin, Trash2, User } from 'lucide-react'
 import { Avatar } from '@/components/common/Avatar'
 import { RowSkeletonList } from '@/components/common/Skeletons'
 import { ThemeToggleRow } from '@/components/settings/ThemeToggleRow'
+import { GetVerifiedView } from '@/components/verify/GetVerifiedView'
 import { VerifyForm } from '@/components/settings/VerifyForm'
 import { authJsonHeaders } from '@/lib/api'
 import { uploadToR2 } from '@/lib/media/upload'
 
-export function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvatarUpdate, sendPush, setupPush, requestNotifPermission }) {
+export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSignOut, onAvatarUpdate, sendPush, setupPush, requestNotifPermission }) {
   const [section, setSection] = useState('main')
   const [displayName, setDisplayName] = useState(currentUser?.display_name||'')
   const [bio, setBio] = useState(currentUser?.bio||'')
@@ -192,7 +193,8 @@ export function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvata
   // verified badge, which is exactly what that policy prohibits. Don't
   // re-add the menu entry below without first wiring this through Play
   // Billing (or gating it to a genuinely non-Play-reviewed context).
-  if(section==='verify') return (
+  if(section==='verify') return <GetVerifiedView currentUser={currentUser} supabase={supabase} onBack={()=>setSection('main')} onManual={()=>setSection('verifyform')}/>
+  if(section==='verifyform') return (
     <div style={{minHeight:'100dvh',background:'var(--bg-app)',color:'var(--text-primary)'}}>
       <Header title="Get Verified"/>
       <div style={{padding:'20px 16px'}}>
@@ -333,7 +335,10 @@ export function SettingsView({ currentUser, supabase, onBack, onSignOut, onAvata
         <a href="/stories" style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15,textDecoration:'none',boxSizing:'border-box'}}>
           <span style={{fontSize:22,display:'flex'}}><BookOpen size={18}/></span><span style={{flex:1,fontWeight:500}}>My Stories</span><span style={{color:'var(--text-quaternary)'}}>›</span>
         </a>
-        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
+        <button onClick={onOpenSaved} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
+          <span style={{fontSize:22,display:'flex'}}><Bookmark size={18}/></span><span style={{flex:1,fontWeight:500}}>Saved Posts</span><span style={{color:'var(--text-quaternary)'}}>›</span>
+        </button>
+        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Award size={18}/>,label:'Get Verified',id:'verify'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
           <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
             <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
           </button>
