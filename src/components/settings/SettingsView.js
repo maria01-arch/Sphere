@@ -356,6 +356,8 @@ export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSig
         <div style={{padding:'16px 20px',borderTop:'1px solid var(--bg-card-5)',textAlign:'center'}}>
           <a href="/privacy" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Privacy Policy</a>
           <span style={{color:'#222',fontSize:12}}> · </span>
+          <a href="/terms" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Terms of Service</a>
+          <span style={{color:'#222',fontSize:12}}> · </span>
           <a href="/child-safety" style={{color:'var(--text-faint)',fontSize:12,textDecoration:'none'}}>Child Safety Standards</a>
           <br/>
           <span style={{color:'#222',fontSize:12}}>© 2025 Flitters · fka Sphere</span>

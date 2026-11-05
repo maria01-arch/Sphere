@@ -522,7 +522,7 @@ export default function AuthPage() {
             <label style={{ display: 'flex', alignItems: 'flex-start', gap: 10, marginBottom: 8, cursor: 'pointer' }}>
               <input type="checkbox" checked={acceptedPolicy} onChange={e => setAcceptedPolicy(e.target.checked)} style={{ marginTop: 3 }} />
               <span style={{ color: 'var(--text-subtle)', fontSize: 13, lineHeight: 1.5 }}>
-                I agree to Flitters's <a href="/privacy" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Privacy Policy</a> and Terms of Service.
+                I agree to Flitters's <a href="/privacy" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Privacy Policy</a> and <a href="/terms" target="_blank" style={{ color: '#A855F7', textDecoration: 'underline' }}>Terms of Service</a>.
               </span>
             </label>
           </>}
