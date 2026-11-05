@@ -32,7 +32,7 @@ import { NOTIF_TYPE_INFO, QUICK_REACTIONS } from '@/lib/constants'
 import { isMissingColumnError } from '@/lib/dbUtils'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
 import { useVoiceRecorder } from '@/lib/hooks/useVoiceRecorder'
-import { getVideoDuration, uploadToR2, uploadVideoChunked } from '@/lib/media/upload'
+import { getVideoDuration, makeVideoThumbnail, uploadToR2, uploadVideoChunked } from '@/lib/media/upload'
 import { supabase } from '@/lib/supabase/instance'
 import { useTheme } from '@/lib/theme'
 import { timeAgo } from '@/lib/timeAgo'
@@ -1007,11 +1007,26 @@ export function FlittersAppInner({ currentUser }) {
         videoUrl = up.publicUrl
       } catch(err) { alert(err.message||'Video upload failed'); setComposeBusy(false); return }
     }
-    const {data} = await supabase.from('posts').insert({user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl,video_url:videoUrl}).select('*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)').single()
+    // A still frame of the video, so shared links show a picture in WhatsApp / Telegram.
+    let thumbUrl = null
+    if(composeVideo) {
+      try {
+        const blob = await makeVideoThumbnail(composeVideo)
+        if(blob) {
+          const up = await uploadToR2(new File([blob],'thumb.jpg',{type:'image/jpeg'}), 'posts/'+currentUser.id+'_'+Date.now()+'_thumb.jpg')
+          thumbUrl = up.publicUrl
+        }
+      } catch(e) {}
+    }
+    const postSel = '*,author:profiles!user_id(*),likes(user_id),reposts(user_id),comments(id)'
+    const postRow = {user_id:currentUser.id,content:composeText.trim(),image_url:imageUrl,video_url:videoUrl}
+    let {data,error:postErr} = await supabase.from('posts').insert(thumbUrl?{...postRow,thumbnail_url:thumbUrl}:postRow).select(postSel).single()
+    // thumbnail_url column not created yet: post without it
+    if(postErr && thumbUrl && /thumbnail_url/i.test(postErr.message||'')) ({data} = await supabase.from('posts').insert(postRow).select(postSel).single())
     if(data) {
       setPosts(prev=>[{...data,likes_count:0,reposts_count:0,comments_count:0,user_liked:false,user_reposted:false},...prev])
       // Video posts also appear in Reels, same as the native app.
-      if(videoUrl) { try { await supabase.from('reels').insert({user_id:currentUser.id,video_url:videoUrl,caption:composeText.trim()}) } catch(e) {} }
+      if(videoUrl) { try { { const rr={user_id:currentUser.id,video_url:videoUrl,caption:composeText.trim()}; const {error:re}=await supabase.from('reels').insert(thumbUrl?{...rr,thumbnail_url:thumbUrl}:rr); if(re&&thumbUrl) await supabase.from('reels').insert(rr) } } catch(e) {} }
       // detect @mentions and notify tagged users
       const handles = [...new Set((composeText.match(/@([a-zA-Z0-9_]+)/g)||[]).map(h=>h.slice(1).toLowerCase()))]
       if(handles.length){

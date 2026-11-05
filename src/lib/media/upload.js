@@ -104,3 +104,49 @@ export async function uploadVideoChunked(file, path, { maxDurationSeconds, maxSi
   if (!finishRes.ok) throw new Error(finishJson.error || 'Could not finish video upload')
   return { publicUrl: finishJson.publicUrl }
 }
+
+// Grabs one frame of a video file (on the phone, before upload) and returns it as a JPEG
+// Blob with a small play button drawn on it. Used as the poster and as the picture that
+// WhatsApp / Telegram show when the post link is shared. Returns null if the browser
+// can't read the video; posting must never fail because of this.
+export function makeVideoThumbnail(file, maxWidth = 720) {
+  return new Promise((resolve) => {
+    let done = false
+    const url = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    const finish = (blob) => { if (done) return; done = true; URL.revokeObjectURL(url); video.removeAttribute('src'); video.load?.(); resolve(blob) }
+    const timer = setTimeout(() => finish(null), 12000)
+    video.muted = true
+    video.playsInline = true
+    video.preload = 'auto'
+    video.onerror = () => { clearTimeout(timer); finish(null) }
+    video.onloadedmetadata = () => {
+      const t = Math.min(1, (video.duration || 1) / 2)
+      try { video.currentTime = t } catch { clearTimeout(timer); finish(null) }
+    }
+    video.onseeked = () => {
+      try {
+        const scale = Math.min(1, maxWidth / (video.videoWidth || maxWidth))
+        const w = Math.max(2, Math.round((video.videoWidth || 640) * scale))
+        const h = Math.max(2, Math.round((video.videoHeight || 360) * scale))
+        const canvas = document.createElement('canvas')
+        canvas.width = w; canvas.height = h
+        const ctx = canvas.getContext('2d')
+        ctx.drawImage(video, 0, 0, w, h)
+        // play button
+        const r = Math.min(w, h) * 0.11
+        ctx.fillStyle = 'rgba(0,0,0,0.55)'
+        ctx.beginPath(); ctx.arc(w / 2, h / 2, r, 0, Math.PI * 2); ctx.fill()
+        ctx.fillStyle = '#fff'
+        ctx.beginPath()
+        ctx.moveTo(w / 2 - r * 0.3, h / 2 - r * 0.5)
+        ctx.lineTo(w / 2 - r * 0.3, h / 2 + r * 0.5)
+        ctx.lineTo(w / 2 + r * 0.55, h / 2)
+        ctx.closePath(); ctx.fill()
+        clearTimeout(timer)
+        canvas.toBlob((b) => finish(b), 'image/jpeg', 0.82)
+      } catch { clearTimeout(timer); finish(null) }
+    }
+    video.src = url
+  })
+}
