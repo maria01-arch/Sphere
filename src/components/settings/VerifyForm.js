@@ -4,7 +4,7 @@ import { Upload } from 'lucide-react'
 import { uploadToR2 } from '@/lib/media/upload'
 
 // ── SETTINGS ───────────────────────────────────────────────────────────────
-export function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp }) {
+export function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, inp, planNote }) {
   const [form, setForm] = useState({name:"",reason:"",idtype:"",txhash:"",paymethod:""})
   const [idFile, setIdFile] = useState(null)
   const [idPreview, setIdPreview] = useState('')
@@ -26,7 +26,7 @@ export function VerifyForm({ currentUser, supabase, showMsg, saving, setSaving, 
     try { urlData = await uploadToR2(idFile, path) }
     catch(err) { showMsg("ID upload failed: "+err.message,false); setSaving(false); return }
     idDocUrl = urlData.publicUrl
-    const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod,id_document_url:idDocUrl})
+    const {error} = await supabase.from("verification_applications").insert({user_id:currentUser.id,full_name:form.name,reason:(planNote?planNote+' | ':'')+form.reason,id_type:form.idtype,tx_hash:form.txhash,payment_method:form.paymethod,id_document_url:idDocUrl})
     if(error) showMsg(error.message,false)
     else showMsg("Application submitted! We will review within 48 hours.")
     setSaving(false)

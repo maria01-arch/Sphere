@@ -42,5 +42,5 @@ not `next build`. If Vercel build fails, send the error text.
 - Saved posts are stored only in localStorage `saved_posts_v1:<uid>` (max 100), same as native. No SQL needed.
 - All verified/authentic badges go through components/common/VerifiedBadge.js. The big animated one (components/verify/AnimatedBadge.js) is only for the Get Verified page (GetVerifiedView). Billing is Google Play only; the web page just shows status and calls /api/billing/refresh.
 - Videos: lib/videoPrefs.js makes only one feed video play at a time, shares one mute state, and holds the Autoplay setting (localStorage `flitters_autoplay`). Use `useExclusiveVideo` for any new feed video.
-- Get Verified is crypto-only (no Play billing on web). Add Paystack by adding an entry to PAY_METHODS in components/verify/GetVerifiedView.js.
+- Get Verified is crypto-only and a SUBSCRIPTION (Basic $5/mo, Premium $30/mo, yearly 10%/15% off, same as native). The plan chosen is prefixed onto the application reason. Add Paystack by adding an entry to PAY_METHODS in components/verify/GetVerifiedView.js.
 - Profile cover photos use profiles.cover_url (same as native); upload is in Settings > Edit Profile.
