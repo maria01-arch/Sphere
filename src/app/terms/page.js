@@ -24,7 +24,7 @@ export default function Terms() {
         <h1 style={s.h1}>Terms of Service</h1>
         <p style={s.updated}>Last updated: November 5, 2026</p>
 
-        <p style={s.p}>These Terms of Service ("Terms") govern your use of Flitters (formerly Sphere), the social platform at <strong>xchord.space</strong> and the Flitters mobile app ("Flitters", "we", "our", "us"), operated by Flitters Labs Corp. By creating an account or using Flitters you agree to these Terms and to our <a href="/privacy" style={s.a}>Privacy Policy</a>. If you do not agree, please do not use Flitters.</p>
+        <p style={s.p}>These Terms of Service ("Terms") govern your use of Flitters (formerly Sphere), the social platform at <strong>xchord.space</strong> and the Flitters mobile app ("Flitters", "we", "our", "us"), operated by Xchordlabs. By creating an account or using Flitters you agree to these Terms and to our <a href="/privacy" style={s.a}>Privacy Policy</a>. If you do not agree, please do not use Flitters.</p>
 
         <h2 style={s.h2}>1. Who can use Flitters</h2>
         <ul style={s.ul}>
@@ -69,14 +69,14 @@ export default function Terms() {
         <p style={s.p}>You can delete your account at any time from Settings (see <a href="/delete-account" style={s.a}>delete account</a>). We may suspend or end your access if you break these Terms. Sections that by their nature should continue (such as content licences already granted for shared content, and limits of liability) continue after your account ends.</p>
 
         <h2 style={s.h2}>9. Limits of liability</h2>
-        <p style={s.p}>To the extent the law allows, Flitters Labs Corp is not liable for indirect or consequential losses, lost profits or data, or for content posted by users. Nothing in these Terms limits rights you have under consumer protection laws that cannot be limited by contract, including those that apply to you in the European Economic Area or the United Kingdom.</p>
+        <p style={s.p}>To the extent the law allows, Xchordlabs is not liable for indirect or consequential losses, lost profits or data, or for content posted by users. Nothing in these Terms limits rights you have under consumer protection laws that cannot be limited by contract, including those that apply to you in the European Economic Area or the United Kingdom.</p>
 
         <h2 style={s.h2}>10. Changes to these Terms</h2>
         <p style={s.p}>We may update these Terms. If a change is significant we will tell you in the app or on this page. Using Flitters after a change means you accept the updated Terms.</p>
 
         <h2 style={s.h2}>11. Contact</h2>
         <p style={s.p}>
-          <strong>Flitters Labs Corp</strong><br/>
+          <strong>Xchordlabs</strong><br/>
           Email: <a href="mailto:support@xchord.space" style={s.a}>support@xchord.space</a><br/>
           Website: <a href="https://xchord.space" style={s.a}>xchord.space</a>
         </p>

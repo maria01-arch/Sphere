@@ -31,7 +31,7 @@ export default function ChildSafetyStandards() {
         </div>
 
         <h2 style={s.h2}>1. Who This Applies To</h2>
-        <p style={s.p}>This policy governs <strong>Flitters</strong> (package name <code>com.flitters.apps</code>), developed and operated by <strong>Xchordlabs</strong> (Flitters Labs Corp). It applies to every account, every piece of content, and every feature on the platform, for every user regardless of location.</p>
+        <p style={s.p}>This policy governs <strong>Flitters</strong> (package name <code>com.flitters.apps</code>), developed and operated by <strong>Xchordlabs</strong>. It applies to every account, every piece of content, and every feature on the platform, for every user regardless of location.</p>
 
         <h2 style={s.h2}>2. Prohibited Conduct</h2>
         <p style={s.p}>The following are strictly prohibited on Flitters, and will result in immediate content removal, account termination, and referral to law enforcement where required by law:</p>
@@ -67,7 +67,7 @@ export default function ChildSafetyStandards() {
         <p style={s.p}>For anything related to child safety on Flitters — reporting a concern, asking about this policy, or following up on a report — contact:<br/>
           <strong>Flitters Child Safety Team</strong><br/>
           Email: <a href="mailto:support@xchord.space" style={s.a}>support@xchord.space</a><br/>
-          Operated by: Flitters Labs Corp (Xchordlabs)<br/>
+          Operated by: Xchordlabs<br/>
           Website: <a href="https://xchord.space" style={s.a}>xchord.space</a>
         </p>
 

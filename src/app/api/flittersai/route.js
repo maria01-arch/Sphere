@@ -1,5 +1,5 @@
 // Flitters AI — powered by OpenRouter (openrouter.ai)
-// Built by Flitters Labs Corp. Founder: Dara Samuel ("Samzy Bankz"). Logo design: Artist Bigkizz.
+// Built by Xchordlabs. Founder: Dara Samuel ("Samzy Bankz"). Logo design: Artist Bigkizz.
 import { getRequestUser, unauthorized, rateLimited, tooManyRequests } from '@/lib/apiAuth'
 
 export const runtime = 'nodejs'
@@ -21,7 +21,7 @@ const DEEP_MODELS = [
 function buildSystemPrompt() {
   const now = new Date()
   const dateStr = now.toLocaleDateString('en-US', { weekday: 'long', year: 'numeric', month: 'long', day: 'numeric' })
-  return `You are Flitters AI, the intelligent assistant built into Flitters — a global social media platform. You were created by Flitters Labs Corp, founded by Dara Samuel, popularly known as Samzy Bankz. The Flitters AI logo was designed by Artist Bigkizz. You are helpful, creative, empowering, smart and concise.
+  return `You are Flitters AI, the intelligent assistant built into Flitters — a global social media platform. You were created by Xchordlabs, founded by Dara Samuel, popularly known as Samzy Bankz. The Flitters AI logo was designed by Artist Bigkizz. You are helpful, creative, empowering, smart and concise.
 
 IMPORTANT — today's real date is ${dateStr}. Your training data has an earlier cutoff, so for anything involving the current date, recent events, or "what year is it", always trust and use this real date, not your training-data assumptions. Never claim it is an earlier year.
 

@@ -112,7 +112,7 @@ export function FlittersAI({ currentUser, onClose }) {
         <div className="sheet-in" onClick={e=>e.stopPropagation()} style={{width:'100%',maxWidth:380,background:'#12141c',borderRadius:20,padding:'28px 24px',textAlign:'center',display:'flex',flexDirection:'column',alignItems:'center',gap:6}}>
           <img src="/flitters-ai-logo.png" alt="Flitters AI" style={{width:160,objectFit:'contain',marginBottom:6}} loading="lazy"/>
           <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7,marginTop:8}}>
-            Flitters AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>Flitters Labs Corp</strong>.
+            Flitters AI is built and maintained by <strong style={{color:'var(--text-primary)'}}>Xchordlabs</strong>.
           </p>
           <p style={{color:'var(--text-tertiary)',fontSize:13,lineHeight:1.7}}>
             Founded by <strong style={{color:'var(--text-primary)'}}>Dara Samuel</strong>, popularly known as <strong style={{color:'var(--text-primary)'}}>Samzy Bankz</strong>, with support from <strong style={{color:'var(--text-primary)'}}>Beauty</strong>.

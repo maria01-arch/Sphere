@@ -81,7 +81,7 @@ export default function PrivacyPolicy() {
 
         <h2 style={s.h2}>10. Contact Us</h2>
         <p style={s.p}>If you have questions about this Privacy Policy, please contact us at:<br/>
-          <strong>Flitters Labs Corp</strong><br/>
+          <strong>Xchordlabs</strong><br/>
           Email: <a href="mailto:support@xchord.space" style={s.a}>support@xchord.space</a><br/>
           Website: <a href="https://xchord.space" style={s.a}>xchord.space</a>
         </p>
