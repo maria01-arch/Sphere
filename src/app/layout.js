@@ -1,3 +1,4 @@
+import AndroidGate from '@/components/AndroidGate'
 import './globals.css'
 
 export const metadata = {
@@ -93,7 +94,8 @@ export default function RootLayout({ children }) {
           dangerouslySetInnerHTML={{ __html: JSON.stringify(jsonLd) }}
         />
       </head>
-      <body>{children}</body>
+      <body>
+<AndroidGate />{children}</body>
     </html>
   )
 }
