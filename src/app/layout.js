@@ -1,4 +1,5 @@
 import AndroidGate from '@/components/AndroidGate'
+import { DiagBanner } from '@/components/common/DiagBanner'
 import './globals.css'
 
 export const metadata = {
@@ -95,7 +96,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body>
-<AndroidGate />{children}</body>
+<AndroidGate />{children}<DiagBanner /></body>
     </html>
   )
 }

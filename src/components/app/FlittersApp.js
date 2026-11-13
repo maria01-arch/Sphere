@@ -30,6 +30,8 @@ import { authJsonHeaders, triggerAiMentionReply } from '@/lib/api'
 import { COLORS, getColor } from '@/lib/colors'
 import { NOTIF_TYPE_INFO, QUICK_REACTIONS } from '@/lib/constants'
 import { isMissingColumnError } from '@/lib/dbUtils'
+import { fetchChat, fetchChatMessage } from '@/lib/chatFetch'
+import { diag } from '@/lib/diag'
 import { FLITTERS_MARK } from '@/lib/flitters-mark'
 import { useVoiceRecorder } from '@/lib/hooks/useVoiceRecorder'
 import { getVideoDuration, makeVideoThumbnail, uploadToR2, uploadVideoChunked } from '@/lib/media/upload'
@@ -820,12 +822,14 @@ export function FlittersAppInner({ currentUser }) {
     }
   },[tab])
   const loadGroupsForList = async () => {
-    const {data:mems} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+    const {data:mems,error:memsErr} = await supabase.from('group_members').select('group_id,last_read_at').eq('user_id',currentUser.id)
+    if(memsErr) diag('group list',memsErr)
     if(!mems?.length){ setGroupsForList([]); return }
     const results = await Promise.all(mems.map(async m=>{
       const {data:group} = await supabase.from('groups').select('*,group_members(user_id)').eq('id',m.group_id).maybeSingle()
       if(!group) return null
-      const {data:lastMsg} = await supabase.from('group_messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('group_id',group.id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      const {data:lastMsg,error:glErr} = await supabase.from('group_messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('group_id',group.id).order('created_at',{ascending:false}).limit(1).maybeSingle()
+      if(glErr) diag('group last message',glErr)
       const {count:unreadCount} = await supabase.from('group_messages').select('id',{count:'exact',head:true}).eq('group_id',group.id).neq('sender_id',currentUser.id).gt('created_at',m.last_read_at||'1970-01-01T00:00:00Z')
       return {id:group.id, type:'group', group, last:lastMsg, unread:(unreadCount||0)>0}
     }))
@@ -836,20 +840,28 @@ export function FlittersAppInner({ currentUser }) {
 
   const loadConvos = async(showSkeleton=false) => {
     if(showSkeleton) setConvosLoading(true)
-    const {data:parts} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
+    const {data:parts,error:partsErr} = await supabase.from('conversation_participants').select('conversation_id,last_read_at').eq('user_id',currentUser.id)
+    if(partsErr) diag('conversation list',partsErr)
     if(!parts?.length){setConversations([]);setConvosLoading(false);return}
+    const ids = parts.map(p=>p.conversation_id)
+    // The other person in each chat, in one query (limit/first-row so a duplicate row can't hide a chat).
+    const {data:others,error:othersErr} = await supabase.from('conversation_participants').select('conversation_id,user_id').in('conversation_id',ids).neq('user_id',currentUser.id)
+    if(othersErr) diag('conversation members',othersErr)
+    const otherOf = {}
+    ;(others||[]).forEach(o=>{ if(!otherOf[o.conversation_id]) otherOf[o.conversation_id]=o.user_id })
+    const {data:profs,error:profsErr} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').in('id',[...new Set(Object.values(otherOf))])
+    if(profsErr) diag('conversation profiles',profsErr)
+    const profById = Object.fromEntries((profs||[]).map(p=>[p.id,p]))
     const results = await Promise.all(parts.map(async p=>{
       const id = p.conversation_id
-      const {data:op} = await supabase.from('conversation_participants').select('user_id').eq('conversation_id',id).neq('user_id',currentUser.id).maybeSingle()
-      if(!op) return null
-      const {data:prof} = await supabase.from('profiles').select('id,display_name,username,avatar_color,avatar_url').eq('id',op.user_id).single()
+      const otherId = otherOf[id]
+      if(!otherId) return null
+      const prof = profById[otherId] || {id:otherId,display_name:'Flitters user',username:'',avatar_color:'#5B9CF6',avatar_url:null}
       let {data:lastMsg, error:lastMsgErr} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker,is_voice').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()
-      if(lastMsgErr && isMissingColumnError(lastMsgErr)) {
-        // is_voice column doesn't exist yet (supabase_migration_voice_notes.sql
-        // not run) — fall back so the conversation list still loads instead of
-        // every conversation losing its last-message preview.
-        console.warn('is_voice column missing, retrying without it — run supabase_migration_voice_notes.sql', lastMsgErr)
-        ;({data:lastMsg} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle())
+      if(lastMsgErr) {
+        // A column may be missing (older database): retry with fewer columns, then with all.
+        ;({data:lastMsg,error:lastMsgErr} = await supabase.from('messages').select('content,created_at,sender_id,is_sticker').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle())
+        if(lastMsgErr) { diag('last message',lastMsgErr); ;({data:lastMsg} = await supabase.from('messages').select('*').eq('conversation_id',id).order('created_at',{ascending:false}).limit(1).maybeSingle()) }
       }
       const {count:unreadCount} = await supabase.from('messages').select('id',{count:'exact',head:true}).eq('conversation_id',id).neq('sender_id',currentUser.id).gt('created_at',p.last_read_at||'1970-01-01T00:00:00Z')
       return {id, other:prof, last:lastMsg, unread:(unreadCount||0)>0}
@@ -875,7 +887,7 @@ export function FlittersAppInner({ currentUser }) {
       supabase.from('messages').update({read_at:new Date().toISOString()}).eq('conversation_id',selectedConv.id).neq('sender_id',currentUser.id).is('read_at',null).then(()=>{})
     }
     const fetchMessages = async() => {
-      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      const {data} = await fetchChat(supabase,'dm',selectedConv.id)
       // Preserve any not-yet-confirmed optimistic bubble for *this* conversation
       // instead of wiping it — a slow insert shouldn't make a just-sent message
       // vanish before its confirmation (or failure) comes back.
@@ -896,7 +908,7 @@ export function FlittersAppInner({ currentUser }) {
         if(payload.new.sender_id !== currentUser.id) supabase.from('messages').update({read_at:new Date().toISOString()}).eq('id',payload.new.id).then(()=>{})
         return
       }
-      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+      const data = await fetchChatMessage(supabase,'dm',payload.new.id)
       if(data) {
         setMessages(prev=>{
           // remove any optimistic temp message that matches, avoid duplicates
@@ -911,7 +923,7 @@ export function FlittersAppInner({ currentUser }) {
     }).on('postgres_changes',{event:'UPDATE',schema:'public',table:'messages',filter:`conversation_id=eq.${selectedConv.id}`},(payload)=>{
       setMessages(prev=>prev.map(m=>m.id===payload.new.id?{...m,read_at:payload.new.read_at}:m))
     }).on('postgres_changes',{event:'*',schema:'public',table:'message_reactions'},async()=>{
-      const {data} = await supabase.from('messages').select('*,sender:profiles!sender_id(id,display_name,avatar_color,avatar_url),message_reactions(user_id,emoji)').eq('conversation_id',selectedConv.id).order('created_at',{ascending:true})
+      const {data} = await fetchChat(supabase,'dm',selectedConv.id)
       if(data) setMessages(prev=>{
         const pending = prev.filter(m=>m.id.toString().startsWith('tmp')&&m.conversation_id===selectedConv.id)
         return [...data,...pending]
@@ -1778,7 +1790,7 @@ export function FlittersAppInner({ currentUser }) {
           would then remount PulseTab fresh, landing on its default view
           instead of the reel you were actually on. */}
       {viewingUser && (
-        <div className="dk-page" style={{position:'fixed',inset:0,zIndex:900,background:'var(--bg-app)'}}>
+        <div className="dk-page" style={{position:'fixed',inset:0,zIndex:900,background:'var(--bg-app)',overflowY:'auto',overscrollBehavior:'contain',WebkitOverflowScrolling:'touch'}}>
           <UserProfileView user={viewingUser} currentUser={currentUser} supabase={supabase} onBack={()=>setViewingUser(null)} onMessage={openDMWithUser} onOpenPost={openPost} sendPush={sendPush}/>
         </div>
       )}

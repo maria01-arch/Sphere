@@ -1,4 +1,6 @@
 'use client'
+import { fetchChat, fetchChatMessage } from '@/lib/chatFetch'
+import { diag } from '@/lib/diag'
 import { useEffect, useRef, useState } from 'react'
 import { AlertTriangle, Copy, CornerUpLeft, Globe, Image as ImageIcon, Inbox, Link2, Loader2, Lock, LogOut, Mic, Pencil, Send, Settings, Smile, Trash2, Users } from 'lucide-react'
 import { MessageBubble } from '@/components/chat/MessageBubble'
@@ -84,7 +86,7 @@ export function GroupChat({ group, currentUser, supabase, onBack, onUserClick, o
         let alreadyHave = false
         setMessages(prev=>{ alreadyHave = prev.some(m=>m.id===payload.new.id); return prev })
         if(alreadyHave) return // broadcast already delivered this one — skip the extra round trip
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('id',payload.new.id).single()
+        const data = await fetchChatMessage(supabase,'group',payload.new.id)
         if(data) setMessages(prev=>{
           const filtered = prev.filter(m=>!(m.id.toString().startsWith('temp_')&&m.content===data.content&&m.sender_id===data.sender_id))
           return filtered.some(m=>m.id===data.id) ? filtered : [...filtered,data]
@@ -126,11 +128,12 @@ export function GroupChat({ group, currentUser, supabase, onBack, onUserClick, o
   },[])
 
   const loadAll = async () => {
-    const [{data:msgs},{data:mems},{data:reqs}] = await Promise.all([
-      supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100),
+    const [{data:msgs},{data:mems,error:memErr},{data:reqs}] = await Promise.all([
+      fetchChat(supabase,'group',group.id,{limit:100}),
       supabase.from('group_members').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id),
       supabase.from('group_join_requests').select('*,profile:profiles(id,display_name,username,avatar_url,avatar_color)').eq('group_id',group.id).eq('status','pending')
     ])
+    if(memErr) diag('group members',memErr)
     setMessages(msgs||[])
     setMembers(mems||[])
     setJoinRequests(reqs||[])
@@ -167,7 +170,7 @@ export function GroupChat({ group, currentUser, supabase, onBack, onUserClick, o
       }})
       // one-time delayed fetch to sync with DB - merges not overwrites
       setTimeout(async()=>{
-        const {data} = await supabase.from('group_messages').select('*,sender:profiles!sender_id(id,display_name,avatar_url,avatar_color),group_message_reactions(user_id,emoji)').eq('group_id',group.id).order('created_at',{ascending:true}).limit(100)
+        const {data} = await fetchChat(supabase,'group',group.id,{limit:100})
         if(data) setMessages(prev=>{
           const temps = prev.filter(m=>m.id.toString().startsWith('temp_'))
           const confirmedIds = new Set(data.map(m=>m.id))
