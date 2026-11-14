@@ -9,6 +9,10 @@ import { NextResponse } from 'next/server'
 // in on screen. This was previously a no-op (matcher: []), which is what was
 // causing the upload API route to reject signed-in users.
 export async function middleware(request) {
+  // Page loads only. Prefetches and non-GET requests don't need to refresh the login, and
+  // every extra refresh is another call to Supabase's rate-limited auth server.
+  const h = request.headers
+  if (request.method !== 'GET' || h.get('next-router-prefetch') || h.get('purpose') === 'prefetch') return NextResponse.next()
   let supabaseResponse = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -30,17 +34,17 @@ export async function middleware(request) {
     }
   )
 
-  // Touching getUser() here is what actually triggers the refresh — don't
-  // remove this even though the result isn't used directly below.
-  await supabase.auth.getUser()
+  // getSession() only talks to Supabase when the saved login has expired (then it
+  // refreshes it and sets the new cookies). getUser() called Supabase on EVERY request.
+  await supabase.auth.getSession()
 
   return supabaseResponse
 }
 
 export const config = {
   matcher: [
-    // Run on everything except static assets/images — this includes API
-    // routes on purpose, since those are exactly what need fresh cookies.
-    '/((?!_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp)$).*)',
+    // Pages only. API routes read the Bearer token the app sends (see authJsonHeaders in
+    // lib/api.js), so they don't need the cookie refresh.
+    '/((?!api/|_next/static|_next/image|favicon.ico|.*\\.(?:svg|png|jpg|jpeg|gif|webp|js|css|json|txt|ico|mp4)$).*)',
   ],
 }
