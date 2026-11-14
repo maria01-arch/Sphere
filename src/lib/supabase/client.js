@@ -11,13 +11,15 @@ const isRefresh = (u) => u.includes('/auth/v1/token') && u.includes('grant_type=
 async function guardedFetch(input, init) {
   const url = typeof input === 'string' ? input : (input && input.url) || String(input)
   if (!isRefresh(url)) return fetch(input, init)
-  if (Date.now() < refreshBlockedUntil) {
-    return new Response(JSON.stringify({ code: 429, error_code: 'over_request_rate_limit', msg: 'Too many requests' }), { status: 429, headers: { 'Content-Type': 'application/json' } })
-  }
+  // Throwing (instead of returning a 429 reply) makes supabase-js treat this as a temporary
+  // network problem: it KEEPS the saved login and tries again later. A real 429 reply would
+  // make it delete the saved login, which signs you out.
+  if (Date.now() < refreshBlockedUntil) throw new TypeError('Login refresh paused for a minute (too many requests)')
   const res = await fetch(input, init)
   if (res.status === 429) {
     refreshBlockedUntil = Date.now() + 60000
     diag('login session', { message: 'Your login could not refresh because Supabase is limiting requests from this network. Wait a minute, close other Flitters tabs, then reload.' })
+    throw new TypeError('Login refresh rate limited (429)')
   }
   return res
 }

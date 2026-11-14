@@ -36,7 +36,7 @@ export async function middleware(request) {
 
   // getSession() only talks to Supabase when the saved login has expired (then it
   // refreshes it and sets the new cookies). getUser() called Supabase on EVERY request.
-  await supabase.auth.getSession()
+  try { await supabase.auth.getSession() } catch {}
 
   return supabaseResponse
 }

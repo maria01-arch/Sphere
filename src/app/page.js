@@ -37,7 +37,8 @@ export default function Home() {
       setProfile(data)
       setLoading(false)
     }
-    init()
+    // Never leave the person on a blank page if something in start-up throws.
+    init().catch(() => { setFailedToLoad(true); setLoading(false) })
   }, [])
 
   if (showLanding) return <LandingPage />
