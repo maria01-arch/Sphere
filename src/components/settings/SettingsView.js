@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, useState } from 'react'
-import { AlertTriangle, Award, Ban, Bookmark, Bell, BookOpen, Check, Globe, Image as ImageIcon, Lock, LogOut, MapPin, Trash2, User } from 'lucide-react'
+import { AlertTriangle, Award, Ban, Bookmark, Bell, BookOpen, Check, Globe, Image as ImageIcon, Lock, LogOut, MapPin, Trash2, User, Coins } from 'lucide-react'
 import { Avatar } from '@/components/common/Avatar'
 import { RowSkeletonList } from '@/components/common/Skeletons'
 import { AutoplayToggleRow } from '@/components/settings/AutoplayToggleRow'
@@ -342,8 +342,8 @@ export function SettingsView({ currentUser, supabase, onOpenSaved, onBack, onSig
         <button onClick={onOpenSaved} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
           <span style={{fontSize:22,display:'flex'}}><Bookmark size={18}/></span><span style={{flex:1,fontWeight:500}}>Saved Posts</span><span style={{color:'var(--text-quaternary)'}}>›</span>
         </button>
-        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Award size={18}/>,label:'Get Verified',id:'verify'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
-          <button key={s.id} onClick={()=>setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
+        {[{icon:<ImageIcon size={18}/>,label:'Profile Picture',id:'avatar'},{icon:<User size={18}/>,label:'Edit Profile',id:'profile'},{icon:<Lock size={18}/>,label:'Change Password',id:'password'},{icon:<MapPin size={18}/>,label:'Location',id:'location'},{icon:<Globe size={18}/>,label:'Language',id:'language'},{icon:<Bell size={18}/>,label:'Notifications',id:'notiftest'},{icon:<Award size={18}/>,label:'Get Verified',id:'verify'},{icon:<Coins size={18}/>,label:'Flit Coins',id:'coins'},{icon:<Ban size={18}/>,label:'Blocked Accounts',id:'blocked'}].map(s=>(
+          <button key={s.id} onClick={()=>s.id==='coins'?(window.location.href='/coins'):setSection(s.id)} style={{display:'flex',alignItems:'center',gap:14,padding:'16px 20px',background:'none',border:'none',width:'100%',cursor:'pointer',color:'var(--text-primary)',borderBottom:'1px solid var(--bg-card-4)',textAlign:'left',fontSize:15}}>
             <span style={{fontSize:22}}>{s.icon}</span><span style={{flex:1,fontWeight:500}}>{s.label}</span><span style={{color:'var(--text-quaternary)'}}>›</span>
           </button>
         ))}
