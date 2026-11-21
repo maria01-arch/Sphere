@@ -44,9 +44,13 @@ export async function lookupSubscription(accessToken, purchaseToken) {
 export async function syncUserBadge(admin, userId) {
   const { data: rows } = await admin.from('subscriptions').select('plan,state,expires_at').eq('user_id', userId)
   const live = (rows || []).filter((r) => r.expires_at && isEntitled(r.state, r.expires_at))
+  // Plans paid on the website (Paystack) are kept in web_subscriptions. If that table
+  // doesn't exist yet the lookup just returns nothing.
+  const { data: webRows } = await admin.from('web_subscriptions').select('plan,expires_at').eq('user_id', userId).gt('expires_at', new Date().toISOString())
+  for (const r of webRows || []) live.push({ plan: r.plan, expires_at: r.expires_at })
   if (live.length) {
     const plan = live.some((r) => r.plan === 'premium') ? 'premium' : 'basic'
-    const latest = Math.max(...live.map((r) => new Date(r.expires_at).getTime()))
+    const latest = Math.max(...live.filter((r) => r.plan === plan).map((r) => new Date(r.expires_at).getTime()))
     // 6 hours of slack in case a refresh run is late; the hourly database job is the backstop.
     const until = new Date(latest + 6 * 3600000).toISOString()
     await admin.from('profiles').update({ is_authentic: true, verified_plan: plan, verified_until: until }).eq('id', userId)

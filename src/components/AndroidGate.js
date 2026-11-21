@@ -10,7 +10,7 @@ import { useEffect, useState } from 'react'
 // Sign-in return pages, the API and the admin area never show it.
 const PACKAGE = 'com.xchordlabs.flitters'
 const PLAY = 'https://play.google.com/store/apps/details?id=' + PACKAGE
-const SKIP = ['/auth/callback', '/auth/confirm', '/reset', '/api', '/admin', '/_next']
+const SKIP = ['/paystack', '/auth/callback', '/auth/confirm', '/reset', '/api', '/admin', '/_next']
 const KEY = 'flitters_banner_hidden_until'
 
 export default function AndroidGate() {

@@ -54,6 +54,7 @@ export default function Terms() {
         <ul style={s.ul}>
           <li>Flitters Basic and Flitters Premium are paid subscriptions that give you a verified badge and extra features. The current prices and perks are shown on the Get Verified page and may change; a change will not affect a period you have already paid for.</li>
           <li>A subscription covers the period you paid for (one month or one year). To keep your badge you must pay again before it ends. When it ends, the badge and plan features are removed.</li>
+          <li>You can pay by card or bank transfer through Paystack (charged in Nigerian Naira), or by cryptocurrency. Paystack processes card payments; we never see or store your card details. Prices shown in other currencies are estimates.</li>
           <li>Refunds: if you cancel before your paid period ends, the unused days are refunded. Email support@xchord.space with your username and transaction details. If you paid and your plan was not activated, contact us the same way. Your rights under the law of your country are not affected.</li>
           <li>A badge confirms that an account completed our verification steps. It is not an endorsement of the account or its content. We may remove a badge if the account breaks these Terms or the application contained false information.</li>
           <li>ID documents you upload for verification are used only to check your identity, and are not shown publicly.</li>
